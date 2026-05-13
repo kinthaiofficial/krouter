@@ -238,10 +238,10 @@ jobs:
       - name: Substitute version in .nsi
         run: |
           sed "s/{{VERSION}}/${{ github.ref_name }}/g" \
-            packaging/windows.nsi > packaging/windows_versioned.nsi
+            packaging/windows.nsi > windows_versioned.nsi
 
       - name: Build NSIS installer
-        run: makensis packaging/windows_versioned.nsi
+        run: makensis windows_versioned.nsi
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
