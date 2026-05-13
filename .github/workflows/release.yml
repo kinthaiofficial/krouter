@@ -84,7 +84,7 @@ jobs:
           install-only: true
 
       - name: Create release and publish archives
-        run: goreleaser release --skip=build --clean
+        run: goreleaser continue --merge
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
