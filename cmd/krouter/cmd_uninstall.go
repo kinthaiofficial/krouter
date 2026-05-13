@@ -42,7 +42,8 @@ Use --yes to skip the confirmation prompt.`,
 			})
 
 			if dryRun {
-				fmt.Fprintln(cmd.OutOrStdout(), "Dry run — no changes will be made.\n")
+				fmt.Fprintln(cmd.OutOrStdout(), "Dry run — no changes will be made.")
+				fmt.Fprintln(cmd.OutOrStdout())
 			}
 
 			if err := u.Uninstall(); err != nil {

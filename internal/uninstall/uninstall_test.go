@@ -143,11 +143,7 @@ func TestUninstall_RemovesBinary(t *testing.T) {
 }
 
 func TestUninstall_StopService_NonFatal(t *testing.T) {
-	warns := 0
-	type warnUI struct{ NullUI }
-	// Can't embed and override easily, so use testUninstaller with custom hook.
 	u, h := testUninstaller(NullUI{}, Options{})
-	_ = warns
 	h.stopServiceCalled = false
 	// Verify StopService completes even if the stub is replaced with an error.
 	u.stopServiceFn = func() error { return nil }

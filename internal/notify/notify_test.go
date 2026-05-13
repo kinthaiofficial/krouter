@@ -1,18 +1,12 @@
 package notify_test
 
 import (
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/kinthaiofficial/krouter/internal/notify"
 	"github.com/stretchr/testify/assert"
 )
-
-// mockNotifier wraps Notifier with a replaceable send function for testing.
-type mockNotifier struct {
-	calls atomic.Int32
-}
 
 // TestNotify_HandleEvent_QuotaWarning verifies HandleEvent dispatches for quota_warning.
 func TestNotify_HandleEvent_QuotaWarning(t *testing.T) {
