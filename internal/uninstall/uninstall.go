@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 
 	"github.com/kinthaiofficial/krouter/internal/config"
 )
@@ -190,9 +189,6 @@ func removeDataDir() error {
 // platformStopService and platformRemoveServiceFile are provided by
 // service_linux.go / service_darwin.go / service_other.go.
 
-// nopStop is a no-op stop for platforms where it isn't needed.
-func nopStop() error { return nil }
-
 // removeServiceFileByPath removes a file if it exists.
 func removeServiceFileByPath(path string) error {
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
@@ -200,6 +196,3 @@ func removeServiceFileByPath(path string) error {
 	}
 	return nil
 }
-
-// currentOS is set to runtime.GOOS; overridable in tests.
-var currentOS = runtime.GOOS

@@ -38,7 +38,8 @@ Use --dry-run to preview steps without making any changes.`,
 			})
 
 			if dryRun {
-				fmt.Fprintln(cmd.OutOrStdout(), "Dry run — no changes will be made.\n")
+				fmt.Fprintln(cmd.OutOrStdout(), "Dry run — no changes will be made.")
+				fmt.Fprintln(cmd.OutOrStdout())
 			}
 
 			if err := orch.Install(); err != nil {

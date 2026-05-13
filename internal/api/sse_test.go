@@ -5,7 +5,6 @@ import (
 	"context"
 	"net/http"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -130,12 +129,6 @@ func TestSSE_MethodNotAllowed(t *testing.T) {
 	resp := doPost(t, ts, "/internal/events", "")
 	defer func() { _ = resp.Body.Close() }()
 	assert.Equal(t, http.StatusMethodNotAllowed, resp.StatusCode)
-}
-
-// countingNotifier wraps notify.Notifier and counts HandleEvent calls.
-type countingNotifier struct {
-	notify.Notifier
-	count atomic.Int32
 }
 
 func TestSSE_NotifierCalledOnBroadcast(t *testing.T) {

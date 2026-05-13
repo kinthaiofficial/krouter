@@ -347,12 +347,6 @@ func (s *Server) handleBudget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	type windowBreakdown struct {
-		Window    string  `json:"window"`
-		CostUSD   float64 `json:"cost_usd"`
-		SavingsUSD float64 `json:"savings_usd"`
-	}
-
 	todayStart := time.Now().UTC().Truncate(24 * time.Hour)
 	var totalCost, totalSavings int64
 	var requestsToday int
