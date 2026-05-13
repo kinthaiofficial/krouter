@@ -2,8 +2,6 @@ module github.com/kinthaiofficial/krouter
 
 go 1.22.0
 
-toolchain go1.23.8
-
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/gen2brain/beeep v0.11.2
@@ -36,5 +34,3 @@ require (
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-// Indirect dependencies will be filled by `go mod tidy`
