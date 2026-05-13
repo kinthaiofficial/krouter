@@ -159,7 +159,7 @@ jobs:
           mkdir -p dist
           LFLAGS="-s -w -X main.Version=${{ github.ref_name }} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           go build -ldflags "$LFLAGS" -o dist/krouter-windows.exe ./cmd/krouter
-          go build -ldflags "$LFLAGS" -H windowsgui \
+          go build -ldflags "$LFLAGS -H windowsgui" \
             -o dist/krouter-installer-windows.exe ./cmd/krouter-installer
 
       - name: Upload artifacts
