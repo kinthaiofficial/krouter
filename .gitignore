@@ -31,6 +31,8 @@ Thumbs.db
 *.pem
 *.key
 ecdsa_private_key.pem
+# Exception: embedded public key is safe to publish
+!internal/upgrade/public_key.pem
 .env
 .env.local
 

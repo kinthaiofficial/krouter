@@ -51,17 +51,19 @@ builds:
 
 archives:
   - id: default
-    builds:
+    ids:
       - daemon-linux
       - daemon-darwin
     name_template: "krouter_{{.Version}}_{{.Os}}_{{.Arch}}"
-    format: tar.gz
+    formats:
+      - tar.gz
 
   - id: windows-zip
-    builds:
+    ids:
       - daemon-windows
     name_template: "krouter_{{.Version}}_windows_{{.Arch}}"
-    format: zip
+    formats:
+      - zip
 
 nfpms:
   - id: linux-packages
@@ -73,7 +75,7 @@ nfpms:
     formats:
       - deb
       - rpm
-    builds:
+    ids:
       - daemon-linux
     contents:
       - src: ./packaging/postinstall.sh
