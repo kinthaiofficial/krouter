@@ -5,7 +5,7 @@ package config
 import (
 	"errors"
 	"fmt"
-	"path/filepath"
+	"path"
 )
 
 var errDarwinOnly = errors.New("LaunchAgent is only supported on macOS")
@@ -13,7 +13,7 @@ var errDarwinOnly = errors.New("LaunchAgent is only supported on macOS")
 // GeneratePlistContent returns the LaunchAgent plist XML.
 // Available on all platforms for testing purposes.
 func GeneratePlistContent(binaryPath, homeDir string) []byte {
-	logDir := filepath.Join(homeDir, ".kinthai")
+	logDir := path.Join(homeDir, ".kinthai")
 	return []byte(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -31,9 +31,9 @@ func GeneratePlistContent(binaryPath, homeDir string) []byte {
   <key>KeepAlive</key>
   <true/>
   <key>StandardOutPath</key>
-  <string>` + filepath.Join(logDir, "daemon.log") + `</string>
+  <string>` + path.Join(logDir, "daemon.log") + `</string>
   <key>StandardErrorPath</key>
-  <string>` + filepath.Join(logDir, "daemon-error.log") + `</string>
+  <string>` + path.Join(logDir, "daemon-error.log") + `</string>
 </dict>
 </plist>
 `)

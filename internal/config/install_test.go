@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/kinthaiofficial/krouter/internal/config"
@@ -38,6 +39,9 @@ func TestMarkInstalled_CreatesDataDir(t *testing.T) {
 }
 
 func TestInstallDaemon_CopiesAndChmod(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not support Unix-style executable permission bits")
+	}
 	home := withHome(t)
 
 	// Create a fake source binary.
