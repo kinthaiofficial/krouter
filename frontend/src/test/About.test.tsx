@@ -3,11 +3,13 @@ import { screen, waitFor, fireEvent } from '@testing-library/react'
 import { renderWithProviders } from './helpers'
 import About from '../pages/About'
 
-const mockStatus = { status: 'ok', version: 'v1.2.3', uptime_seconds: 3700, pid: 1234, proxy_port: 8402, mgmt_port: 8403 }
-const mockUpdateNoUpgrade = { current: 'v1.2.3', latest: undefined }
-const mockUpdateAvailable = { current: 'v1.2.3', latest: 'v1.3.0', is_critical: false, release_notes_url: 'https://example.com/releases' }
+interface UpdateStatus { current: string; latest?: string; is_critical?: boolean; release_notes_url?: string }
 
-function setupFetch(updateStatus = mockUpdateNoUpgrade) {
+const mockStatus = { status: 'ok', version: 'v1.2.3', uptime_seconds: 3700, pid: 1234, proxy_port: 8402, mgmt_port: 8403 }
+const mockUpdateNoUpgrade: UpdateStatus = { current: 'v1.2.3', latest: undefined }
+const mockUpdateAvailable: UpdateStatus = { current: 'v1.2.3', latest: 'v1.3.0', is_critical: false, release_notes_url: 'https://example.com/releases' }
+
+function setupFetch(updateStatus: UpdateStatus = mockUpdateNoUpgrade) {
   vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
     const body = url.includes('/update-status') ? updateStatus
       : url.includes('/status') ? mockStatus
