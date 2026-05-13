@@ -11,7 +11,7 @@ const mockSettings = {
 }
 
 beforeEach(() => {
-  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((_url: string, opts?: RequestInit) => {
     if (opts?.method === 'PATCH') {
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(mockSettings) })
     }
