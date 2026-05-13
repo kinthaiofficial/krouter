@@ -21,6 +21,15 @@
 //	POST /internal/announcements/dismiss  body: {"id":"..."}
 //	GET  /internal/announcements/count
 //
+// Web UI endpoints:
+//
+//	POST /internal/auth/ticket     → mint single-use ticket (Bearer required)
+//	GET  /internal/auth/exchange   → exchange ticket for session cookie
+//	GET  /internal/events          → SSE stream (session cookie or Bearer)
+//	GET  /internal/settings        → read all settings
+//	PATCH /internal/settings       → update settings fields
+//	GET  /internal/budget          → today's cost + savings breakdown
+//
 // See spec/01-proxy-layer.md §4 for the full endpoint list.
 package api
 
@@ -38,8 +47,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/kinthaiofficial/krouter/internal/config"
+	"github.com/kinthaiofficial/krouter/internal/notify"
 	"github.com/kinthaiofficial/krouter/internal/pricing"
 	"github.com/kinthaiofficial/krouter/internal/providers"
 	"github.com/kinthaiofficial/krouter/internal/remote"
@@ -55,6 +67,12 @@ var validPresets = map[string]bool{
 	"quality":  true,
 }
 
+// sseEvent is a single Server-Sent Event.
+type sseEvent struct {
+	Type string
+	Data any
+}
+
 // Server is the management API server.
 type Server struct {
 	token    string
@@ -63,19 +81,55 @@ type Server struct {
 	upgrade  *upgrade.Service
 	remote   *remote.Service
 	registry *providers.Registry
+	settings *config.Manager
 	startAt  time.Time
 	version  string
 	ports    struct{ proxy, mgmt int }
+
+	// Web UI auth.
+	sessions *sessionStore
+	tickets  *ticketStore
+
+	// SSE broadcast.
+	subsMu   sync.Mutex
+	subs     []chan sseEvent
+	notifier *notify.Notifier
 }
 
 // New creates a management API server.
 // store may be nil (returns defaults for all store-backed endpoints).
 func New(store *storage.Store, version string, proxyPort, mgmtPort int) *Server {
 	return &Server{
-		store:   store,
-		startAt: time.Now(),
-		version: version,
-		ports:   struct{ proxy, mgmt int }{proxyPort, mgmtPort},
+		store:    store,
+		startAt:  time.Now(),
+		version:  version,
+		ports:    struct{ proxy, mgmt int }{proxyPort, mgmtPort},
+		sessions: newSessionStore(),
+		tickets:  &ticketStore{},
+	}
+}
+
+// SetSettings wires in the settings manager for GET/PATCH /internal/settings.
+func (s *Server) SetSettings(m *config.Manager) { s.settings = m }
+
+// SetNotifier wires in the desktop notification handler.
+func (s *Server) SetNotifier(n *notify.Notifier) { s.notifier = n }
+
+// Broadcast sends an SSE event to all connected browser clients and fires a
+// desktop notification when applicable.
+func (s *Server) Broadcast(eventType string, data any) {
+	ev := sseEvent{Type: eventType, Data: data}
+	s.subsMu.Lock()
+	for _, ch := range s.subs {
+		select {
+		case ch <- ev:
+		default: // slow client: drop
+		}
+	}
+	s.subsMu.Unlock()
+
+	if s.notifier != nil {
+		s.notifier.HandleEvent(eventType, data)
 	}
 }
 
@@ -176,41 +230,219 @@ func (s *Server) ServeWithTLS(ctx context.Context, host string, port int, certPE
 	}
 }
 
-// AuthMiddleware validates the Bearer token.
+// AuthMiddleware validates Bearer token OR session cookie.
+// Kept for backward compatibility with external callers; delegates to authMiddleware.
 func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		auth := r.Header.Get("Authorization")
-		expected := "Bearer " + s.token
-		if auth != expected {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+	return s.authMiddleware(next)
 }
 
 // Handler returns the authenticated mux (used in tests without Serve).
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.Handle("/internal/status", s.AuthMiddleware(http.HandlerFunc(s.handleStatus)))
-	mux.Handle("/internal/logs", s.AuthMiddleware(http.HandlerFunc(s.handleLogs)))
-	mux.Handle("/internal/preset", s.AuthMiddleware(http.HandlerFunc(s.handlePreset)))
-	mux.Handle("/internal/usage", s.AuthMiddleware(http.HandlerFunc(s.handleUsage)))
-	mux.Handle("/internal/announcements/read", s.AuthMiddleware(http.HandlerFunc(s.handleAnnouncementRead)))
-	mux.Handle("/internal/announcements/dismiss", s.AuthMiddleware(http.HandlerFunc(s.handleAnnouncementDismiss)))
-	mux.Handle("/internal/announcements/count", s.AuthMiddleware(http.HandlerFunc(s.handleAnnouncementsCount)))
-	mux.Handle("/internal/announcements", s.AuthMiddleware(http.HandlerFunc(s.handleAnnouncements)))
-	mux.Handle("/internal/update-status", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateStatus)))
-	mux.Handle("/internal/remote/enable", s.AuthMiddleware(http.HandlerFunc(s.handleRemoteEnable)))
-	mux.Handle("/internal/remote/disable", s.AuthMiddleware(http.HandlerFunc(s.handleRemoteDisable)))
-	mux.Handle("/internal/remote/status", s.AuthMiddleware(http.HandlerFunc(s.handleRemoteStatus)))
-	mux.Handle("/internal/pairing/exchange", s.AuthMiddleware(http.HandlerFunc(s.handlePairingExchange)))
-	mux.Handle("/internal/devices", s.AuthMiddleware(http.HandlerFunc(s.handleDevices)))
-	mux.Handle("/internal/devices/", s.AuthMiddleware(http.HandlerFunc(s.handleDeviceDelete)))
-	mux.Handle("/internal/providers", s.AuthMiddleware(http.HandlerFunc(s.handleProviders)))
-	mux.Handle("/internal/quota", s.AuthMiddleware(http.HandlerFunc(s.handleQuota)))
-	mux.Handle("/internal/update-apply", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateApply)))
+
+	// Auth endpoints — ticket mint requires Bearer; exchange requires no prior auth.
+	mux.HandleFunc("/internal/auth/ticket", s.handleMintTicket)
+	mux.HandleFunc("/internal/auth/exchange", s.handleExchangeTicket)
+
+	// Static Web UI.
+	mountUI(mux)
+
+	// Authenticated endpoints.
+	auth := s.authMiddleware
+	mux.Handle("/internal/status", auth(http.HandlerFunc(s.handleStatus)))
+	mux.Handle("/internal/logs", auth(http.HandlerFunc(s.handleLogs)))
+	mux.Handle("/internal/preset", auth(http.HandlerFunc(s.handlePreset)))
+	mux.Handle("/internal/usage", auth(http.HandlerFunc(s.handleUsage)))
+	mux.Handle("/internal/settings", auth(http.HandlerFunc(s.handleSettings)))
+	mux.Handle("/internal/budget", auth(http.HandlerFunc(s.handleBudget)))
+	mux.Handle("/internal/events", auth(http.HandlerFunc(s.handleEvents)))
+	mux.Handle("/internal/announcements/read", auth(http.HandlerFunc(s.handleAnnouncementRead)))
+	mux.Handle("/internal/announcements/dismiss", auth(http.HandlerFunc(s.handleAnnouncementDismiss)))
+	mux.Handle("/internal/announcements/count", auth(http.HandlerFunc(s.handleAnnouncementsCount)))
+	mux.Handle("/internal/announcements", auth(http.HandlerFunc(s.handleAnnouncements)))
+	mux.Handle("/internal/update-status", auth(http.HandlerFunc(s.handleUpdateStatus)))
+	mux.Handle("/internal/remote/enable", auth(http.HandlerFunc(s.handleRemoteEnable)))
+	mux.Handle("/internal/remote/disable", auth(http.HandlerFunc(s.handleRemoteDisable)))
+	mux.Handle("/internal/remote/status", auth(http.HandlerFunc(s.handleRemoteStatus)))
+	mux.Handle("/internal/pairing/exchange", auth(http.HandlerFunc(s.handlePairingExchange)))
+	mux.Handle("/internal/devices", auth(http.HandlerFunc(s.handleDevices)))
+	mux.Handle("/internal/devices/", auth(http.HandlerFunc(s.handleDeviceDelete)))
+	mux.Handle("/internal/providers", auth(http.HandlerFunc(s.handleProviders)))
+	mux.Handle("/internal/quota", auth(http.HandlerFunc(s.handleQuota)))
+	mux.Handle("/internal/update-apply", auth(http.HandlerFunc(s.handleUpdateApply)))
 	return mux
+}
+
+// handleSettings handles GET and PATCH /internal/settings.
+func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		mgr := s.settings
+		if mgr == nil {
+			writeJSON(w, config.Settings{Preset: "balanced", Language: "en"})
+			return
+		}
+		writeJSON(w, mgr.Get())
+
+	case http.MethodPatch:
+		mgr := s.settings
+		if mgr == nil {
+			http.Error(w, `{"error":"settings unavailable"}`, http.StatusServiceUnavailable)
+			return
+		}
+		current := mgr.Get()
+		var patch struct {
+			Preset                 *string            `json:"preset"`
+			Language               *string            `json:"language"`
+			NotificationCategories map[string]bool    `json:"notification_categories"`
+			BudgetWarnings         map[string]float64 `json:"budget_warnings"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
+			http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
+			return
+		}
+		if patch.Preset != nil {
+			if !validPresets[*patch.Preset] {
+				http.Error(w, `{"error":"preset must be one of: saver, balanced, quality"}`, http.StatusBadRequest)
+				return
+			}
+			current.Preset = *patch.Preset
+		}
+		if patch.Language != nil {
+			current.Language = *patch.Language
+		}
+		if patch.NotificationCategories != nil {
+			if current.NotificationCategories == nil {
+				current.NotificationCategories = make(map[string]bool)
+			}
+			for k, v := range patch.NotificationCategories {
+				current.NotificationCategories[k] = v
+			}
+		}
+		if patch.BudgetWarnings != nil {
+			if current.BudgetWarnings == nil {
+				current.BudgetWarnings = make(map[string]float64)
+			}
+			for k, v := range patch.BudgetWarnings {
+				current.BudgetWarnings[k] = v
+			}
+		}
+		if err := mgr.Set(current); err != nil {
+			http.Error(w, `{"error":"failed to save settings"}`, http.StatusInternalServerError)
+			return
+		}
+		s.Broadcast("settings_changed", current)
+		writeJSON(w, current)
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleBudget handles GET /internal/budget.
+// Returns today's cost and savings breakdown.
+func (s *Server) handleBudget(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	type windowBreakdown struct {
+		Window    string  `json:"window"`
+		CostUSD   float64 `json:"cost_usd"`
+		SavingsUSD float64 `json:"savings_usd"`
+	}
+
+	todayStart := time.Now().UTC().Truncate(24 * time.Hour)
+	var totalCost, totalSavings int64
+	var requestsToday int
+
+	if s.store != nil {
+		if n, err := s.store.CountRequestsToday(r.Context()); err == nil {
+			requestsToday = n
+		}
+		if c, err := s.store.SumCostMicroUSD(r.Context(), todayStart); err == nil {
+			totalCost = c
+		}
+		if s.pricing != nil {
+			if recs, err := s.store.ListRequests(r.Context(), 10000); err == nil {
+				for _, rec := range recs {
+					if rec.Timestamp.UTC().Before(todayStart) {
+						continue
+					}
+					baseline := s.pricing.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens)
+					if saved := baseline - rec.CostMicroUSD; saved > 0 {
+						totalSavings += saved
+					}
+				}
+			}
+		}
+	}
+
+	writeJSON(w, map[string]any{
+		"date":            todayStart.Format("2006-01-02"),
+		"requests_today":  requestsToday,
+		"cost_today_usd":  float64(totalCost) / 1_000_000,
+		"savings_today_usd": float64(totalSavings) / 1_000_000,
+	})
+}
+
+// handleEvents handles GET /internal/events (Server-Sent Events).
+func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	ch := make(chan sseEvent, 16)
+	s.subsMu.Lock()
+	s.subs = append(s.subs, ch)
+	s.subsMu.Unlock()
+
+	defer func() {
+		s.subsMu.Lock()
+		for i, sub := range s.subs {
+			if sub == ch {
+				s.subs = append(s.subs[:i], s.subs[i+1:]...)
+				break
+			}
+		}
+		s.subsMu.Unlock()
+	}()
+
+	// Send a heartbeat immediately so the client knows the connection is live.
+	_, _ = fmt.Fprintf(w, ": ping\n\n")
+	flusher.Flush()
+
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+			_, _ = fmt.Fprintf(w, ": ping\n\n")
+			flusher.Flush()
+		case ev := <-ch:
+			data, err := json.Marshal(ev.Data)
+			if err != nil {
+				continue
+			}
+			_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.Type, data)
+			flusher.Flush()
+		}
+	}
 }
 
 // handleStatus handles GET /internal/status.

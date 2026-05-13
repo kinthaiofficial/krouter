@@ -45,6 +45,12 @@ cmd/krouter-gui/frontend/dist/*
 !cmd/krouter-gui/frontend/dist/.gitkeep
 cmd/krouter-gui/frontend/node_modules/
 
+# Web UI (React)
+frontend/node_modules/
+frontend/dist/
+internal/webui/dist/*
+!internal/webui/dist/.gitkeep
+
 # Local dev data
 local-data/
 ~/.kinthai/
