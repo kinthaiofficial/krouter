@@ -6,11 +6,11 @@
 !define APPVERSION "{{VERSION}}"
 !define PUBLISHER "kinthai team"
 !define WEBSITE "https://kinthai.ai"
-!define DAEMON_SRC    "dist\krouter-windows.exe"
-!define INSTALLER_SRC "dist\krouter-installer-windows.exe"
+!define DAEMON_SRC    "dist/krouter-windows.exe"
+!define INSTALLER_SRC "dist/krouter-installer-windows.exe"
 
 Name "${APPNAME} ${APPVERSION}"
-OutFile "dist\krouter-${APPVERSION}-setup.exe"
+OutFile "dist/krouter-${APPVERSION}-setup.exe"
 
 ; No admin required — install to LOCALAPPDATA.
 RequestExecutionLevel user
