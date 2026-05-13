@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   frontend:
-    name: Build frontend
+    name: Build frontend (dashboard)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,9 +31,31 @@ jobs:
           name: webui-dist
           path: internal/webui/dist/
 
+  frontend-install:
+    name: Build frontend (install wizard)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend-install/package-lock.json
+
+      - name: Install and build
+        working-directory: frontend-install
+        run: npm ci && npm run build
+
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-dist
+          path: internal/webui/installer/dist/
+
   build:
     name: Build (${{ matrix.name }})
-    needs: frontend
+    needs: [frontend, frontend-install]
     strategy:
       fail-fast: false
       matrix:
@@ -61,11 +83,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download frontend dist
+      - name: Download dashboard dist
         uses: actions/download-artifact@v4
         with:
           name: webui-dist
           path: internal/webui/dist/
+
+      - name: Download installer dist
+        uses: actions/download-artifact@v4
+        with:
+          name: installer-dist
+          path: internal/webui/installer/dist/
 
       - uses: actions/setup-go@v5
         with:
@@ -86,10 +114,9 @@ jobs:
           CGO_ENABLED: 1
         run: |
           mkdir -p dist
-          go build \
-            -ldflags "-s -w -X main.Version=${{ github.ref_name }} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            -o dist/krouter-linux-amd64 \
-            ./cmd/krouter
+          LFLAGS="-s -w -X main.Version=${{ github.ref_name }} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          go build -ldflags "$LFLAGS" -o dist/krouter-linux-amd64 ./cmd/krouter
+          go build -ldflags "$LFLAGS" -o dist/krouter-installer-linux-amd64 ./cmd/krouter-installer
 
       - name: Build Linux arm64
         if: matrix.name == 'linux-arm64'
@@ -99,10 +126,9 @@ jobs:
           CC: aarch64-linux-gnu-gcc
         run: |
           mkdir -p dist
-          go build \
-            -ldflags "-s -w -X main.Version=${{ github.ref_name }} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            -o dist/krouter-linux-arm64 \
-            ./cmd/krouter
+          LFLAGS="-s -w -X main.Version=${{ github.ref_name }} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          go build -ldflags "$LFLAGS" -o dist/krouter-linux-arm64 ./cmd/krouter
+          go build -ldflags "$LFLAGS" -o dist/krouter-installer-linux-arm64 ./cmd/krouter-installer
 
       - name: Build Darwin (amd64 + arm64 + universal)
         if: matrix.name == 'darwin'
@@ -110,17 +136,17 @@ jobs:
           CGO_ENABLED: 1
         run: |
           mkdir -p dist
-          GOARCH=amd64 go build \
-            -ldflags "-s -w -X main.Version=${{ github.ref_name }} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            -o dist/krouter-apple-macos-amd64 \
-            ./cmd/krouter
-          GOARCH=arm64 go build \
-            -ldflags "-s -w -X main.Version=${{ github.ref_name }} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            -o dist/krouter-apple-macos-arm64 \
-            ./cmd/krouter
+          LFLAGS="-s -w -X main.Version=${{ github.ref_name }} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          GOARCH=amd64 go build -ldflags "$LFLAGS" -o dist/krouter-apple-macos-amd64 ./cmd/krouter
+          GOARCH=arm64 go build -ldflags "$LFLAGS" -o dist/krouter-apple-macos-arm64 ./cmd/krouter
           lipo -create -output dist/krouter-apple-macos \
-            dist/krouter-apple-macos-amd64 \
-            dist/krouter-apple-macos-arm64
+            dist/krouter-apple-macos-amd64 dist/krouter-apple-macos-arm64
+          GOARCH=amd64 go build -ldflags "$LFLAGS" \
+            -o dist/krouter-installer-apple-macos-amd64 ./cmd/krouter-installer
+          GOARCH=arm64 go build -ldflags "$LFLAGS" \
+            -o dist/krouter-installer-apple-macos-arm64 ./cmd/krouter-installer
+          lipo -create -output dist/krouter-installer-apple-macos \
+            dist/krouter-installer-apple-macos-amd64 dist/krouter-installer-apple-macos-arm64
 
       - name: Build Windows
         if: matrix.name == 'windows'
@@ -131,10 +157,10 @@ jobs:
           GOARCH: amd64
         run: |
           mkdir -p dist
-          go build \
-            -ldflags "-s -w -X main.Version=${{ github.ref_name }} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            -o dist/krouter-windows.exe \
-            ./cmd/krouter
+          LFLAGS="-s -w -X main.Version=${{ github.ref_name }} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          go build -ldflags "$LFLAGS" -o dist/krouter-windows.exe ./cmd/krouter
+          go build -ldflags "$LFLAGS" -H windowsgui \
+            -o dist/krouter-installer-windows.exe ./cmd/krouter-installer
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

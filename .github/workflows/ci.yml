@@ -8,7 +8,7 @@ on:
 
 jobs:
   frontend:
-    name: Frontend build
+    name: Frontend build (dashboard)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +23,10 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Test
+        working-directory: frontend
+        run: npm test
+
       - name: Build
         working-directory: frontend
         run: npm run build
@@ -33,9 +37,39 @@ jobs:
           name: webui-dist
           path: internal/webui/dist/
 
+  frontend-install:
+    name: Frontend build (install wizard)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend-install/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend-install
+        run: npm ci
+
+      - name: Test
+        working-directory: frontend-install
+        run: npm test
+
+      - name: Build
+        working-directory: frontend-install
+        run: npm run build
+
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-dist
+          path: internal/webui/installer/dist/
+
   test:
     name: Test (${{ matrix.os }})
-    needs: frontend
+    needs: [frontend, frontend-install]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -45,11 +79,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download frontend dist
+      - name: Download dashboard dist
         uses: actions/download-artifact@v4
         with:
           name: webui-dist
           path: internal/webui/dist/
+
+      - name: Download installer dist
+        uses: actions/download-artifact@v4
+        with:
+          name: installer-dist
+          path: internal/webui/installer/dist/
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -59,7 +99,7 @@ jobs:
 
       - name: Build
         shell: bash
-        run: go build ./cmd/krouter/... ./internal/... ./tests/...
+        run: go build ./cmd/krouter/... ./cmd/krouter-installer/... ./internal/... ./tests/...
 
       - name: Test
         shell: bash
@@ -74,16 +114,22 @@ jobs:
 
   lint:
     name: Lint
-    needs: frontend
+    needs: [frontend, frontend-install]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download frontend dist
+      - name: Download dashboard dist
         uses: actions/download-artifact@v4
         with:
           name: webui-dist
           path: internal/webui/dist/
+
+      - name: Download installer dist
+        uses: actions/download-artifact@v4
+        with:
+          name: installer-dist
+          path: internal/webui/installer/dist/
 
       - uses: actions/setup-go@v5
         with:

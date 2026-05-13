@@ -30,6 +30,8 @@ The same binary is used as daemon, CLI, and GUI helper. See subcommands.`,
 		newRemoteCommand(),
 		newPairCommand(),
 		newTaskInstallCommand(),
+		newInstallCommand(),
+		newUninstallCommand(),
 	)
 
 	return cmd
