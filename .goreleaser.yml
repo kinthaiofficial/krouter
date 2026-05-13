@@ -1,8 +1,14 @@
 version: 2
 
+# Note: production releases use .github/workflows/release.yml which also builds
+# .dmg / .AppImage / NSIS .exe packages not produced by goreleaser.
+# This file is kept for local snapshot builds (`goreleaser release --snapshot --clean`).
+
 before:
   hooks:
     - go mod tidy
+    - bash -c "cd frontend && npm ci && npm run build"
+    - bash -c "cd frontend-install && npm ci && npm run build"
 
 builds:
   - id: daemon-linux
@@ -49,18 +55,72 @@ builds:
       - -X main.Version={{.Version}}
       - -X main.BuildTime={{.Date}}
 
+  - id: installer-linux
+    binary: krouter-installer
+    main: ./cmd/krouter-installer
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - linux
+    goarch:
+      - amd64
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.BuildTime={{.Date}}
+
+  - id: installer-darwin
+    binary: krouter-installer
+    main: ./cmd/krouter-installer
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.BuildTime={{.Date}}
+
+  - id: installer-windows
+    binary: krouter-installer
+    main: ./cmd/krouter-installer
+    env:
+      - CGO_ENABLED=1
+      - CC=x86_64-w64-mingw32-gcc
+    goos:
+      - windows
+    goarch:
+      - amd64
+    ldflags:
+      - -s -w
+      - -H windowsgui
+      - -X main.Version={{.Version}}
+      - -X main.BuildTime={{.Date}}
+
 archives:
-  - id: default
+  - id: linux
     ids:
       - daemon-linux
-      - daemon-darwin
-    name_template: "krouter_{{.Version}}_{{.Os}}_{{.Arch}}"
+      - installer-linux
+    name_template: "krouter_{{.Version}}_linux_{{.Arch}}"
     formats:
       - tar.gz
 
-  - id: windows-zip
+  - id: darwin
+    ids:
+      - daemon-darwin
+      - installer-darwin
+    name_template: "krouter_{{.Version}}_darwin_{{.Arch}}"
+    formats:
+      - tar.gz
+
+  - id: windows
     ids:
       - daemon-windows
+      - installer-windows
     name_template: "krouter_{{.Version}}_windows_{{.Arch}}"
     formats:
       - zip
