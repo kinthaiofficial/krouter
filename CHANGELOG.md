@@ -7,12 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- Project skeleton and build infrastructure
+## [1.0.0] - 2026-05-13
 
-## [0.1.0] - TBD
-
-The first usable release.
+The first stable release.
 
 ### Added
 - HTTP proxy on 127.0.0.1:8402 (Anthropic + OpenAI protocols)
