@@ -50,8 +50,8 @@ var platformBinaries = []struct {
 	assetName string // filename as uploaded to GitHub release
 }{
 	{"linux-amd64", "krouter-linux-amd64", "krouter-linux-amd64"},
-	{"darwin-amd64", "krouter-apple-macos-amd64", "krouter-apple-macos-amd64"},
-	{"darwin-arm64", "krouter-apple-macos-arm64", "krouter-apple-macos-arm64"},
+	{"darwin-amd64", "krouter-apple-macos", "krouter-apple-macos"},
+	{"darwin-arm64", "krouter-apple-macos", "krouter-apple-macos"},
 	{"windows-amd64", "krouter-windows-amd64.exe", "krouter-windows-amd64.exe"},
 }
 

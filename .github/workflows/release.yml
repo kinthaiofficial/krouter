@@ -115,12 +115,10 @@ jobs:
         run: |
           cd dist
           VERSION=${{ github.ref_name }}
-          chmod +x krouter-linux-amd64 krouter-apple-macos-amd64 krouter-apple-macos-arm64 krouter-apple-macos
-          tar -czf krouter_${VERSION}_linux_amd64.tar.gz         krouter-linux-amd64
-          tar -czf krouter_${VERSION}_apple-macos.tar.gz         krouter-apple-macos
-          tar -czf krouter_${VERSION}_apple-macos_amd64.tar.gz   krouter-apple-macos-amd64
-          tar -czf krouter_${VERSION}_apple-macos_arm64.tar.gz   krouter-apple-macos-arm64
-          zip      krouter_${VERSION}_windows_amd64.zip          krouter-windows-amd64.exe
+          chmod +x krouter-linux-amd64 krouter-apple-macos
+          tar -czf krouter_${VERSION}_linux_amd64.tar.gz    krouter-linux-amd64
+          tar -czf krouter_${VERSION}_apple-macos.tar.gz    krouter-apple-macos
+          zip      krouter_${VERSION}_windows_amd64.zip     krouter-windows-amd64.exe
           sha256sum krouter_*.tar.gz krouter_*.zip > checksums.txt
 
       - name: Create GitHub release
@@ -136,8 +134,6 @@ jobs:
             dist/checksums.txt \
             dist/krouter-linux-amd64 \
             dist/krouter-apple-macos \
-            dist/krouter-apple-macos-amd64 \
-            dist/krouter-apple-macos-arm64 \
             dist/krouter-windows-amd64.exe
 
       - name: Generate and sign manifest.json
