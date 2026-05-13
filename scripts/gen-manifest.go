@@ -46,13 +46,13 @@ type Binary struct {
 // platformBinaries maps platform key → path glob inside dist/ and asset filename.
 var platformBinaries = []struct {
 	key      string // runtime.GOOS + "-" + runtime.GOARCH
-	glob     string // glob relative to dist/
+	glob     string // path relative to dist/
 	assetExt string // extension for the uploaded asset name
 }{
-	{"linux-amd64", "daemon-linux_linux_amd64_v1/krouter", ""},
-	{"darwin-amd64", "daemon-darwin_darwin_amd64_v1/krouter", ""},
-	{"darwin-arm64", "daemon-darwin_darwin_arm64/krouter", ""},
-	{"windows-amd64", "daemon-windows_windows_amd64_v1/krouter.exe", ".exe"},
+	{"linux-amd64", "krouter-linux-amd64", ""},
+	{"darwin-amd64", "krouter-darwin-amd64", ""},
+	{"darwin-arm64", "krouter-darwin-arm64", ""},
+	{"windows-amd64", "krouter-windows-amd64.exe", ".exe"},
 }
 
 func main() {
@@ -106,7 +106,7 @@ func main() {
 
 	m := Manifest{
 		Version:             ver,
-		MinSupportedVersion: "0.1.0",
+		MinSupportedVersion: "1.0.0",
 		ReleaseNotesURL:     releaseNotesURL,
 		ReleasedAt:          time.Now().UTC(),
 		IsCritical:          false,
@@ -171,9 +171,14 @@ func loadPrivateKey(path string) (*ecdsa.PrivateKey, error) {
 	if block == nil {
 		return nil, fmt.Errorf("no PEM block found")
 	}
-	key, err := x509.ParseECPrivateKey(block.Bytes)
+	// Key is stored as PKCS8 (openssl pkcs8 -topk8 -nocrypt).
+	parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
 		return nil, err
+	}
+	key, ok := parsed.(*ecdsa.PrivateKey)
+	if !ok {
+		return nil, fmt.Errorf("not an ECDSA private key")
 	}
 	return key, nil
 }
