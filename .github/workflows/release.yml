@@ -10,25 +10,31 @@ permissions:
 
 jobs:
   build:
-    name: Build (${{ matrix.goreleaser_id }})
+    name: Build (${{ matrix.name }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            goreleaser_id: daemon-linux
-          - os: macos-latest
-            goreleaser_id: daemon-darwin
-          - os: ubuntu-latest
-            goreleaser_id: daemon-windows
+          - name: linux-amd64
+            os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            output: krouter-linux-amd64
+          - name: darwin
+            os: macos-latest
+            goos: darwin
+            output: krouter-darwin  # builds both arches in one step
+          - name: windows-amd64
+            os: ubuntu-latest
+            goos: windows
+            goarch: amd64
+            output: krouter-windows-amd64.exe
             install_mingw: true
 
     runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
@@ -39,21 +45,48 @@ jobs:
         if: matrix.install_mingw
         run: sudo apt-get install -y gcc-mingw-w64-x86-64
 
-      - name: Install goreleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          version: latest
-          install-only: true
-
-      - name: Build binary
-        run: goreleaser build --id ${{ matrix.goreleaser_id }} --clean
+      - name: Build Linux
+        if: matrix.name == 'linux-amd64'
         env:
-          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
+          CGO_ENABLED: 1
+        run: |
+          go build \
+            -ldflags "-s -w -X main.Version=${{ github.ref_name }} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -o dist/krouter-linux-amd64 \
+            ./cmd/krouter
+
+      - name: Build Darwin (amd64 + arm64)
+        if: matrix.name == 'darwin'
+        env:
+          CGO_ENABLED: 1
+        run: |
+          mkdir -p dist
+          GOARCH=amd64 go build \
+            -ldflags "-s -w -X main.Version=${{ github.ref_name }} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -o dist/krouter-darwin-amd64 \
+            ./cmd/krouter
+          GOARCH=arm64 go build \
+            -ldflags "-s -w -X main.Version=${{ github.ref_name }} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -o dist/krouter-darwin-arm64 \
+            ./cmd/krouter
+
+      - name: Build Windows
+        if: matrix.name == 'windows-amd64'
+        env:
+          CGO_ENABLED: 1
+          CC: x86_64-w64-mingw32-gcc
+          GOOS: windows
+          GOARCH: amd64
+        run: |
+          go build \
+            -ldflags "-s -w -X main.Version=${{ github.ref_name }} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -o dist/krouter-windows-amd64.exe \
+            ./cmd/krouter
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: binaries-${{ matrix.goreleaser_id }}
+          name: binaries-${{ matrix.name }}
           path: dist/
 
   release:
@@ -63,45 +96,40 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22'
           cache: true
 
-      - name: Download all build artifacts
+      - name: Download all binaries
         uses: actions/download-artifact@v4
         with:
           path: dist/
           merge-multiple: true
 
-      - name: Install goreleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          version: latest
-          install-only: true
-
-      - name: Create release and publish archives
-        run: goreleaser continue --merge
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
-
-      # Auto-updater needs raw binaries named by platform (selfupdate.Apply streams a binary directly).
-      - name: Stage raw binaries for auto-updater
+      - name: Create archives and checksums
         run: |
-          cp dist/daemon-linux_linux_amd64_v1/krouter       dist/krouter-linux-amd64
-          cp dist/daemon-darwin_darwin_amd64_v1/krouter      dist/krouter-darwin-amd64
-          cp dist/daemon-darwin_darwin_arm64/krouter          dist/krouter-darwin-arm64
-          cp dist/daemon-windows_windows_amd64_v1/krouter.exe dist/krouter-windows-amd64.exe
+          cd dist
+          VERSION=${{ github.ref_name }}
+          chmod +x krouter-linux-amd64 krouter-darwin-amd64 krouter-darwin-arm64
+          tar -czf krouter_${VERSION}_linux_amd64.tar.gz    krouter-linux-amd64
+          tar -czf krouter_${VERSION}_darwin_amd64.tar.gz   krouter-darwin-amd64
+          tar -czf krouter_${VERSION}_darwin_arm64.tar.gz   krouter-darwin-arm64
+          zip      krouter_${VERSION}_windows_amd64.zip     krouter-windows-amd64.exe
+          sha256sum krouter_*.tar.gz krouter_*.zip > checksums.txt
 
-      - name: Upload raw binaries to release
+      - name: Create GitHub release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload ${{ github.ref_name }} \
+          VERSION=${{ github.ref_name }}
+          gh release create ${VERSION} \
+            --title "krouter ${VERSION}" \
+            --notes "See [CHANGELOG](https://github.com/kinthaiofficial/krouter/blob/main/CHANGELOG.md) for details." \
+            dist/krouter_*.tar.gz \
+            dist/krouter_*.zip \
+            dist/checksums.txt \
             dist/krouter-linux-amd64 \
             dist/krouter-darwin-amd64 \
             dist/krouter-darwin-arm64 \
