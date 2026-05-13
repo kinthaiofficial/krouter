@@ -16,8 +16,8 @@ linters-settings:
 
 issues:
   exclude-dirs:
-    - cmd/krouter-gui
     - frontend
+    - frontend-install
   # defer Rollback is intentional after Commit — safe to ignore.
   exclude-rules:
     - linters: [errcheck]

@@ -120,9 +120,10 @@ make lint
 make dev
 ```
 
-For the GUI (`cmd/krouter-gui/`), [Wails v2](https://wails.io) is required:
+To build the install wizard:
 ```sh
-make build-gui
+make build-installer    # Go binary
+make build-frontend     # React frontends
 ```
 
 ## Privacy
@@ -139,13 +140,15 @@ We **never**:
 
 ## Architecture
 
-Two processes:
+Three processes:
 - **`krouter` (daemon)** — runs as LaunchAgent / systemd --user / Windows Task Scheduler
-- **`krouter-gui`** — Wails v2 desktop app, talks to daemon over HTTP
+- **`krouter-installer`** — one-shot install wizard, serves browser UI at :8404
+- **`krouter` web UI** — embedded React app served by the daemon at :8403/ui/
 
-Two ports:
+Three ports:
 - **8402 (proxy)** — agent-facing, always 127.0.0.1, no auth
-- **8403 (management)** — GUI-facing, 127.0.0.1 by default, optional 0.0.0.0 for LAN remote
+- **8403 (management)** — web UI + API, 127.0.0.1 by default, optional 0.0.0.0 for LAN remote
+- **8404 (installer)** — install wizard, only active while `krouter-installer` runs
 
 ## Contributing
 
