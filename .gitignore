@@ -1,6 +1,6 @@
 # Build outputs
 bin/
-dist/
+/dist/
 build/
 *.dmg
 *.exe
@@ -41,7 +41,8 @@ ecdsa_private_key.pem
 
 # Wails
 cmd/krouter-gui/build/
-cmd/krouter-gui/frontend/dist/
+cmd/krouter-gui/frontend/dist/*
+!cmd/krouter-gui/frontend/dist/.gitkeep
 cmd/krouter-gui/frontend/node_modules/
 
 # Local dev data
