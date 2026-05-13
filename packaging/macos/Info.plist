@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key>
+  <string>krouter-installer</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.kinthai.krouter</string>
+  <key>CFBundleName</key>
+  <string>krouter</string>
+  <key>CFBundleDisplayName</key>
+  <string>krouter</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleSignature</key>
+  <string>????</string>
+
+  <!-- Background-only app: no Dock icon, no menu bar -->
+  <key>LSUIElement</key>
+  <true/>
+  <key>LSBackgroundOnly</key>
+  <false/>
+
+  <!-- Minimum OS version -->
+  <key>LSMinimumSystemVersion</key>
+  <string>12.0</string>
+
+  <!-- Allow running unsigned on Apple Silicon during development -->
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <false/>
+</dict>
+</plist>

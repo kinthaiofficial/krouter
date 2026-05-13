@@ -1,12 +1,13 @@
 ; krouter Windows installer (NSIS)
 ; Build: makensis packaging/windows.nsi
-; Requires: NSIS 3.x, krouter.exe in dist/
+; Requires: NSIS 3.x, krouter.exe and krouter-installer.exe in dist/
 
 !define APPNAME "krouter"
 !define APPVERSION "{{VERSION}}"
 !define PUBLISHER "kinthai team"
 !define WEBSITE "https://kinthai.ai"
-!define BINARY_SRC "dist\daemon-windows_windows_amd64_v1\krouter.exe"
+!define DAEMON_SRC    "dist\krouter-windows.exe"
+!define INSTALLER_SRC "dist\krouter-installer-windows.exe"
 
 Name "${APPNAME} ${APPVERSION}"
 OutFile "dist\krouter-${APPVERSION}-setup.exe"
@@ -31,22 +32,15 @@ InstallDirRegKey HKCU "Software\${APPNAME}" "InstallDir"
 
 Section "Install"
   SetOutPath "$INSTDIR"
-  File "${BINARY_SRC}"
+  File /oname=krouter.exe           "${DAEMON_SRC}"
+  File /oname=krouter-installer.exe "${INSTALLER_SRC}"
 
   ; Register install path.
   WriteRegStr HKCU "Software\${APPNAME}" "InstallDir" "$INSTDIR"
 
-  ; Register Task Scheduler user task (auto-start at login, no admin).
-  ; Pipe the XML via a temp file to avoid command-line quoting issues.
-  DetailPrint "Registering Task Scheduler task..."
+  ; Register krouter daemon as a Task Scheduler user task (auto-start, no admin).
+  DetailPrint "Registering daemon service..."
   nsExec::ExecToLog '"$INSTDIR\krouter.exe" task-install'
-
-  ; Set ANTHROPIC_API_KEY placeholder in HKCU\Environment if not already set.
-  ; Users can update this without re-running the installer.
-  ReadEnvStr $R0 "ANTHROPIC_API_KEY"
-  StrCmp $R0 "" 0 env_already_set
-    WriteRegStr HKCU "Environment" "KINTHAI_INSTALLED" "1"
-  env_already_set:
 
   ; Write uninstaller.
   WriteUninstaller "$INSTDIR\uninstall.exe"
@@ -67,13 +61,21 @@ Section "Install"
 
 SectionEnd
 
+; After the install dialog closes, launch the browser-based wizard.
+; krouter-installer is built with -H windowsgui so no console window appears.
+Function .onInstSuccess
+  Exec '"$INSTDIR\krouter-installer.exe"'
+FunctionEnd
+
 ; ── Uninstaller ────────────────────────────────────────────────────────────────
 
 Section "Uninstall"
-  ; Remove Task Scheduler task.
+  ; Stop daemon and remove the Task Scheduler task.
+  nsExec::ExecToLog 'schtasks /End /TN "krouter-daemon"'
   nsExec::ExecToLog 'schtasks /Delete /TN "krouter-daemon" /F'
 
   Delete "$INSTDIR\krouter.exe"
+  Delete "$INSTDIR\krouter-installer.exe"
   Delete "$INSTDIR\uninstall.exe"
   RMDir "$INSTDIR"
 

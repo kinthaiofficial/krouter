@@ -1,0 +1,5 @@
+#!/bin/sh
+# AppImage entry point.
+# Launches the install wizard which opens a browser at :8404.
+APPDIR="$(dirname "$(readlink -f "$0")")"
+exec "$APPDIR/usr/bin/krouter-installer" "$@"

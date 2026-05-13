@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=krouter
+Comment=Local LLM proxy — saves you tokens
+Exec=krouter-installer
+Icon=krouter
+Type=Application
+Categories=Network;Utility;
+Terminal=false

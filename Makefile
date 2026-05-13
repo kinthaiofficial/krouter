@@ -1,23 +1,26 @@
 # krouter Makefile
 #
 # Common targets:
-#   make build        — Build daemon + CLI binary
-#   make build-gui    — Build Wails GUI
-#   make test         — Run unit tests
+#   make build            — Build daemon binary
+#   make build-installer  — Build krouter-installer binary
+#   make build-frontend   — Build both React frontends
+#   make test             — Run unit tests
 #   make test-integration — Run integration tests
-#   make lint         — Run golangci-lint
-#   make fmt          — Run gofmt
-#   make clean        — Remove build artifacts
-#   make dev          — Run daemon in dev mode
-#   make release      — Build release binaries via goreleaser
+#   make lint             — Run golangci-lint
+#   make fmt              — Run gofmt
+#   make clean            — Remove build artifacts
+#   make dev              — Run daemon in dev mode
+#   make package-macos    — Build macOS .dmg (macOS only)
+#   make package-appimage — Build Linux .AppImage
 
-BINARY      := krouter
-GUI_BINARY  := krouter-gui
-VERSION     := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-BUILD_TIME  := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-LDFLAGS     := -ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME) -s -w"
+BINARY     := krouter
+INSTALLER  := krouter-installer
+VERSION    := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+BUILD_TIME := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+LDFLAGS    := -ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME) -s -w"
 
-.PHONY: build build-gui test test-integration lint fmt clean dev release deps
+.PHONY: build build-installer build-frontend test test-integration lint fmt clean dev \
+        package-macos package-appimage deps help
 
 # ── Build ────────────────────────────────────────────────────────────────────
 
@@ -25,9 +28,15 @@ build:
 	@echo "Building $(BINARY) $(VERSION)..."
 	go build $(LDFLAGS) -o bin/$(BINARY) ./cmd/krouter
 
-build-gui:
-	@echo "Building $(GUI_BINARY) $(VERSION)..."
-	cd cmd/krouter-gui && wails build -ldflags "$(LDFLAGS)"
+build-installer:
+	@echo "Building $(INSTALLER) $(VERSION)..."
+	go build $(LDFLAGS) -o bin/$(INSTALLER) ./cmd/krouter-installer
+
+build-frontend:
+	@echo "Building dashboard frontend..."
+	cd frontend && npm ci && npm run build
+	@echo "Building install wizard frontend..."
+	cd frontend-install && npm ci && npm run build
 
 # ── Test ─────────────────────────────────────────────────────────────────────
 
@@ -60,6 +69,22 @@ dev:
 	@echo "Running daemon in dev mode..."
 	go run ./cmd/krouter serve --log-level=debug
 
+# ── Packaging ────────────────────────────────────────────────────────────────
+
+package-macos: build build-installer
+	@echo "Packaging macOS DMG..."
+	@[ "$$(uname)" = "Darwin" ] || (echo "Error: macOS required for .dmg packaging" && exit 1)
+	cp bin/$(BINARY)    dist/krouter-apple-macos
+	cp bin/$(INSTALLER) dist/krouter-installer-apple-macos
+	VERSION=$(VERSION) DIST=dist bash packaging/macos/build-dmg.sh
+
+package-appimage: build build-installer
+	@echo "Packaging Linux AppImage..."
+	mkdir -p dist
+	cp bin/$(BINARY)    dist/krouter-linux-amd64
+	cp bin/$(INSTALLER) dist/krouter-installer-linux-amd64
+	VERSION=$(VERSION) ARCH=x86_64 DIST=dist bash packaging/appimage/build.sh
+
 # ── Dependencies ─────────────────────────────────────────────────────────────
 
 deps:
@@ -67,22 +92,11 @@ deps:
 	go mod tidy
 	go mod verify
 
-# ── Release ──────────────────────────────────────────────────────────────────
-
-release:
-	@command -v goreleaser >/dev/null 2>&1 || { \
-		echo "Install goreleaser: https://goreleaser.com/install/"; exit 1; }
-	goreleaser release --clean
-
-release-snapshot:
-	goreleaser release --snapshot --clean
-
 # ── Clean ────────────────────────────────────────────────────────────────────
 
 clean:
 	@echo "Cleaning..."
 	rm -rf bin/ dist/ coverage.out
-	cd cmd/krouter-gui && rm -rf build/
 
 # ── Help ─────────────────────────────────────────────────────────────────────
 

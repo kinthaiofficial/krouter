@@ -39,12 +39,6 @@ ecdsa_private_key.pem
 # Claude Code
 .claude/
 
-# Wails
-cmd/krouter-gui/build/
-cmd/krouter-gui/frontend/dist/*
-!cmd/krouter-gui/frontend/dist/.gitkeep
-cmd/krouter-gui/frontend/node_modules/
-
 # Web UI (React)
 frontend/node_modules/
 frontend/dist/

@@ -168,9 +168,90 @@ jobs:
           name: binaries-${{ matrix.name }}
           path: dist/
 
+  package-macos:
+    name: Package macOS DMG
+    needs: build
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download darwin binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries-darwin
+          path: dist/
+
+      - name: Build DMG
+        run: |
+          chmod +x packaging/macos/build-dmg.sh
+          VERSION=${{ github.ref_name }} DIST=dist bash packaging/macos/build-dmg.sh
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-macos
+          path: dist/krouter-*-macos.dmg
+
+  package-appimage:
+    name: Package Linux AppImage
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download linux-amd64 binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries-linux-amd64
+          path: dist/
+
+      - name: Build AppImage (amd64)
+        run: |
+          chmod +x packaging/appimage/build.sh
+          VERSION=${{ github.ref_name }} ARCH=x86_64 DIST=dist bash packaging/appimage/build.sh
+
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-appimage
+          path: dist/krouter-*-x86_64.AppImage
+
+  package-windows:
+    name: Package Windows NSIS installer
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download windows binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries-windows
+          path: dist/
+
+      - name: Install NSIS
+        run: sudo apt-get install -y nsis
+
+      - name: Substitute version in .nsi
+        run: |
+          sed "s/{{VERSION}}/${{ github.ref_name }}/g" \
+            packaging/windows.nsi > packaging/windows_versioned.nsi
+
+      - name: Build NSIS installer
+        run: makensis packaging/windows_versioned.nsi
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-windows
+          path: dist/krouter-*-setup.exe
+
   release:
     name: Publish release
-    needs: build
+    needs: [build, package-macos, package-appimage, package-windows]
     runs-on: ubuntu-latest
 
     steps:
@@ -191,12 +272,25 @@ jobs:
         run: |
           cd dist
           VERSION=${{ github.ref_name }}
-          chmod +x krouter-linux-amd64 krouter-linux-arm64 krouter-apple-macos
-          tar -czf krouter_${VERSION}_linux_amd64.tar.gz    krouter-linux-amd64
-          tar -czf krouter_${VERSION}_linux_arm64.tar.gz    krouter-linux-arm64
-          tar -czf krouter_${VERSION}_apple-macos.tar.gz    krouter-apple-macos
-          zip      krouter_${VERSION}_windows.zip           krouter-windows.exe
-          sha256sum krouter_*.tar.gz krouter_*.zip > checksums.txt
+          chmod +x krouter-linux-amd64 krouter-linux-arm64 krouter-apple-macos \
+                   krouter-installer-linux-amd64 krouter-installer-linux-arm64 \
+                   krouter-installer-apple-macos
+          # Per-platform tarballs (daemon + installer together).
+          tar -czf krouter_${VERSION}_linux_amd64.tar.gz \
+            krouter-linux-amd64 krouter-installer-linux-amd64
+          tar -czf krouter_${VERSION}_linux_arm64.tar.gz \
+            krouter-linux-arm64 krouter-installer-linux-arm64
+          tar -czf krouter_${VERSION}_apple-macos.tar.gz \
+            krouter-apple-macos krouter-installer-apple-macos
+          zip krouter_${VERSION}_windows.zip \
+            krouter-windows.exe krouter-installer-windows.exe
+          sha256sum \
+            krouter_*.tar.gz \
+            krouter_*.zip \
+            krouter-*-macos.dmg \
+            krouter-*-x86_64.AppImage \
+            krouter-*-setup.exe \
+            > checksums.txt
 
       - name: Create GitHub release
         env:
@@ -208,11 +302,10 @@ jobs:
             --notes "See [CHANGELOG](https://github.com/kinthaiofficial/krouter/blob/main/CHANGELOG.md) for details." \
             dist/krouter_*.tar.gz \
             dist/krouter_*.zip \
-            dist/checksums.txt \
-            dist/krouter-linux-amd64 \
-            dist/krouter-linux-arm64 \
-            dist/krouter-apple-macos \
-            dist/krouter-windows.exe
+            dist/krouter-*-macos.dmg \
+            dist/krouter-*-x86_64.AppImage \
+            dist/krouter-*-setup.exe \
+            dist/checksums.txt
 
       - name: Generate and sign manifest.json
         env:
