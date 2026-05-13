@@ -51,6 +51,12 @@ frontend/dist/
 internal/webui/dist/*
 !internal/webui/dist/.gitkeep
 
+# Install wizard (React)
+frontend-install/node_modules/
+frontend-install/dist/
+internal/webui/installer/dist/*
+!internal/webui/installer/dist/.gitkeep
+
 # Local dev data
 local-data/
 ~/.kinthai/
