@@ -25,9 +25,11 @@ jobs:
           cache: true
 
       - name: Build
+        shell: bash
         run: go build ./cmd/krouter/... ./internal/... ./tests/...
 
       - name: Test
+        shell: bash
         run: go test -race -coverprofile=coverage.out ./internal/...
 
       - name: Upload coverage
