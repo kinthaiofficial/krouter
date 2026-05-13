@@ -1,0 +1,25 @@
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+  disable-all: false
+
+linters-settings:
+  staticcheck:
+    checks:
+      - "SA*"   # staticcheck proper: real bugs, not style
+
+issues:
+  exclude-dirs:
+    - cmd/krouter-gui
+  # defer Rollback is intentional after Commit — safe to ignore.
+  exclude-rules:
+    - linters: [errcheck]
+      text: "Rollback"
+    - linters: [errcheck]
+      text: "\\.Close\\("

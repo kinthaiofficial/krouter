@@ -1,0 +1,51 @@
+# Build outputs
+bin/
+dist/
+build/
+*.dmg
+*.exe
+*.AppImage
+
+# Test outputs
+coverage.out
+coverage.html
+*.test
+*.prof
+
+# Go
+vendor/
+go.work
+go.work.sum
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Sensitive
+*.pem
+*.key
+ecdsa_private_key.pem
+.env
+.env.local
+
+# Claude Code
+.claude/
+
+# Wails
+cmd/krouter-gui/build/
+cmd/krouter-gui/frontend/dist/
+cmd/krouter-gui/frontend/node_modules/
+
+# Local dev data
+local-data/
+~/.kinthai/
+
+# Logs
+*.log
+logs/

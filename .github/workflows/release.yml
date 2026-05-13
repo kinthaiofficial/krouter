@@ -1,0 +1,129 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.goreleaser_id }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goreleaser_id: daemon-linux
+          - os: macos-latest
+            goreleaser_id: daemon-darwin
+          - os: ubuntu-latest
+            goreleaser_id: daemon-windows
+            install_mingw: true
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Install mingw (Windows cross-compile)
+        if: matrix.install_mingw
+        run: sudo apt-get install -y gcc-mingw-w64-x86-64
+
+      - name: Install goreleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          install-only: true
+
+      - name: Build binary
+        run: goreleaser build --id ${{ matrix.goreleaser_id }} --clean
+        env:
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.goreleaser_id }}
+          path: dist/
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: Install goreleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          install-only: true
+
+      - name: Create release and publish archives
+        run: goreleaser release --skip=build --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
+
+      # Auto-updater needs raw binaries named by platform (selfupdate.Apply streams a binary directly).
+      - name: Stage raw binaries for auto-updater
+        run: |
+          cp dist/daemon-linux_linux_amd64_v1/krouter       dist/krouter-linux-amd64
+          cp dist/daemon-darwin_darwin_amd64_v1/krouter      dist/krouter-darwin-amd64
+          cp dist/daemon-darwin_darwin_arm64/krouter          dist/krouter-darwin-arm64
+          cp dist/daemon-windows_windows_amd64_v1/krouter.exe dist/krouter-windows-amd64.exe
+
+      - name: Upload raw binaries to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ github.ref_name }} \
+            dist/krouter-linux-amd64 \
+            dist/krouter-darwin-amd64 \
+            dist/krouter-darwin-arm64 \
+            dist/krouter-windows-amd64.exe
+
+      - name: Generate and sign manifest.json
+        env:
+          SIGNING_PRIVATE_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
+        run: |
+          echo "$SIGNING_PRIVATE_KEY" > /tmp/signing_key.pem
+          go run scripts/gen-manifest.go \
+            -version=${{ github.ref_name }} \
+            -dist=dist \
+            -key=/tmp/signing_key.pem \
+            -repo=kinthaiofficial/krouter \
+            -out=dist/manifest.json
+          rm -f /tmp/signing_key.pem
+
+      - name: Upload manifest to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ github.ref_name }} \
+            dist/manifest.json \
+            dist/manifest.json.sig

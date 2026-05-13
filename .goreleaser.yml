@@ -1,0 +1,98 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: daemon-linux
+    binary: krouter
+    main: ./cmd/krouter
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - linux
+    goarch:
+      - amd64
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.BuildTime={{.Date}}
+
+  - id: daemon-darwin
+    binary: krouter
+    main: ./cmd/krouter
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.BuildTime={{.Date}}
+
+  - id: daemon-windows
+    binary: krouter
+    main: ./cmd/krouter
+    env:
+      - CGO_ENABLED=1
+      - CC=x86_64-w64-mingw32-gcc
+    goos:
+      - windows
+    goarch:
+      - amd64
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.BuildTime={{.Date}}
+
+archives:
+  - id: default
+    builds:
+      - daemon-linux
+      - daemon-darwin
+    name_template: "krouter_{{.Version}}_{{.Os}}_{{.Arch}}"
+    format: tar.gz
+
+  - id: windows-zip
+    builds:
+      - daemon-windows
+    name_template: "krouter_{{.Version}}_windows_{{.Arch}}"
+    format: zip
+
+nfpms:
+  - id: linux-packages
+    package_name: krouter
+    homepage: https://kinthai.ai
+    maintainer: kinthai team <hi@kinthai.ai>
+    description: Local LLM proxy daemon – routes AI agent requests to the cheapest provider.
+    license: MIT
+    formats:
+      - deb
+      - rpm
+    builds:
+      - daemon-linux
+    contents:
+      - src: ./packaging/postinstall.sh
+        dst: /usr/share/doc/krouter/postinstall.sh
+        file_info:
+          mode: 0755
+    scripts:
+      postinstall: packaging/postinstall.sh
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{incpatch .Version}}-SNAPSHOT-{{.ShortCommit}}"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
