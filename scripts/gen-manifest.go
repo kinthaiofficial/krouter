@@ -43,16 +43,16 @@ type Binary struct {
 	Size   int64  `json:"size"`
 }
 
-// platformBinaries maps platform key → path glob inside dist/ and asset filename.
+// platformBinaries maps platform key → local dist/ filename and GitHub release asset name.
 var platformBinaries = []struct {
-	key      string // runtime.GOOS + "-" + runtime.GOARCH
-	glob     string // path relative to dist/
-	assetExt string // extension for the uploaded asset name
+	key       string // runtime.GOOS + "-" + runtime.GOARCH (used by auto-updater)
+	glob      string // filename inside dist/
+	assetName string // filename as uploaded to GitHub release
 }{
-	{"linux-amd64", "krouter-linux-amd64", ""},
-	{"darwin-amd64", "krouter-darwin-amd64", ""},
-	{"darwin-arm64", "krouter-darwin-arm64", ""},
-	{"windows-amd64", "krouter-windows-amd64.exe", ".exe"},
+	{"linux-amd64", "krouter-linux-amd64", "krouter-linux-amd64"},
+	{"darwin-amd64", "krouter-apple-macos-amd64", "krouter-apple-macos-amd64"},
+	{"darwin-arm64", "krouter-apple-macos-arm64", "krouter-apple-macos-arm64"},
+	{"windows-amd64", "krouter-windows-amd64.exe", "krouter-windows-amd64.exe"},
 }
 
 func main() {
@@ -93,15 +93,12 @@ func main() {
 			os.Exit(1)
 		}
 
-		// Asset name uploaded to GitHub release, e.g. krouter-linux-amd64
-		assetName := fmt.Sprintf("krouter-%s%s", pb.key, pb.assetExt)
-
 		binaries[pb.key] = Binary{
-			URL:    baseURL + "/" + assetName,
+			URL:    baseURL + "/" + pb.assetName,
 			SHA256: sum,
 			Size:   size,
 		}
-		fmt.Printf("gen-manifest: %s → %s (sha256=%s)\n", pb.key, assetName, sum[:12]+"...")
+		fmt.Printf("gen-manifest: %s → %s (sha256=%s)\n", pb.key, pb.assetName, sum[:12]+"...")
 	}
 
 	m := Manifest{

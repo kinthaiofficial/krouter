@@ -55,7 +55,7 @@ jobs:
             -o dist/krouter-linux-amd64 \
             ./cmd/krouter
 
-      - name: Build Darwin (amd64 + arm64)
+      - name: Build Darwin (amd64 + arm64 + universal)
         if: matrix.name == 'darwin'
         env:
           CGO_ENABLED: 1
@@ -63,12 +63,15 @@ jobs:
           mkdir -p dist
           GOARCH=amd64 go build \
             -ldflags "-s -w -X main.Version=${{ github.ref_name }} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            -o dist/krouter-darwin-amd64 \
+            -o dist/krouter-apple-macos-amd64 \
             ./cmd/krouter
           GOARCH=arm64 go build \
             -ldflags "-s -w -X main.Version=${{ github.ref_name }} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            -o dist/krouter-darwin-arm64 \
+            -o dist/krouter-apple-macos-arm64 \
             ./cmd/krouter
+          lipo -create -output dist/krouter-apple-macos \
+            dist/krouter-apple-macos-amd64 \
+            dist/krouter-apple-macos-arm64
 
       - name: Build Windows
         if: matrix.name == 'windows-amd64'
@@ -112,11 +115,12 @@ jobs:
         run: |
           cd dist
           VERSION=${{ github.ref_name }}
-          chmod +x krouter-linux-amd64 krouter-darwin-amd64 krouter-darwin-arm64
-          tar -czf krouter_${VERSION}_linux_amd64.tar.gz    krouter-linux-amd64
-          tar -czf krouter_${VERSION}_darwin_amd64.tar.gz   krouter-darwin-amd64
-          tar -czf krouter_${VERSION}_darwin_arm64.tar.gz   krouter-darwin-arm64
-          zip      krouter_${VERSION}_windows_amd64.zip     krouter-windows-amd64.exe
+          chmod +x krouter-linux-amd64 krouter-apple-macos-amd64 krouter-apple-macos-arm64 krouter-apple-macos
+          tar -czf krouter_${VERSION}_linux_amd64.tar.gz         krouter-linux-amd64
+          tar -czf krouter_${VERSION}_apple-macos.tar.gz         krouter-apple-macos
+          tar -czf krouter_${VERSION}_apple-macos_amd64.tar.gz   krouter-apple-macos-amd64
+          tar -czf krouter_${VERSION}_apple-macos_arm64.tar.gz   krouter-apple-macos-arm64
+          zip      krouter_${VERSION}_windows_amd64.zip          krouter-windows-amd64.exe
           sha256sum krouter_*.tar.gz krouter_*.zip > checksums.txt
 
       - name: Create GitHub release
@@ -131,8 +135,9 @@ jobs:
             dist/krouter_*.zip \
             dist/checksums.txt \
             dist/krouter-linux-amd64 \
-            dist/krouter-darwin-amd64 \
-            dist/krouter-darwin-arm64 \
+            dist/krouter-apple-macos \
+            dist/krouter-apple-macos-amd64 \
+            dist/krouter-apple-macos-arm64 \
             dist/krouter-windows-amd64.exe
 
       - name: Generate and sign manifest.json
