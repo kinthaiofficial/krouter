@@ -157,6 +157,7 @@ The daemon listens on two ports:
 			}
 			apiSrv.SetRemote(remoteSvc)
 			apiSrv.SetRegistry(reg)
+			apiSrv.SetSettings(settings)
 
 			// Start management API. When remote access is toggled, the API
 			// restarts to switch between plain HTTP (127.0.0.1) and TLS (0.0.0.0).
