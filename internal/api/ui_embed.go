@@ -19,6 +19,10 @@ func mountUI(mux *http.ServeMux) {
 }
 
 // spaHandler wraps a file server: requests for missing files return index.html.
+//
+// Note: we must NOT set r.URL.Path = "/index.html" and pass to FileServer —
+// Go's FileServer redirects any path ending in "/index.html" to "./" (canonical
+// URL stripping), which breaks deep-linked SPA routes. Read and write directly.
 func spaHandler(fileServer http.Handler, fsys fs.FS) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := strings.TrimPrefix(r.URL.Path, "/")
@@ -26,9 +30,13 @@ func spaHandler(fileServer http.Handler, fsys fs.FS) http.Handler {
 			p = "index.html"
 		}
 		if _, err := fsys.Open(p); err != nil {
-			r2 := r.Clone(r.Context())
-			r2.URL.Path = "/index.html"
-			fileServer.ServeHTTP(w, r2)
+			data, err2 := fs.ReadFile(fsys, "index.html")
+			if err2 != nil {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Write(data) //nolint:errcheck
 			return
 		}
 		fileServer.ServeHTTP(w, r)
