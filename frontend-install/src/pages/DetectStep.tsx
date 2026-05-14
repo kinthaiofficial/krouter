@@ -15,12 +15,16 @@ export default function DetectStep({ onNext }: Props) {
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState('')
 
-  useEffect(() => {
+  function scan() {
+    setAgents(null)
+    setError('')
     api.detectAgents().then(setAgents).catch((e: Error) => setError(e.message))
-  }, [])
+  }
+
+  useEffect(() => { scan() }, [])
 
   async function handleConnect() {
-    if (!agents) return
+    if (!agents || agents.length === 0) return
     setConnecting(true)
     setError('')
     try {
@@ -34,6 +38,8 @@ export default function DetectStep({ onNext }: Props) {
     }
   }
 
+  const noAgents = agents !== null && agents.length === 0
+
   return (
     <div>
       <h2 className="text-xl font-bold text-gray-900 mb-1 tracking-tight">Detected AI agents</h2>
@@ -45,9 +51,19 @@ export default function DetectStep({ onNext }: Props) {
         <p className="text-gray-400 text-sm animate-pulse mb-6">Scanning…</p>
       )}
 
-      {agents !== null && agents.length === 0 && (
-        <div className="rounded-xl bg-amber-50 border border-amber-100 p-4 text-sm text-amber-700 mb-6">
-          No agents found. You can connect them manually later from the KRouter dashboard.
+      {noAgents && (
+        <div className="rounded-xl bg-amber-50 border border-amber-100 p-4 text-sm text-amber-800 mb-6 space-y-2">
+          <p className="font-medium">No compatible agents found.</p>
+          <p className="text-amber-600 text-xs leading-relaxed">
+            KRouter works with OpenClaw, Claude Code, Cursor, and Hermes.
+            Install one of these agents first, then re-run the wizard.
+          </p>
+          <button
+            onClick={scan}
+            className="text-xs text-amber-700 underline underline-offset-2 hover:text-amber-900 transition-colors"
+          >
+            Retry scan
+          </button>
         </div>
       )}
 
@@ -55,7 +71,11 @@ export default function DetectStep({ onNext }: Props) {
         <ul className="divide-y divide-border mb-6">
           {agents.map(a => (
             <li key={a.name} className="py-3 flex items-center gap-3">
-              <span className="w-5 h-5 rounded-full bg-brand-light flex items-center justify-center text-brand text-xs font-bold">✓</span>
+              <span className="w-5 h-5 rounded-full bg-brand-light flex items-center justify-center text-brand text-xs font-bold flex-shrink-0">
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2 6l3 3 5-5" />
+                </svg>
+              </span>
               <div>
                 <p className="font-medium text-gray-800">{AGENT_LABELS[a.name] ?? a.name}</p>
                 <p className="text-xs text-gray-400">{a.config_path ?? a.cli_path ?? ''}</p>
@@ -68,17 +88,20 @@ export default function DetectStep({ onNext }: Props) {
       {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
 
       <div className="flex gap-3">
-        <button
-          onClick={onNext}
-          className="flex-1 border border-border text-gray-600 font-medium py-2.5 px-4 rounded-xl hover:bg-surface transition-colors text-sm"
-          disabled={connecting}
-        >
-          Skip
-        </button>
+        {/* Skip only shown when agents are found */}
+        {!noAgents && agents !== null && agents.length > 0 && (
+          <button
+            onClick={onNext}
+            className="flex-1 border border-border text-gray-600 font-medium py-2.5 px-4 rounded-xl hover:bg-surface transition-colors text-sm"
+            disabled={connecting}
+          >
+            Skip
+          </button>
+        )}
         <button
           onClick={handleConnect}
-          disabled={connecting || agents === null}
-          className="flex-1 bg-brand hover:bg-brand-dark disabled:opacity-50 text-white font-semibold py-2.5 px-4 rounded-xl transition-colors"
+          disabled={connecting || agents === null || noAgents}
+          className="flex-1 bg-brand hover:bg-brand-dark disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-2.5 px-4 rounded-xl transition-colors"
         >
           {connecting ? 'Connecting…' : 'Connect & Continue'}
         </button>
