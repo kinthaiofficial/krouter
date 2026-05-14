@@ -20,9 +20,9 @@ export default function App() {
 
       {/* Header */}
       <header className="flex items-center justify-center pt-10 pb-4">
-        <div className="flex items-center gap-2.5">
-          <img src="/logo.png" alt="KRouter" className="w-9 h-9 rounded-lg" />
-          <span className="text-xl font-bold text-gray-900 tracking-tight">KRouter</span>
+        <div className="flex items-center gap-3">
+          <img src="/logo.png" alt="KRouter" className="w-12 h-12 rounded-xl" />
+          <span className="text-2xl font-bold text-gray-900 tracking-tight">KRouter</span>
         </div>
       </header>
 

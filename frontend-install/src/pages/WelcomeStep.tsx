@@ -3,7 +3,6 @@ interface Props { onNext: () => void }
 export default function WelcomeStep({ onNext }: Props) {
   return (
     <div>
-      <img src="/logo.png" alt="KRouter" className="w-14 h-14 rounded-2xl mb-5 shadow-sm" />
       <h1 className="text-2xl font-bold text-gray-900 mb-3 tracking-tight leading-snug">
         Stop overpaying for AI tokens.
       </h1>

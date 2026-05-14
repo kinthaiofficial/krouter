@@ -55,7 +55,7 @@ export default function DetectStep({ onNext }: Props) {
         <div className="rounded-xl bg-amber-50 border border-amber-100 p-4 text-sm text-amber-800 mb-6 space-y-2">
           <p className="font-medium">No compatible agents found.</p>
           <p className="text-amber-600 text-xs leading-relaxed">
-            KRouter works with OpenClaw, Claude Code, Cursor, and Hermes.
+            KRouter works with OpenClaw, Claude Code, Cursor, Hermes, and more.
             Install one of these agents first, then re-run the wizard.
           </p>
           <button
