@@ -37,7 +37,8 @@ sed "s|<string>1</string>|<string>${VERSION#v}</string>|g; \
   "$SCRIPT_DIR/Info.plist" > "$APP_DIR/Contents/Info.plist"
 
 # Generate AppIcon.icns from source PNG if not already present.
-ICON_SRC="$SCRIPT_DIR/../icons/logo512.png"
+# Use white-background version so transparent areas don't render gray in Finder.
+ICON_SRC="$SCRIPT_DIR/../icons/logo512-white.png"
 if [ ! -f "$SCRIPT_DIR/AppIcon.icns" ] && [ -f "$ICON_SRC" ]; then
   echo "→ Generating AppIcon.icns from $ICON_SRC..."
   ICONSET="$(mktemp -d)/krouter.iconset"
