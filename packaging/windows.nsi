@@ -21,6 +21,8 @@ InstallDirRegKey HKCU "Software\${APPNAME}" "InstallDir"
 
 ; Modern UI.
 !include "MUI2.nsh"
+!define MUI_ICON   "packaging/windows.ico"
+!define MUI_UNICON "packaging/windows.ico"
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
