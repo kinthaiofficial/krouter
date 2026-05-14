@@ -97,6 +97,21 @@ func (e *Engine) pickHealthyProvider(proto providers.Protocol) providers.Provide
 	return fallback // nil if no provider for this protocol
 }
 
+// pickProviderForModel returns the first healthy provider that explicitly supports
+// the requested model. Falls back to pickHealthyProvider if none match.
+func (e *Engine) pickProviderForModel(proto providers.Protocol, model string) providers.Provider {
+	all := e.registry.All()
+	for _, p := range all {
+		if p.Protocol() != proto {
+			continue
+		}
+		if modelSupported(p.SupportedModels(), model) && e.isHealthy(p.Name()) {
+			return p
+		}
+	}
+	return e.pickHealthyProvider(proto)
+}
+
 // Decide returns the routing decision for the given request and preset.
 // preset must be one of "saver", "balanced", "quality" (case-sensitive).
 // An empty or unrecognised preset is treated as "balanced".
@@ -111,11 +126,13 @@ func (e *Engine) Decide(req Request, preset string) Decision {
 	}
 }
 
-// decideBalanced honours the requested model; falls back to fallbackModel if unknown.
+// decideBalanced honours the requested model; prefers the provider that explicitly
+// supports it, then falls back to fallbackModel on the default provider.
 func (e *Engine) decideBalanced(req Request) Decision {
 	proto := providers.Protocol(req.Protocol)
 
-	provider := e.pickHealthyProvider(proto)
+	// Prefer a provider that explicitly lists the requested model.
+	provider := e.pickProviderForModel(proto, req.RequestedModel)
 	if provider == nil {
 		return Decision{
 			Provider: req.Protocol,
@@ -213,7 +230,7 @@ func (e *Engine) decideSaver(req Request) Decision {
 func (e *Engine) decideQuality(req Request) Decision {
 	proto := providers.Protocol(req.Protocol)
 
-	provider := e.pickHealthyProvider(proto)
+	provider := e.pickProviderForModel(proto, req.RequestedModel)
 	if provider == nil {
 		return Decision{
 			Provider: req.Protocol,
