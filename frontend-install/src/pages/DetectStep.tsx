@@ -4,10 +4,10 @@ import { api, AgentInfo } from '../api/client'
 interface Props { onNext: () => void }
 
 const AGENT_LABELS: Record<string, string> = {
-  'openclaw':   'OpenClaw',
+  'openclaw':    'OpenClaw',
   'claude-code': 'Claude Code',
-  'cursor':     'Cursor',
-  'hermes':     'Hermes',
+  'cursor':      'Cursor',
+  'hermes':      'Hermes',
 }
 
 export default function DetectStep({ onNext }: Props) {
@@ -36,26 +36,26 @@ export default function DetectStep({ onNext }: Props) {
 
   return (
     <div>
-      <h2 className="text-xl font-bold text-gray-900 mb-1">Detected AI agents</h2>
+      <h2 className="text-xl font-bold text-gray-900 mb-1 tracking-tight">Detected AI agents</h2>
       <p className="text-sm text-gray-500 mb-6">
-        krouter will patch these agent configs to route through the proxy.
+        KRouter will patch these agent configs to route through the proxy.
       </p>
 
       {agents === null && !error && (
-        <p className="text-gray-400 text-sm animate-pulse">Scanning…</p>
+        <p className="text-gray-400 text-sm animate-pulse mb-6">Scanning…</p>
       )}
 
       {agents !== null && agents.length === 0 && (
-        <div className="rounded-lg bg-amber-50 border border-amber-100 p-4 text-sm text-amber-700 mb-6">
-          No agents found. You can connect them manually later by editing their config files.
+        <div className="rounded-xl bg-amber-50 border border-amber-100 p-4 text-sm text-amber-700 mb-6">
+          No agents found. You can connect them manually later from the KRouter dashboard.
         </div>
       )}
 
       {agents !== null && agents.length > 0 && (
-        <ul className="divide-y divide-gray-100 mb-6">
+        <ul className="divide-y divide-border mb-6">
           {agents.map(a => (
             <li key={a.name} className="py-3 flex items-center gap-3">
-              <span className="text-lg">✓</span>
+              <span className="w-5 h-5 rounded-full bg-brand-light flex items-center justify-center text-brand text-xs font-bold">✓</span>
               <div>
                 <p className="font-medium text-gray-800">{AGENT_LABELS[a.name] ?? a.name}</p>
                 <p className="text-xs text-gray-400">{a.config_path ?? a.cli_path ?? ''}</p>
@@ -70,7 +70,7 @@ export default function DetectStep({ onNext }: Props) {
       <div className="flex gap-3">
         <button
           onClick={onNext}
-          className="flex-1 border border-gray-200 text-gray-600 font-medium py-2 px-4 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+          className="flex-1 border border-border text-gray-600 font-medium py-2.5 px-4 rounded-xl hover:bg-surface transition-colors text-sm"
           disabled={connecting}
         >
           Skip
@@ -78,7 +78,7 @@ export default function DetectStep({ onNext }: Props) {
         <button
           onClick={handleConnect}
           disabled={connecting || agents === null}
-          className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+          className="flex-1 bg-brand hover:bg-brand-dark disabled:opacity-50 text-white font-semibold py-2.5 px-4 rounded-xl transition-colors"
         >
           {connecting ? 'Connecting…' : 'Connect & Continue'}
         </button>

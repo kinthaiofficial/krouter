@@ -58,3 +58,4 @@ local-data/
 # Logs
 *.log
 logs/
+.gstack/

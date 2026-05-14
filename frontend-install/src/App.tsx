@@ -7,38 +7,64 @@ import DoneStep from './pages/DoneStep'
 
 export type Step = 'welcome' | 'detect' | 'service' | 'shell' | 'done'
 
+const STEPS: Step[] = ['welcome', 'detect', 'service', 'shell', 'done']
+const LABELS = ['Welcome', 'Detect agents', 'Install service', 'Shell setup', 'Done']
+
 export default function App() {
   const [step, setStep] = useState<Step>('welcome')
-
-  const steps: Step[] = ['welcome', 'detect', 'service', 'shell', 'done']
-  const stepIdx = steps.indexOf(step)
+  const stepIdx = STEPS.indexOf(step)
+  const progressSteps = STEPS.slice(0, -1)
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
-      {/* Progress bar */}
-      <div className="w-full max-w-lg mb-8">
-        <div className="flex items-center gap-1">
-          {steps.slice(0, -1).map((s, i) => (
-            <div
-              key={s}
-              className={`h-1.5 flex-1 rounded-full transition-colors ${
-                i < stepIdx ? 'bg-blue-500' : i === stepIdx ? 'bg-blue-300' : 'bg-gray-200'
-              }`}
-            />
-          ))}
-        </div>
-        <p className="text-xs text-gray-400 mt-1 text-right">
-          Step {Math.min(stepIdx + 1, steps.length - 1)} of {steps.length - 1}
-        </p>
-      </div>
+    <div className="min-h-screen bg-surface flex flex-col" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif' }}>
 
-      <div className="w-full max-w-lg bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-        {step === 'welcome' && <WelcomeStep onNext={() => setStep('detect')} />}
-        {step === 'detect'  && <DetectStep  onNext={() => setStep('service')} />}
-        {step === 'service' && <ServiceStep onNext={() => setStep('shell')} />}
-        {step === 'shell'   && <ShellStep   onNext={() => setStep('done')} />}
-        {step === 'done'    && <DoneStep />}
-      </div>
+      {/* Header */}
+      <header className="flex items-center justify-center pt-10 pb-4">
+        <div className="flex items-center gap-2.5">
+          <img src="/logo.png" alt="KRouter" className="w-9 h-9 rounded-lg" />
+          <span className="text-xl font-bold text-gray-900 tracking-tight">KRouter</span>
+        </div>
+      </header>
+
+      {/* Card */}
+      <main className="flex-1 flex flex-col items-center px-4 pt-4 pb-10">
+        <div className="w-full max-w-md bg-white rounded-2xl border border-border shadow-sm p-8">
+          {step === 'welcome' && <WelcomeStep onNext={() => setStep('detect')} />}
+          {step === 'detect'  && <DetectStep  onNext={() => setStep('service')} />}
+          {step === 'service' && <ServiceStep onNext={() => setStep('shell')} />}
+          {step === 'shell'   && <ShellStep   onNext={() => setStep('done')} />}
+          {step === 'done'    && <DoneStep />}
+        </div>
+
+        {/* Progress dots */}
+        {step !== 'done' && (
+          <div className="mt-6 flex flex-col items-center gap-2">
+            <div className="flex items-center gap-2">
+              {progressSteps.map((s, i) => (
+                <div
+                  key={s}
+                  className={`rounded-full transition-all duration-300 ${
+                    i < stepIdx  ? 'w-2 h-2 bg-brand' :
+                    i === stepIdx ? 'w-2.5 h-2.5 bg-brand' :
+                    'w-2 h-2 bg-gray-200'
+                  }`}
+                />
+              ))}
+            </div>
+            <p className="text-xs text-gray-400">
+              {LABELS[stepIdx]} — step {stepIdx + 1} of {progressSteps.length}
+            </p>
+          </div>
+        )}
+      </main>
+
+      {/* Footer */}
+      <footer className="py-5 text-center text-xs text-gray-400">
+        by{' '}
+        <a href="https://kinthai.ai" target="_blank" rel="noreferrer" className="hover:text-brand transition-colors">
+          kinthai.ai
+        </a>
+      </footer>
     </div>
   )
 }
