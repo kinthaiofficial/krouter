@@ -22,6 +22,7 @@ import (
 	deepseekadapter "github.com/kinthaiofficial/krouter/internal/providers/deepseek"
 	glmadapter "github.com/kinthaiofficial/krouter/internal/providers/glm"
 	groqadapter "github.com/kinthaiofficial/krouter/internal/providers/groq"
+	minimaxadapter "github.com/kinthaiofficial/krouter/internal/providers/minimax"
 	moonshotadapter "github.com/kinthaiofficial/krouter/internal/providers/moonshot"
 	qwenadapter "github.com/kinthaiofficial/krouter/internal/providers/qwen"
 	"github.com/kinthaiofficial/krouter/internal/remote"
@@ -107,6 +108,10 @@ The daemon listens on two ports:
 			if os.Getenv("DASHSCOPE_API_KEY") != "" {
 				reg.Register(qwenadapter.New(sharedClient))
 				logger.Info("qwen provider registered")
+			}
+			if os.Getenv("MINIMAX_API_KEY") != "" {
+				reg.Register(minimaxadapter.New(sharedClient))
+				logger.Info("minimax provider registered")
 			}
 
 			// Routing engine.

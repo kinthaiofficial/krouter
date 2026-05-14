@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -30,14 +31,27 @@ var supportedModels = []string{
 
 // Adapter implements providers.Provider for the Anthropic Messages API.
 type Adapter struct {
+	name       string // provider name; defaults to "anthropic"
 	baseURL    string
+	apiKeyEnv  string // if non-empty, override x-api-key with os.Getenv(apiKeyEnv)
+	models     []string
 	httpClient *http.Client
 }
 
-// New creates an Anthropic adapter.
+// New creates an Anthropic adapter targeting https://api.anthropic.com.
 // baseURL is typically "https://api.anthropic.com"; pass a test server URL for testing.
 // If client is nil, a default client with no timeout is used (streaming requires no timeout).
 func New(baseURL string, client *http.Client) *Adapter {
+	return NewNamed("anthropic", baseURL, "", supportedModels, client)
+}
+
+// NewNamed creates a named Anthropic-protocol adapter, optionally injecting an API key.
+// Useful for Anthropic-compatible providers like MiniMax.
+//   - name:      provider name in the registry
+//   - baseURL:   upstream base URL without trailing slash
+//   - apiKeyEnv: env var name for API key injection (empty = pass through client key)
+//   - models:    list of model IDs this provider handles
+func NewNamed(name, baseURL, apiKeyEnv string, models []string, client *http.Client) *Adapter {
 	if client == nil {
 		client = &http.Client{
 			Transport: &http.Transport{
@@ -48,16 +62,24 @@ func New(baseURL string, client *http.Client) *Adapter {
 		}
 	}
 	return &Adapter{
+		name:       name,
 		baseURL:    strings.TrimRight(baseURL, "/"),
+		apiKeyEnv:  apiKeyEnv,
+		models:     models,
 		httpClient: client,
 	}
 }
 
-func (a *Adapter) Name() string               { return "anthropic" }
+func (a *Adapter) Name() string                { return a.name }
 func (a *Adapter) Protocol() providers.Protocol { return providers.ProtocolAnthropic }
-func (a *Adapter) SupportedModels() []string   { return supportedModels }
+func (a *Adapter) SupportedModels() []string {
+	if a.models != nil {
+		return a.models
+	}
+	return supportedModels
+}
 
-// Forward rewrites the request URL to point at the Anthropic base URL, then
+// Forward rewrites the request URL to point at the upstream base URL, then
 // executes the HTTP call and returns the full response.
 // The caller is responsible for closing resp.Body.
 func (a *Adapter) Forward(ctx context.Context, req *http.Request) (*http.Response, error) {
@@ -72,9 +94,16 @@ func (a *Adapter) Forward(ctx context.Context, req *http.Request) (*http.Respons
 	}
 	upstreamReq.Header = req.Header.Clone()
 
+	// Inject API key from env if configured (overrides client-supplied key).
+	if a.apiKeyEnv != "" {
+		if key := os.Getenv(a.apiKeyEnv); key != "" {
+			upstreamReq.Header.Set("x-api-key", key)
+		}
+	}
+
 	resp, err := a.httpClient.Do(upstreamReq)
 	if err != nil {
-		return nil, fmt.Errorf("anthropic adapter: do request: %w", err)
+		return nil, fmt.Errorf("anthropic adapter: build request: %w", err)
 	}
 	return resp, nil
 }
