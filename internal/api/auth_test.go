@@ -194,6 +194,33 @@ func TestBearerStillAccepted_WithNewAuth(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
+func TestExchangeTicket_ExpiredFails(t *testing.T) {
+	srv, ts := newTestServer(t, nil)
+	srv.InsertExpiredTicketForTest("expired-ticket-abc123")
+
+	noRedirect := &http.Client{CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	resp, err := noRedirect.Get(ts.URL + "/internal/auth/exchange?ticket=expired-ticket-abc123")
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestSessionCookie_ExpiredFails(t *testing.T) {
+	srv, ts := newTestServer(t, nil)
+	srv.InsertExpiredSessionForTest("expired-session-sid-xyz")
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet,
+		ts.URL+"/internal/status", nil)
+	require.NoError(t, err)
+	req.AddCookie(&http.Cookie{Name: "krouter_session", Value: "expired-session-sid-xyz"})
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
 // ── Concurrent ticket exchange (replay prevention) ────────────────────────────
 
 func TestConcurrentTicketExchange_OnlyOneSucceeds(t *testing.T) {

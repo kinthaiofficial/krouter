@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -33,7 +32,6 @@ var supportedModels = []string{
 type Adapter struct {
 	name       string // provider name; defaults to "anthropic"
 	baseURL    string
-	apiKeyEnv  string // if non-empty, override x-api-key with os.Getenv(apiKeyEnv)
 	models     []string
 	httpClient *http.Client
 }
@@ -42,16 +40,16 @@ type Adapter struct {
 // baseURL is typically "https://api.anthropic.com"; pass a test server URL for testing.
 // If client is nil, a default client with no timeout is used (streaming requires no timeout).
 func New(baseURL string, client *http.Client) *Adapter {
-	return NewNamed("anthropic", baseURL, "", supportedModels, client)
+	return NewNamed("anthropic", baseURL, supportedModels, client)
 }
 
-// NewNamed creates a named Anthropic-protocol adapter, optionally injecting an API key.
-// Useful for Anthropic-compatible providers like MiniMax.
-//   - name:      provider name in the registry
-//   - baseURL:   upstream base URL without trailing slash
-//   - apiKeyEnv: env var name for API key injection (empty = pass through client key)
-//   - models:    list of model IDs this provider handles
-func NewNamed(name, baseURL, apiKeyEnv string, models []string, client *http.Client) *Adapter {
+// NewNamed creates a named Anthropic-protocol adapter.
+// Useful for Anthropic-compatible providers like MiniMax that share the same wire format.
+// The client's x-api-key header is always forwarded as-is (krouter is a transparent proxy).
+//   - name:    provider name in the registry
+//   - baseURL: upstream base URL without trailing slash
+//   - models:  list of model IDs this provider handles
+func NewNamed(name, baseURL string, models []string, client *http.Client) *Adapter {
 	if client == nil {
 		client = &http.Client{
 			Transport: &http.Transport{
@@ -64,7 +62,6 @@ func NewNamed(name, baseURL, apiKeyEnv string, models []string, client *http.Cli
 	return &Adapter{
 		name:       name,
 		baseURL:    strings.TrimRight(baseURL, "/"),
-		apiKeyEnv:  apiKeyEnv,
 		models:     models,
 		httpClient: client,
 	}
@@ -93,13 +90,6 @@ func (a *Adapter) Forward(ctx context.Context, req *http.Request) (*http.Respons
 		return nil, fmt.Errorf("anthropic adapter: build request: %w", err)
 	}
 	upstreamReq.Header = req.Header.Clone()
-
-	// Inject API key from env if configured (overrides client-supplied key).
-	if a.apiKeyEnv != "" {
-		if key := os.Getenv(a.apiKeyEnv); key != "" {
-			upstreamReq.Header.Set("x-api-key", key)
-		}
-	}
 
 	resp, err := a.httpClient.Do(upstreamReq)
 	if err != nil {

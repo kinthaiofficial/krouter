@@ -126,3 +126,15 @@ func (s *Server) handleExchangeTicket(w http.ResponseWriter, r *http.Request) {
 	}
 	http.Redirect(w, r, redirect, http.StatusFound)
 }
+
+// InsertExpiredTicketForTest inserts an already-expired ticket for testing only.
+func (s *Server) InsertExpiredTicketForTest(ticket string) {
+	s.tickets.m.Store(ticket, time.Now().Add(-time.Second))
+}
+
+// InsertExpiredSessionForTest inserts an already-expired session for testing only.
+func (s *Server) InsertExpiredSessionForTest(sid string) {
+	s.sessions.mu.Lock()
+	s.sessions.data[sid] = time.Now().Add(-time.Second)
+	s.sessions.mu.Unlock()
+}

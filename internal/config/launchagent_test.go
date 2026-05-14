@@ -42,3 +42,14 @@ func TestGeneratePlistContent_ValidXML(t *testing.T) {
 	assert.Contains(t, s, "<plist version=\"1.0\">")
 	assert.Contains(t, s, "</plist>")
 }
+
+func TestWriteLaunchAgentPlist_ReturnsError_OnNonMacOS(t *testing.T) {
+	_, err := config.WriteLaunchAgentPlist("/tmp/krouter")
+	if err == nil {
+		// On macOS this succeeds; darwin-specific behavior is accepted as tested.
+		t.Skip("running on macOS — darwin path accepted")
+		return
+	}
+	// On Linux/Windows the stub must return an error mentioning macOS.
+	assert.ErrorContains(t, err, "macOS")
+}

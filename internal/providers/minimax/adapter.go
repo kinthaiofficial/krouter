@@ -18,7 +18,7 @@ var supportedModels = []string{
 }
 
 // New creates a MiniMax provider adapter backed by the Anthropic wire protocol.
-// API key is read from MINIMAX_API_KEY and injected on every upstream request.
+// The client's x-api-key header is forwarded as-is to api.minimax.io.
 func New(client *http.Client) *anthropicAdapter.Adapter {
-	return anthropicAdapter.NewNamed("minimax", baseURL, "MINIMAX_API_KEY", supportedModels, client)
+	return anthropicAdapter.NewNamed("minimax", baseURL, supportedModels, client)
 }

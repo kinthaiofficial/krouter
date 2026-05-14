@@ -3,6 +3,7 @@ package install
 import (
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -175,4 +176,21 @@ func TestInstallServer_TokenReplay_FinalizeOnlyOnce(t *testing.T) {
 	w2 := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(w2, authed(httptest.NewRequest(http.MethodPost, "/api/install/finalize", nil)))
 	assert.Equal(t, http.StatusGone, w2.Code)
+}
+
+func TestListen_PortConflict_TriesNext(t *testing.T) {
+	// Occupy a port to force Listen to skip it.
+	occupied, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer occupied.Close()
+	occupiedPort := occupied.Addr().(*net.TCPAddr).Port
+
+	ln, addr, err := Listen(occupiedPort, http.NewServeMux())
+	require.NoError(t, err)
+	defer ln.Close()
+
+	// Listen should have bound to a different port.
+	gotPort := ln.Addr().(*net.TCPAddr).Port
+	assert.NotEqual(t, occupiedPort, gotPort)
+	assert.Contains(t, addr, "127.0.0.1:")
 }

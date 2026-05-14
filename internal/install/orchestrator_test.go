@@ -226,6 +226,25 @@ func TestOrchestrator_ShellIntegration_Idempotent(t *testing.T) {
 	assert.Equal(t, 1, count, "shell block must appear exactly once")
 }
 
+func TestOrchestrator_ShellIntegration_Fish(t *testing.T) {
+	dir := t.TempDir()
+	fishPath := filepath.Join(dir, ".config", "fish", "config.fish")
+
+	o := &Orchestrator{
+		ui:              NullUI{},
+		opt:             Options{},
+		writeShellRCFn:  config.ConnectClaudeCode,
+		detectShellRCFn: func() string { return fishPath },
+	}
+
+	err := o.ShellIntegration()
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(fishPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "krouter shell-init")
+}
+
 func TestOrchestrator_ConnectAgent_OpenClaw(t *testing.T) {
 	o, h := testOrchestrator(NullUI{}, Options{})
 	h.detectAgentsResult = []config.AgentInfo{
