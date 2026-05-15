@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.0.11] - 2026-05-15
+## [2.0.13] - 2026-05-15
 
 ### Fixed
 - **Linux: shell integration written to wrong file** — `DetectShellRC()` mapped bash
@@ -19,10 +19,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   real daemon holding a stale token; `serve` now exits silently before writing the
   token if the proxy port is already bound
 
-### Added
-- `tests/linux/run_tests.sh` — 21-test Linux installation integration suite:
-  install flow, systemd service, shell integration, daemon API (auth, ticket exchange,
-  settings, SSE), proxy port, and uninstall
+---
+
+## [2.0.12] - 2026-05-15
+
+### Fixed
+- **SQLite driver replaced with pure-Go implementation** — switched from
+  `mattn/go-sqlite3` (requires CGO) to `modernc.org/sqlite` (pure Go), enabling
+  `CGO_ENABLED=0` cross-compilation; removes the CGO toolchain requirement from
+  all build environments including Windows cross-compilation
+
+---
+
+## [2.0.11] - 2026-05-15
+
+### Fixed
+- **MiniMax base URL corrected** — domestic (Chinese mainland) API keys only work
+  on `api.minimax.chat`; the adapter was incorrectly using `api.minimax.io`
 
 ---
 
