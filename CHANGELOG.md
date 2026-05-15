@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.11] - 2026-05-15
+
+### Fixed
+- **Linux: shell integration written to wrong file** — `DetectShellRC()` mapped bash
+  to `~/.bash_profile` on all platforms; bash on Linux now correctly targets
+  `~/.bashrc` (macOS keeps `~/.bash_profile`, which is correct for macOS login shells)
+- **Daemon token clobbering on port conflict** — when `install --yes` triggered
+  multiple rapid daemon starts (e.g. idempotent re-runs), each short-lived instance
+  would overwrite `~/.kinthai/internal-token` before failing to bind, leaving the
+  real daemon holding a stale token; `serve` now exits silently before writing the
+  token if the proxy port is already bound
+
+### Added
+- `tests/linux/run_tests.sh` — 21-test Linux installation integration suite:
+  install flow, systemd service, shell integration, daemon API (auth, ticket exchange,
+  settings, SSE), proxy port, and uninstall
+
+---
+
 ## [2.0.10] - 2026-05-15
 
 ### Fixed
