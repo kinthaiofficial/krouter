@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.9] - 2026-05-15
+
+### Fixed
+- **Transparent proxy correctness**: removed accidental API key injection from the
+  Anthropic-protocol adapter. krouter now forwards the client's `x-api-key` header
+  unchanged to all Anthropic-compatible upstreams (including MiniMax). Previously,
+  MiniMax requests incorrectly attempted to inject a server-side `MINIMAX_API_KEY`.
+
+### Added
+- Test coverage for ticket and session expiry (`TestExchangeTicket_ExpiredFails`,
+  `TestSessionCookie_ExpiredFails`)
+- `TestOrchestrator_ShellIntegration_Fish` — verifies Fish shell `config.fish` path
+  is created with the krouter marker block
+- `TestListen_PortConflict_TriesNext` — verifies install server binds the next port
+  when the requested port is already occupied
+- `TestWriteLaunchAgentPlist_ReturnsError_OnNonMacOS` — verifies the macOS
+  LaunchAgent stub returns an error on Linux/Windows
+
+---
+
+## [2.0.8] - 2026-05-14
+
+### Added
+- MiniMax provider adapter (`internal/providers/minimax`): Anthropic-messages
+  protocol at `https://api.minimax.io/anthropic`, enabled via `MINIMAX_API_KEY`
+- Routing engine now prefers the provider that explicitly lists the requested model
+  (`pickProviderForModel`), preventing MiniMax-model requests from being mis-routed
+  to the Anthropic upstream
+
+---
+
+## [2.0.7] - 2026-05-13
+
+### Fixed
+- PATCH `/internal/settings` returned 503 because `apiSrv.SetSettings()` was never
+  called in `serve.go`
+
+---
+
+## [2.0.6] - 2026-05-13
+
+### Fixed
+- SPA routes (e.g. `/ui/logs`) returned HTTP 301 due to `http.FileServer`'s
+  `/index.html` → `./` canonicalization; fixed by reading `index.html` directly
+- Linux systemd user service: `krouter install --yes` now runs `loginctl enable-linger`
+  and sets `XDG_RUNTIME_DIR=/run/user/<uid>` before calling `systemctl --user`, so
+  installation works on SSH-only servers without an active login session
+
+---
+
 ## [2.0.0] - 2026-05-13
 
 **BREAKING**: Replaced Wails v2 desktop GUI with embedded React web UI served by
