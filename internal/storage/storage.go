@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3" // SQLite driver
+	_ "modernc.org/sqlite" // SQLite driver (pure Go, no CGO)
 	"github.com/oklog/ulid/v2"
 )
 
@@ -43,7 +43,7 @@ func Open(path string) (*Store, error) {
 		)
 	}
 
-	db, err := sql.Open("sqlite3", dsn)
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
