@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.10] - 2026-05-15
+
+### Fixed
+- **Windows: daemon not starting after installation** — three root causes resolved:
+  1. `service_other.go` build tag (`!linux && !darwin`) inadvertently caught Windows,
+     making `RegisterService()` a silent no-op; replaced with a proper
+     `service_windows.go` that calls `RegisterTask` + `StartTask`
+  2. NSIS script registered the Task Scheduler task but never ran it, so the
+     daemon only started on the *next login*; added `schtasks /Run /TN "krouter-daemon"`
+     immediately after `task-install`
+  3. `orchestrator.RegisterService()` hardcoded `~/.local/bin/krouter` (a Linux
+     path); replaced with `platformDaemonPath()` which returns
+     `%LOCALAPPDATA%\kinthai\krouter.exe` on Windows
+
+### Added
+- `config.StartTask()` — runs the Task Scheduler task immediately via
+  `schtasks /Run` (Windows only; stub on other platforms)
+- `config.TaskName()` — exports the task name constant (`"krouter-daemon"`)
+
+---
+
 ## [2.0.9] - 2026-05-15
 
 ### Fixed
