@@ -111,16 +111,17 @@ func (o *Orchestrator) CopyBinary() error {
 	return nil
 }
 
-// RegisterService writes and enables the OS service (systemd on Linux, LaunchAgent on macOS).
+// RegisterService writes and enables the OS service (systemd on Linux, LaunchAgent on macOS,
+// Task Scheduler on Windows).
 func (o *Orchestrator) RegisterService() error {
 	if o.opt.DryRun {
 		return nil
 	}
-	home, err := os.UserHomeDir()
+	binPath, err := platformDaemonPath()
 	if err != nil {
-		return err
+		o.ui.Warn("  register service: " + err.Error())
+		return nil
 	}
-	binPath := home + "/.local/bin/krouter"
 
 	svcPath, err := o.writeServiceFn(binPath)
 	if err != nil {

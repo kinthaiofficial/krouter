@@ -2,7 +2,11 @@
 
 package install
 
-import "github.com/kinthaiofficial/krouter/internal/config"
+import (
+	"os"
+
+	"github.com/kinthaiofficial/krouter/internal/config"
+)
 
 func platformWriteService(binaryPath string) (string, error) {
 	return config.WriteSystemdService(binaryPath)
@@ -10,4 +14,12 @@ func platformWriteService(binaryPath string) (string, error) {
 
 func platformEnableService() error {
 	return config.EnableSystemdService()
+}
+
+func platformDaemonPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return home + "/.local/bin/krouter", nil
 }

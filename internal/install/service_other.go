@@ -1,4 +1,4 @@
-//go:build !linux && !darwin
+//go:build !linux && !darwin && !windows
 
 package install
 
@@ -12,4 +12,8 @@ func platformWriteService(_ string) (string, error) {
 
 func platformEnableService() error {
 	return errServiceNotSupported
+}
+
+func platformDaemonPath() (string, error) {
+	return "", errServiceNotSupported
 }

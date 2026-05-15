@@ -44,6 +44,10 @@ Section "Install"
   DetailPrint "Registering daemon service..."
   nsExec::ExecToLog '"$INSTDIR\krouter.exe" task-install'
 
+  ; Start the daemon immediately (don't wait for next login).
+  DetailPrint "Starting daemon..."
+  nsExec::ExecToLog 'schtasks /Run /TN "krouter-daemon"'
+
   ; Write uninstaller.
   WriteUninstaller "$INSTDIR\uninstall.exe"
 

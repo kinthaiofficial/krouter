@@ -6,6 +6,9 @@ import "errors"
 
 var errWindowsOnly = errors.New("task scheduler is only supported on Windows")
 
+// TaskName is a stub on non-Windows platforms.
+func TaskName() string { return "" }
+
 // GenerateTaskXML is a stub on non-Windows platforms.
 func GenerateTaskXML(binaryPath string) ([]byte, error) {
 	return nil, errWindowsOnly
@@ -18,6 +21,11 @@ func DefaultDaemonPath() (string, error) {
 
 // RegisterTask is a stub on non-Windows platforms.
 func RegisterTask(binaryPath string) error {
+	return errWindowsOnly
+}
+
+// StartTask is a stub on non-Windows platforms.
+func StartTask() error {
 	return errWindowsOnly
 }
 

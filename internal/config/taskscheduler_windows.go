@@ -13,6 +13,9 @@ import (
 
 const taskName = "krouter-daemon"
 
+// TaskName returns the Task Scheduler task name used by krouter.
+func TaskName() string { return taskName }
+
 var taskXMLTemplate = template.Must(template.New("task").Parse(`<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
@@ -90,6 +93,15 @@ func RegisterTask(binaryPath string) error {
 	)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("schtasks create: %w\n%s", err, out)
+	}
+	return nil
+}
+
+// StartTask runs the Task Scheduler task immediately (does not wait for login).
+func StartTask() error {
+	cmd := exec.Command("schtasks", "/Run", "/TN", taskName)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("schtasks run: %w\n%s", err, out)
 	}
 	return nil
 }
