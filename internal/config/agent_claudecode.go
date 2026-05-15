@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -32,7 +33,10 @@ func DetectShellRC() string {
 	case "zsh":
 		return filepath.Join(home, ".zshrc")
 	case "bash":
-		return filepath.Join(home, ".bash_profile")
+		if runtime.GOOS == "darwin" {
+			return filepath.Join(home, ".bash_profile")
+		}
+		return filepath.Join(home, ".bashrc")
 	case "fish":
 		return filepath.Join(home, ".config", "fish", "config.fish")
 	default:

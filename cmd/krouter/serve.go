@@ -50,6 +50,15 @@ The daemon listens on two ports:
 			proxyPort, _ := cmd.Flags().GetInt("proxy-port")
 			mgmtPort, _ := cmd.Flags().GetInt("management-port")
 
+			// Exit silently if another instance is already serving on the proxy port.
+			// This prevents token-file clobbering when systemd or the installer
+			// starts a second copy while the first is still running.
+			if conn, err := net.DialTimeout("tcp",
+				fmt.Sprintf("127.0.0.1:%d", proxyPort), 200*time.Millisecond); err == nil {
+				conn.Close()
+				return nil
+			}
+
 			logger := logging.New(logLevel)
 			logger.Info("starting krouter",
 				"version", Version,
