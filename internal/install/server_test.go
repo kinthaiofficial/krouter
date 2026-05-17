@@ -24,6 +24,7 @@ func newTestServer(t *testing.T) (*Server, *testHooks) {
 	srv := NewServer(testToken, orch)
 	srv.readInternalTokenFn = func() (string, error) { return "daemon-tok", nil }
 	srv.mintDaemonTicketFn = func(_ string) (string, error) { return "test-ticket-xyz", nil }
+	srv.waitForDaemonFn = func() {} // skip polling in unit tests
 	return srv, hooks
 }
 

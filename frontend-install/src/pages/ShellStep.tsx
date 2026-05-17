@@ -7,6 +7,7 @@ export default function ShellStep({ onNext }: Props) {
   const [running, setRunning] = useState(false)
   const [done, setDone] = useState(false)
   const [error, setError] = useState('')
+  const [finalizing, setFinalizing] = useState(false)
 
   async function handleApply() {
     setRunning(true)
@@ -21,11 +22,13 @@ export default function ShellStep({ onNext }: Props) {
   }
 
   async function handleFinalize() {
+    setFinalizing(true)
     try {
       const { redirect_url } = await api.finalize()
       window.location.href = redirect_url
     } catch (e) {
       setError((e as Error).message)
+      setFinalizing(false)
     }
   }
 
@@ -72,9 +75,10 @@ export default function ShellStep({ onNext }: Props) {
       ) : (
         <button
           onClick={handleFinalize}
-          className="w-full bg-brand hover:bg-brand-dark text-white font-semibold py-3 px-4 rounded-xl transition-colors"
+          disabled={finalizing}
+          className="w-full bg-brand hover:bg-brand-dark disabled:opacity-50 text-white font-semibold py-3 px-4 rounded-xl transition-colors"
         >
-          Open KRouter Dashboard →
+          {finalizing ? 'Opening dashboard…' : 'Open KRouter Dashboard →'}
         </button>
       )}
     </div>

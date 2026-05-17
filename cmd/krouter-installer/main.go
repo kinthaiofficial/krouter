@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 
 	"github.com/kinthaiofficial/krouter/internal/install"
@@ -22,7 +23,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	orch := install.New(install.NullUI{}, install.Options{})
+	orch := install.New(install.NullUI{}, install.Options{SrcBinary: daemonBinary()})
 	srv := install.NewServer(token, orch)
 
 	// Attach the embedded frontend.
@@ -55,6 +56,29 @@ func randomToken() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// daemonBinary returns the path to the krouter daemon binary if it lives in the
+// same directory as this installer (e.g. inside a macOS .app bundle where both
+// Contents/MacOS/krouter and Contents/MacOS/krouter-installer are present).
+// Returns "" if not found; CopyBinary will then fall back to os.Executable().
+func daemonBinary() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	dir := filepath.Dir(exe)
+	candidates := []string{"krouter"}
+	if runtime.GOOS == "windows" {
+		candidates = []string{"krouter.exe", "krouter"}
+	}
+	for _, name := range candidates {
+		p := filepath.Join(dir, name)
+		if info, err := os.Stat(p); err == nil && !info.IsDir() {
+			return p
+		}
+	}
+	return ""
 }
 
 func openBrowser(url string) {

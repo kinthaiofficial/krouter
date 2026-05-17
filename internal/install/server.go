@@ -25,7 +25,8 @@ type Server struct {
 	// Override for tests.
 	readInternalTokenFn func() (string, error)
 	mintDaemonTicketFn  func(internalToken string) (string, error)
-	uiAssets            fs.FS // if non-nil, served at /
+	waitForDaemonFn     func() // polls :8403/health; injectable for tests
+	uiAssets            fs.FS  // if non-nil, served at /
 }
 
 // NewServer creates a Server with the given install token and orchestrator.
@@ -35,6 +36,7 @@ func NewServer(token string, orch *Orchestrator) *Server {
 		orch:                orch,
 		readInternalTokenFn: defaultReadInternalToken,
 		mintDaemonTicketFn:  defaultMintDaemonTicket,
+		waitForDaemonFn:     defaultWaitForDaemon,
 	}
 }
 
@@ -214,6 +216,10 @@ func (s *Server) handleFinalize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Wait for the daemon that was started by RegisterService to be reachable,
+	// so that the redirect URL can carry a valid session ticket.
+	s.waitForDaemonFn()
+
 	// Mint a session ticket so the browser can log into the main UI immediately.
 	redirectURL := "http://127.0.0.1:8403/ui/"
 	internalToken, err := s.readInternalTokenFn()
@@ -229,6 +235,20 @@ func (s *Server) handleFinalize(w http.ResponseWriter, r *http.Request) {
 
 	s.finalized.Store(true)
 	writeJSON(w, map[string]string{"redirect_url": redirectURL})
+}
+
+// defaultWaitForDaemon polls :8403/health until the daemon responds or 10 s elapses.
+func defaultWaitForDaemon() {
+	client := &http.Client{Timeout: time.Second}
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, err := client.Get("http://127.0.0.1:8403/health")
+		if err == nil {
+			_ = resp.Body.Close()
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
 }
 
 func defaultReadInternalToken() (string, error) {

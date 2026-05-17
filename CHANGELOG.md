@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.14] - 2026-05-17
+
+### Fixed
+- **macOS: install wizard opened a second browser tab at port 8405** — `krouter-installer`
+  passed no `SrcBinary` to the orchestrator, so `CopyBinary()` fell back to
+  `os.Executable()` (the installer itself) and copied it to `~/.local/bin/krouter`;
+  the LaunchAgent then started `krouter-installer` instead of `krouter`, which spawned
+  a fresh wizard on port 8405 and opened a new browser tab showing the installer's
+  first page. Fixed by detecting the co-located `krouter` daemon binary (e.g. inside
+  the `.app` bundle's `Contents/MacOS/`) and using it as `SrcBinary`.
+- **macOS: "Open KRouter Dashboard" button navigated before daemon was ready** —
+  `handleFinalize` now polls `:8403/health` for up to 10 s before minting the session
+  ticket, ensuring the redirect URL carries a valid ticket instead of falling back to an
+  unauthenticated `/ui/` URL; the button shows "Opening dashboard…" while waiting.
+
+---
+
 ## [2.0.13] - 2026-05-15
 
 ### Fixed
