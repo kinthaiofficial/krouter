@@ -16,7 +16,7 @@ beforeEach(() => {
 describe('WelcomeStep', () => {
   it('renders title and get started button', () => {
     render(<WelcomeStep onNext={() => {}} />)
-    expect(screen.getByText('Welcome to krouter')).toBeInTheDocument()
+    expect(screen.getByText('Stop overpaying for AI tokens.')).toBeInTheDocument()
     expect(screen.getByText('Get Started')).toBeInTheDocument()
   })
 
@@ -32,7 +32,7 @@ describe('DetectStep', () => {
   it('shows no agents message when detect returns empty', async () => {
     render(<DetectStep onNext={() => {}} />)
     await waitFor(() => {
-      expect(screen.getByText(/No agents found/)).toBeInTheDocument()
+      expect(screen.getByText(/No compatible agents found/)).toBeInTheDocument()
     })
   })
 
@@ -55,7 +55,7 @@ describe('DetectStep', () => {
   it('skip button calls onNext without API call', async () => {
     const onNext = vi.fn()
     render(<DetectStep onNext={onNext} />)
-    await waitFor(() => screen.getByText(/No agents found/))
+    await waitFor(() => screen.getByText(/No compatible agents found/))
     fireEvent.click(screen.getByText('Skip'))
     expect(onNext).toHaveBeenCalledOnce()
   })
@@ -64,7 +64,7 @@ describe('DetectStep', () => {
 describe('App wizard flow', () => {
   it('starts on Welcome step', () => {
     render(<App />)
-    expect(screen.getByText('Welcome to krouter')).toBeInTheDocument()
+    expect(screen.getByText('Stop overpaying for AI tokens.')).toBeInTheDocument()
   })
 
   it('advances to Detect step after Get Started', () => {
