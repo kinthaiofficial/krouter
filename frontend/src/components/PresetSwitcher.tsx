@@ -27,8 +27,8 @@ export default function PresetSwitcher({ current, onSelect }: Props) {
   }
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-border dark:border-gray-700 p-5">
-      <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">Routing Preset</h2>
+    <div className="bg-white rounded-xl border border-border p-5">
+      <h2 className="text-sm font-medium text-gray-500 mb-3">Routing Preset</h2>
       <div className="flex gap-2">
         {presets.map((p) => (
           <button
@@ -38,11 +38,11 @@ export default function PresetSwitcher({ current, onSelect }: Props) {
               'flex-1 rounded-lg border px-3 py-2 text-sm text-left transition-colors',
               display === p.value
                 ? 'border-brand bg-brand-light text-brand font-semibold'
-                : 'border-border dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-brand/50 dark:hover:border-gray-500',
+                : 'border-border text-gray-700 hover:border-brand/50',
             ].join(' ')}
           >
             <div className="font-medium">{p.label}</div>
-            <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{p.description}</div>
+            <div className="text-xs text-gray-500 mt-0.5">{p.description}</div>
           </button>
         ))}
       </div>

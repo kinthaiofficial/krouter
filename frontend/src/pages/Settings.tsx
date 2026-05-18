@@ -33,7 +33,7 @@ export default function Settings() {
       <h1 className="text-lg font-semibold">Settings</h1>
 
       {/* Preset */}
-      <section className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 space-y-3">
+      <section className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
         <h2 className="text-sm font-medium">Routing Preset</h2>
         <div className="flex gap-2">
           {PRESETS.map((p) => (
@@ -44,7 +44,7 @@ export default function Settings() {
                 'flex-1 rounded-lg border px-3 py-2 text-sm capitalize transition-colors',
                 settings.preset === p
                   ? 'border-brand bg-brand-light text-brand'
-                  : 'border-border dark:border-gray-600 hover:border-brand/50 dark:hover:border-gray-500',
+                  : 'border-border hover:border-brand/50',
               ].join(' ')}
             >
               {p}
@@ -54,12 +54,12 @@ export default function Settings() {
       </section>
 
       {/* Language */}
-      <section className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 space-y-3">
+      <section className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
         <h2 className="text-sm font-medium">Language</h2>
         <select
           value={settings.language}
           onChange={(e) => save.mutate({ language: e.target.value })}
-          className="border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-800"
+          className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white"
         >
           <option value="en">English</option>
           <option value="zh-CN">中文</option>
@@ -67,7 +67,7 @@ export default function Settings() {
       </section>
 
       {/* Desktop notifications */}
-      <section className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 space-y-3">
+      <section className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
         <h2 className="text-sm font-medium">Desktop Notifications</h2>
         <div className="space-y-2">
           {NOTIFICATION_CATEGORIES.map(({ key, label }) => (
@@ -92,7 +92,7 @@ export default function Settings() {
       </section>
 
       {/* Budget warnings */}
-      <section className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 space-y-3">
+      <section className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
         <h2 className="text-sm font-medium">Budget Warnings</h2>
         <p className="text-xs text-gray-500">Set to 0 to disable.</p>
         <div className="space-y-3">
@@ -112,7 +112,7 @@ export default function Settings() {
                     })
                   }
                 }}
-                className="w-28 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-800"
+                className="w-28 border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white"
               />
             </div>
           ))}

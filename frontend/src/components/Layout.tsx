@@ -22,15 +22,15 @@ export default function Layout() {
   })
 
   return (
-    <div className="flex min-h-screen bg-surface dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+    <div className="flex min-h-screen bg-surface text-gray-900">
       {/* Sidebar */}
-      <aside className="w-56 shrink-0 bg-white dark:bg-gray-800 border-r border-border dark:border-gray-700 flex flex-col">
-        <div className="px-5 py-4 border-b border-border dark:border-gray-700 flex items-center gap-2.5">
-          <img src="/krouter/favicon.svg" alt="" className="w-6 h-6 shrink-0" />
+      <aside className="w-56 shrink-0 bg-white border-r border-border flex flex-col">
+        <div className="px-5 py-4 border-b border-border flex items-center gap-3">
+          <img src="/krouter/favicon.svg" alt="" className="w-7 h-7 shrink-0" />
           <div>
-            <span className="font-bold text-sm text-gray-900 dark:text-gray-100">KRouter</span>
+            <span className="font-bold text-sm text-gray-900">KRouter</span>
             {status && (
-              <span className="ml-1.5 text-xs text-gray-400">v{status.version}</span>
+              <span className="ml-1.5 text-xs text-gray-400">{status.version}</span>
             )}
           </div>
         </div>
@@ -42,10 +42,10 @@ export default function Layout() {
               end={end}
               className={({ isActive }) =>
                 [
-                  'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors',
+                  'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
                   isActive
-                    ? 'bg-brand-light text-brand font-medium'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700',
+                    ? 'bg-brand-light text-brand'
+                    : 'text-gray-500 hover:bg-surface hover:text-gray-900',
                 ].join(' ')
               }
             >
@@ -59,7 +59,7 @@ export default function Layout() {
             </NavLink>
           ))}
         </nav>
-        <div className="px-5 py-3 border-t border-border dark:border-gray-700 text-xs text-gray-400">
+        <div className="px-5 py-3 border-t border-border text-xs text-gray-400">
           {status ? (
             <span>proxy :{status.proxy_port}</span>
           ) : (

@@ -81,10 +81,10 @@ export default function Announcements() {
             <div
               key={ann.id}
               className={[
-                'bg-white dark:bg-gray-800 rounded-xl border p-4 transition-opacity',
+                'bg-white rounded-xl border p-4 transition-opacity',
                 ann.read_at
-                  ? 'border-gray-200 dark:border-gray-700 opacity-70'
-                  : 'border-blue-200 dark:border-blue-800',
+                  ? 'border-gray-200 opacity-70'
+                  : 'border-blue-200',
               ].join(' ')}
             >
               <div className="flex items-start gap-3">
@@ -95,13 +95,13 @@ export default function Announcements() {
                       {ann.title[lang] ?? ann.title.en ?? ''}
                     </p>
                     {!ann.read_at && (
-                      <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 px-1.5 rounded">New</span>
+                      <span className="text-xs bg-blue-100 text-blue-600 px-1.5 rounded">New</span>
                     )}
                     {ann.priority === 'critical' && (
-                      <span className="text-xs bg-red-100 dark:bg-red-900 text-red-600 dark:text-red-300 px-1.5 rounded">Critical</span>
+                      <span className="text-xs bg-red-100 text-red-600 px-1.5 rounded">Critical</span>
                     )}
                   </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                  <p className="text-xs text-gray-500">
                     {ann.summary[lang] ?? ann.summary.en ?? ''}
                   </p>
                   <p className="text-xs text-gray-400 mt-1">
@@ -115,7 +115,7 @@ export default function Announcements() {
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={() => read.mutate(ann.id)}
-                      className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                      className="p-1.5 text-gray-400 hover:text-gray-600"
                     >
                       <ExternalLink size={14} />
                     </a>

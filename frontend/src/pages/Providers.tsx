@@ -50,7 +50,7 @@ export default function Providers() {
         <>
           {configured.length > 0 && (
             <div className="space-y-2">
-              <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400">Configured</h2>
+              <h2 className="text-sm font-medium text-gray-500">Configured</h2>
               <div className="space-y-2">
                 {configured.map((p) => <ProviderCard key={p.name} provider={p} />)}
               </div>
@@ -59,7 +59,7 @@ export default function Providers() {
 
           {missingKeys.length > 0 && (
             <div className="space-y-2">
-              <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400">Not configured</h2>
+              <h2 className="text-sm font-medium text-gray-500">Not configured</h2>
               <div className="space-y-2">
                 {missingKeys.map(([key, meta]) => (
                   <MissingCard key={key} name={key} meta={meta} />
@@ -84,7 +84,7 @@ function ProviderCard({ provider: p }: { provider: ProviderInfo }) {
   const degraded = !p.available || p.consecutive_failures > 0
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 flex items-center gap-4">
+    <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
       <div className="shrink-0">
         {healthy ? (
           <CheckCircle size={20} className="text-green-500" />
@@ -96,7 +96,7 @@ function ProviderCard({ provider: p }: { provider: ProviderInfo }) {
       </div>
       <div className="flex-1 min-w-0">
         <p className="font-medium text-sm">{meta?.label ?? p.name}</p>
-        <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">{p.protocol}</p>
+        <p className="text-xs text-gray-500 font-mono">{p.protocol}</p>
       </div>
       <div className="text-right shrink-0">
         <p className="text-sm font-mono">{pct}%</p>
@@ -114,11 +114,11 @@ function ProviderCard({ provider: p }: { provider: ProviderInfo }) {
 
 function MissingCard({ meta }: { name: string; meta: { label: string; envKey: string } }) {
   return (
-    <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-dashed border-gray-200 dark:border-gray-600 p-4 flex items-center gap-4">
-      <AlertCircle size={20} className="text-gray-300 dark:text-gray-600 shrink-0" />
+    <div className="bg-gray-50 rounded-xl border border-dashed border-gray-200 p-4 flex items-center gap-4">
+      <AlertCircle size={20} className="text-gray-300 shrink-0" />
       <div className="flex-1 min-w-0">
-        <p className="font-medium text-sm text-gray-400 dark:text-gray-500">{meta.label}</p>
-        <p className="text-xs text-gray-400 dark:text-gray-500 font-mono">Set {meta.envKey} to enable</p>
+        <p className="font-medium text-sm text-gray-400">{meta.label}</p>
+        <p className="text-xs text-gray-400 font-mono">Set {meta.envKey} to enable</p>
       </div>
     </div>
   )

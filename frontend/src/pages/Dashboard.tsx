@@ -51,8 +51,8 @@ export default function Dashboard() {
         />
 
         {/* Today stats */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 space-y-2">
-          <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400">Today</h2>
+        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-2">
+          <h2 className="text-sm font-medium text-gray-500">Today</h2>
           <div className="flex gap-6">
             <Stat label="requests" value={String(budget?.requests_today ?? 0)} />
             <Stat label="saved" value={`$${(budget?.savings_today_usd ?? 0).toFixed(3)}`} />
@@ -63,15 +63,15 @@ export default function Dashboard() {
 
       {/* Quota bars */}
       {quotas && quotas.length > 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 space-y-4">
-          <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400">Quota</h2>
+        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+          <h2 className="text-sm font-medium text-gray-500">Quota</h2>
           {quotas.map((q) => <QuotaBar key={q.window} quota={q} />)}
         </div>
       )}
 
       {/* Recent requests */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-        <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-4">Recent Requests</h2>
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <h2 className="text-sm font-medium text-gray-500 mb-4">Recent Requests</h2>
         <RequestTable logs={recentLogs} />
       </div>
     </div>
@@ -93,15 +93,15 @@ function RequestTable({ logs }: { logs: LogRecord[] }) {
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-left text-xs text-gray-400 border-b border-gray-100 dark:border-gray-700">
+          <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
             {['Time', 'Agent', 'Model', 'Provider', 'Cost', 'Latency'].map((h) => (
               <th key={h} className="pb-2 pr-4 last:text-right">{h}</th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
+        <tbody className="divide-y divide-gray-50">
           {logs.map((log) => (
-            <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-gray-750">
+            <tr key={log.id} className="hover:bg-gray-50">
               <td className="py-1.5 pr-4 text-gray-400 text-xs whitespace-nowrap">{new Date(log.ts).toLocaleTimeString()}</td>
               <td className="py-1.5 pr-4">{log.agent ?? '—'}</td>
               <td className="py-1.5 pr-4 font-mono text-xs">{log.model}</td>
