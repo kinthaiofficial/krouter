@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.17] - 2026-05-18
+
+### Added
+- **Installer tests — DoneStep (13 cases)**: covers initial render, spinner on click,
+  navigation on first poll, navigation after later poll, timeout error (correct
+  `/krouter/` fallback URL), network-failure timeout, retry after timeout, error
+  cleared on retry, finalize-410 swallowed, finalize-500 swallowed, missing
+  `redirect_url` triggers fallback error
+- **Installer tests — ShellStep (13 cases)**: covers initial render, Skip without
+  API call, Applying… spinner, success banner + Open Dashboard button, API error
+  message + retry, finalize called before first poll, navigation to redirect_url,
+  timeout error with `/krouter/` URL, connection-refused timeout, button reappears
+  for retry, finalize-410 swallowed during Open Dashboard flow
+
+### Changed
+- `DoneStep` and `ShellStep` accept `maxAttempts` and `pollIntervalMs` props
+  (default 40 / 1500 ms) to enable deterministic testing without fake timers
+
+---
+
 ## [2.0.16] - 2026-05-18
 
 ### Changed

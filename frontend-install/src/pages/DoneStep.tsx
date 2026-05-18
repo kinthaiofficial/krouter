@@ -1,7 +1,14 @@
 import { useState, useEffect } from 'react'
 import { api } from '../api/client'
 
-export default function DoneStep() {
+interface Props {
+  /** Override for tests: max poll attempts before showing timeout error. */
+  maxAttempts?: number
+  /** Override for tests: ms between polls. */
+  pollIntervalMs?: number
+}
+
+export default function DoneStep({ maxAttempts = 40, pollIntervalMs = 1500 }: Props) {
   const [launching, setLaunching] = useState(false)
   const [error, setError] = useState('')
 
@@ -9,10 +16,9 @@ export default function DoneStep() {
     if (!launching) return
     let stopped = false
     let attempts = 0
-    const MAX = 40 // ~60 s
 
     async function poll() {
-      while (!stopped && attempts < MAX) {
+      while (!stopped && attempts < maxAttempts) {
         attempts++
         try {
           const res = await api.daemonReady()
@@ -21,7 +27,7 @@ export default function DoneStep() {
             return
           }
         } catch { /* ignore */ }
-        await new Promise(r => setTimeout(r, 1500))
+        await new Promise(r => setTimeout(r, pollIntervalMs))
       }
       if (!stopped) {
         setError('KRouter took too long to start. Open http://127.0.0.1:8403/krouter/ manually.')
@@ -30,7 +36,7 @@ export default function DoneStep() {
     }
     poll()
     return () => { stopped = true }
-  }, [launching])
+  }, [launching, maxAttempts, pollIntervalMs])
 
   async function handleOpen() {
     setError('')
