@@ -53,8 +53,10 @@ func main() {
 
 	openBrowser(url)
 
-	// Block until the process is killed (the browser wizard will redirect away after finalize).
-	select {}
+	// Block until the install wizard completes and the browser has been redirected
+	// to the dashboard. ShutdownCh is closed by handleDaemonReady once ready:true
+	// has been sent, so we exit cleanly instead of waiting to be killed.
+	<-srv.ShutdownCh()
 }
 
 func randomToken() (string, error) {

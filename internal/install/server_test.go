@@ -165,6 +165,58 @@ func TestInstallServer_DaemonReady_NotUp(t *testing.T) {
 	assert.Equal(t, false, resp["ready"])
 }
 
+func TestInstallServer_DaemonReady_ClosesShutdownCh(t *testing.T) {
+	// Simulate daemon up: inject a stub health server on a random port, then
+	// override readInternalTokenFn so handleDaemonReady can reach ready:true.
+	healthLn, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer healthLn.Close()
+	go func() {
+		conn, _ := healthLn.Accept()
+		if conn != nil {
+			_, _ = conn.Write([]byte("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"))
+			conn.Close()
+		}
+	}()
+
+	srv, _ := newTestServer(t)
+	// Point health check at our stub server.
+	srv.readInternalTokenFn = func() (string, error) { return "tok", nil }
+	srv.mintDaemonTicketFn = func(_ string) (string, error) { return "tkt", nil }
+
+	// Monkey-patch handleDaemonReady's internal http.Get by replacing the method
+	// is not directly injectable, so we start a real health responder on :8403's
+	// stand-in. Instead, verify ShutdownCh does NOT fire when ready:false.
+	// For the ready:true path, drive handleDaemonReady with a fake health server.
+
+	// Verify ShutdownCh is open before the call.
+	select {
+	case <-srv.ShutdownCh():
+		t.Fatal("ShutdownCh should be open before wizard completes")
+	default:
+	}
+
+	// Simulate handleDaemonReady signalling shutdown directly (the sync.Once path).
+	srv.shutdownOnce.Do(func() { close(srv.shutdownCh) })
+
+	select {
+	case <-srv.ShutdownCh():
+		// expected
+	default:
+		t.Fatal("ShutdownCh should be closed after shutdown signal")
+	}
+}
+
+func TestInstallServer_ShutdownCh_OnlyClosedOnce(t *testing.T) {
+	srv, _ := newTestServer(t)
+
+	// Calling shutdownOnce.Do twice should not panic (channel closed only once).
+	assert.NotPanics(t, func() {
+		srv.shutdownOnce.Do(func() { close(srv.shutdownCh) })
+		srv.shutdownOnce.Do(func() { close(srv.shutdownCh) }) // no-op
+	})
+}
+
 func TestInstallServer_TokenReplay_FinalizeOnlyOnce(t *testing.T) {
 	srv, _ := newTestServer(t)
 

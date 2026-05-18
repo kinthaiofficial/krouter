@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.23] - 2026-05-18
+
+### Fixed
+- **安装完成后 installer 进程自动退出** — `krouter-installer` 此前以 `select {}`
+  永久阻塞，安装向导结束后进程一直存在，导致用户在 Activity Monitor 里看到两个
+  "krouter" 进程（一个有图标的 installer、一个无图标的 daemon）。
+  现在 `handleDaemonReady` 在返回 `ready: true` 后 500 ms 关闭一个 shutdown
+  channel，`main.go` 阻塞在该 channel 而非 `select {}`，收到信号后正常退出。
+  安装完成后用户只会看到一个 krouter daemon 进程。
+
+---
+
 ## [2.0.22] - 2026-05-18
 
 ### Fixed

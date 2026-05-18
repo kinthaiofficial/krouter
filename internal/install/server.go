@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -18,9 +19,11 @@ import (
 // Server is the HTTP API backend for the browser-based install wizard.
 // It runs on :8404 (or a nearby port) and is served only from krouter-installer.
 type Server struct {
-	token     string // single-use install token
-	finalized atomic.Bool
-	orch      *Orchestrator
+	token        string // single-use install token
+	finalized    atomic.Bool
+	orch         *Orchestrator
+	shutdownOnce sync.Once
+	shutdownCh   chan struct{}
 
 	// Override for tests.
 	readInternalTokenFn func() (string, error)
@@ -34,10 +37,18 @@ func NewServer(token string, orch *Orchestrator) *Server {
 	return &Server{
 		token:               token,
 		orch:                orch,
+		shutdownCh:          make(chan struct{}),
 		readInternalTokenFn: defaultReadInternalToken,
 		mintDaemonTicketFn:  defaultMintDaemonTicket,
 		waitForDaemonFn:     defaultWaitForDaemon,
 	}
+}
+
+// ShutdownCh returns a channel that is closed when the install wizard has
+// finished and the browser has been redirected to the dashboard. The caller
+// (krouter-installer main) can block on this channel and exit cleanly.
+func (s *Server) ShutdownCh() <-chan struct{} {
+	return s.shutdownCh
 }
 
 // SetUIAssets sets the embedded filesystem used to serve the install wizard frontend.
@@ -250,6 +261,12 @@ func (s *Server) handleDaemonReady(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, map[string]any{"ready": true, "redirect_url": redirectURL})
+
+	// Signal main to exit after the browser has had time to process the redirect.
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		s.shutdownOnce.Do(func() { close(s.shutdownCh) })
+	}()
 }
 
 // defaultWaitForDaemon polls :8403/health until the daemon responds or 10 s elapses.
