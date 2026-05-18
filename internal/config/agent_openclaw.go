@@ -14,6 +14,21 @@ const proxyBase = "http://127.0.0.1:8402"
 // DisconnectOpenClaw removes it so users are not left with an unusable key.
 const placeholderAPIKey = "${ANTHROPIC_API_KEY}"
 
+// defaultOpenClawModels is injected into models.providers.anthropic.models when
+// that field is absent. OpenClaw schema requires a non-nil array; without it the
+// agent crash-loops on startup. The list uses current production Claude model IDs.
+// Only injected when absent; existing user-configured lists are never overwritten.
+var defaultOpenClawModels = []any{
+	"claude-opus-4-5",
+	"claude-sonnet-4-5",
+	"claude-haiku-4-5",
+	"claude-3-7-sonnet-20250219",
+	"claude-3-5-sonnet-20241022",
+	"claude-3-5-haiku-20241022",
+	"claude-3-opus-20240229",
+	"claude-3-haiku-20240307",
+}
+
 // ConnectOpenClaw points the OpenClaw anthropic provider at the krouter proxy.
 // Only baseUrl and api are written; apiKey and all other existing fields are
 // preserved unchanged.
@@ -46,6 +61,11 @@ func ConnectOpenClaw(configPath string) error {
 	anthropic["baseUrl"] = proxyBase
 	anthropic["api"] = "anthropic-messages"
 	// Never touch apiKey — the user's real key must stay as-is.
+	// Ensure models is a non-nil array (OpenClaw schema requires it).
+	// Only set when absent; an existing user-configured list is preserved.
+	if _, hasModels := anthropic["models"]; !hasModels {
+		anthropic["models"] = defaultOpenClawModels
+	}
 
 	return writeJSON(configPath, root)
 }
@@ -114,6 +134,19 @@ func DisconnectOpenClaw(configPath string) error {
 		// leave real user-supplied apiKeys intact.
 		if provider["apiKey"] == placeholderAPIKey {
 			delete(provider, "apiKey")
+		}
+
+		// If no real apiKey remains, the anthropic section was created entirely by
+		// krouter (the user never had their own anthropic provider configured).
+		// Remove krouter-injected fields and clean up the now-empty section so the
+		// config is back to its original state.
+		if _, hasRealKey := provider["apiKey"]; !hasRealKey {
+			delete(provider, "models")
+			if len(provider) == 0 {
+				if provs := deepMap(root, "models", "providers"); provs != nil {
+					delete(provs, "anthropic")
+				}
+			}
 		}
 	}
 

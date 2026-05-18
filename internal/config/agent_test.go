@@ -32,6 +32,30 @@ func TestConnectOpenClaw_SetsBaseURLAndApi(t *testing.T) {
 	assert.Equal(t, "anthropic-messages", provider["api"])
 	// Real apiKey must be preserved — never overwritten with placeholder.
 	assert.Equal(t, "sk-ant-real", provider["apiKey"])
+	// models must be present (OpenClaw schema requires a non-nil array).
+	models, ok := provider["models"].([]any)
+	assert.True(t, ok, "models must be an array")
+	assert.NotEmpty(t, models, "models must be non-empty")
+}
+
+func TestConnectOpenClaw_PreservesExistingModels(t *testing.T) {
+	// If the user already has models configured, krouter must not overwrite them.
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	initial := `{"models":{"providers":{"anthropic":{"apiKey":"sk-real","models":["custom-model-1","custom-model-2"]}}}}`
+	require.NoError(t, os.WriteFile(cfg, []byte(initial), 0644))
+
+	require.NoError(t, config.ConnectOpenClaw(cfg))
+
+	data, _ := os.ReadFile(cfg)
+	var root map[string]any
+	require.NoError(t, json.Unmarshal(data, &root))
+
+	provider := root["models"].(map[string]any)["providers"].(map[string]any)["anthropic"].(map[string]any)
+	models, _ := provider["models"].([]any)
+	require.Len(t, models, 2, "user's custom models must be preserved unchanged")
+	assert.Equal(t, "custom-model-1", models[0])
+	assert.Equal(t, "custom-model-2", models[1])
 }
 
 func TestConnectOpenClaw_NoApiKeyInjectedWhenMissing(t *testing.T) {
@@ -94,7 +118,8 @@ func TestDisconnectOpenClaw_RemovesBaseURLAndApi(t *testing.T) {
 
 func TestDisconnectOpenClaw_RemovesOldPlaceholderApiKey(t *testing.T) {
 	// Old krouter versions wrote "${ANTHROPIC_API_KEY}" as a literal string.
-	// Disconnect must clean that up.
+	// Disconnect removes it and, since no real apiKey remains, also cleans up
+	// the entire krouter-created anthropic section.
 	dir := t.TempDir()
 	cfg := filepath.Join(dir, "openclaw.json")
 	old := `{"models":{"providers":{"anthropic":{"baseUrl":"http://127.0.0.1:8402","api":"anthropic-messages","apiKey":"${ANTHROPIC_API_KEY}"}}}}`
@@ -106,9 +131,51 @@ func TestDisconnectOpenClaw_RemovesOldPlaceholderApiKey(t *testing.T) {
 	var root map[string]any
 	require.NoError(t, json.Unmarshal(data, &root))
 
+	providers := root["models"].(map[string]any)["providers"].(map[string]any)
+	assert.NotContains(t, providers, "anthropic", "placeholder-only anthropic section must be fully removed")
+}
+
+func TestDisconnectOpenClaw_RemovesKrouterAddedSectionWhenNoRealKey(t *testing.T) {
+	// When the user had no anthropic provider before krouter, ConnectOpenClaw
+	// creates the whole section. DisconnectOpenClaw must remove it entirely.
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	// Simulate what ConnectOpenClaw writes when user had no prior anthropic config.
+	connected := `{"models":{"providers":{"anthropic":{"baseUrl":"http://127.0.0.1:8402","api":"anthropic-messages","models":["claude-sonnet-4-5"]}}}}`
+	require.NoError(t, os.WriteFile(cfg, []byte(connected), 0644))
+
+	require.NoError(t, config.DisconnectOpenClaw(cfg))
+
+	data, _ := os.ReadFile(cfg)
+	var root map[string]any
+	require.NoError(t, json.Unmarshal(data, &root))
+
+	providers := root["models"].(map[string]any)["providers"].(map[string]any)
+	assert.NotContains(t, providers, "anthropic", "krouter-created anthropic section must be fully removed")
+}
+
+func TestDisconnectOpenClaw_PreservesRealApiKeyAndCustomModels(t *testing.T) {
+	// When the user had their own anthropic config (real apiKey + custom models),
+	// disconnect must keep both intact and only remove krouter fields.
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	connected := `{"models":{"providers":{"anthropic":{"baseUrl":"http://127.0.0.1:8402","api":"anthropic-messages","apiKey":"sk-real","models":["custom-model-1","custom-model-2"]}}}}`
+	require.NoError(t, os.WriteFile(cfg, []byte(connected), 0644))
+
+	require.NoError(t, config.DisconnectOpenClaw(cfg))
+
+	data, _ := os.ReadFile(cfg)
+	var root map[string]any
+	require.NoError(t, json.Unmarshal(data, &root))
+
 	provider := root["models"].(map[string]any)["providers"].(map[string]any)["anthropic"].(map[string]any)
 	assert.NotContains(t, provider, "baseUrl")
-	assert.NotContains(t, provider, "apiKey", "placeholder apiKey must be removed")
+	assert.NotContains(t, provider, "api")
+	assert.Equal(t, "sk-real", provider["apiKey"], "real apiKey must survive disconnect")
+	models, _ := provider["models"].([]any)
+	require.Len(t, models, 2, "user's custom models must survive disconnect")
+	assert.Equal(t, "custom-model-1", models[0])
+	assert.Equal(t, "custom-model-2", models[1])
 }
 
 // ── Cursor ────────────────────────────────────────────────────────────────────
