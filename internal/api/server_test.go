@@ -535,3 +535,19 @@ func TestPairingExchange_NoService(t *testing.T) {
 	defer func() { _ = resp.Body.Close() }()
 	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
 }
+
+func TestHealth_Returns200WithoutAuth(t *testing.T) {
+	_, ts := newTestServer(t, nil)
+	// /health must be reachable without any auth token — it is polled by the
+	// installer to detect daemon readiness before a session is established.
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+"/health", nil)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body map[string]string
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Equal(t, "ok", body["status"])
+}

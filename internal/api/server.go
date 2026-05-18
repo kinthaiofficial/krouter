@@ -240,6 +240,12 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
+	// Health check — no auth required; used by the installer to detect daemon readiness.
+	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
+
 	// Auth endpoints — ticket mint requires Bearer; exchange requires no prior auth.
 	mux.HandleFunc("/internal/auth/ticket", s.handleMintTicket)
 	mux.HandleFunc("/internal/auth/exchange", s.handleExchangeTicket)

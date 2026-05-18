@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.22] - 2026-05-18
+
+### Fixed
+- **"KRouter took too long to start" — 根本原因** — 管理 API（port 8403）
+  从未注册 `/health` 路由；installer 的 `daemon-ready` 轮询一直得到 404
+  而非 200，永远返回 `{ready: false}`，导致 60 s 超时。现在 `/health` 已
+  注册且无需认证，1 个测试验证其行为。之前对 `waitPortFree`、`bootout`、
+  `stopRunningDaemon` 的修复解决的是"两个进程"和"拖拽安装"问题，
+  但超时 bug 的真正原因一直是这个缺失的端点。
+
+---
+
 ## [2.0.21] - 2026-05-18
 
 ### Fixed
