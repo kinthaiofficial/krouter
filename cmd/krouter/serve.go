@@ -126,7 +126,7 @@ The daemon listens on two ports:
 			reg.Register(moonshotadapter.NewWithKeyFn(keyFn("MOONSHOT_API_KEY", "moonshot"), sharedClient))
 			reg.Register(glmadapter.NewWithKeyFn(keyFn("ZHIPU_API_KEY", "glm"), sharedClient))
 			reg.Register(qwenadapter.NewWithKeyFn(keyFn("DASHSCOPE_API_KEY", "qwen"), sharedClient))
-			reg.Register(minimaxadapter.NewWithKeyFn(keyFn("MINIMAX_API_KEY", "minimax"), sharedClient))
+			reg.Register(minimaxadapter.New(sharedClient)) // transparent proxy — auth header comes from the agent (OpenClaw OAuth)
 
 			// Routing engine.
 			engine := routing.New(reg)

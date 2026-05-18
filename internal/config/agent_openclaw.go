@@ -14,6 +14,11 @@ const proxyBase = "http://127.0.0.1:8402"
 // DisconnectOpenClaw removes it so users are not left with an unusable key.
 const placeholderAPIKey = "${ANTHROPIC_API_KEY}"
 
+// minimaxPortalOriginalBaseURL is the upstream endpoint written by OpenClaw for
+// the minimax-portal provider. DisconnectOpenClaw restores it after removing
+// our proxyBase override so OpenClaw can reach MiniMax directly again.
+const minimaxPortalOriginalBaseURL = "https://api.minimaxi.com/anthropic/v1"
+
 // defaultOpenClawModels is injected into models.providers.anthropic.models when
 // that field is absent. OpenClaw schema requires a non-nil array; without it the
 // agent crash-loops on startup. The list uses current production Claude model IDs.
@@ -65,6 +70,13 @@ func ConnectOpenClaw(configPath string) error {
 	// Only set when absent; an existing user-configured list is preserved.
 	if _, hasModels := anthropic["models"]; !hasModels {
 		anthropic["models"] = defaultOpenClawModels
+	}
+
+	// If the user has a minimax-portal provider configured, redirect it through
+	// krouter as well. OpenClaw's OAuth flow (authHeader:true) generates the
+	// Authorization header itself — we only change baseUrl, nothing else.
+	if minimaxPortal := deepMap(providers, "minimax-portal"); minimaxPortal != nil {
+		minimaxPortal["baseUrl"] = proxyBase
 	}
 
 	return writeJSON(configPath, root)
@@ -147,6 +159,14 @@ func DisconnectOpenClaw(configPath string) error {
 					delete(provs, "anthropic")
 				}
 			}
+		}
+	}
+
+	// Restore minimax-portal baseUrl to the upstream MiniMax endpoint so OpenClaw
+	// can reach MiniMax directly again. Only touch baseUrl — never the OAuth fields.
+	if minimaxPortal := deepMap(root, "models", "providers", "minimax-portal"); minimaxPortal != nil {
+		if minimaxPortal["baseUrl"] == proxyBase {
+			minimaxPortal["baseUrl"] = minimaxPortalOriginalBaseURL
 		}
 	}
 

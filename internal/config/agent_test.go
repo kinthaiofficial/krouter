@@ -178,6 +178,80 @@ func TestDisconnectOpenClaw_PreservesRealApiKeyAndCustomModels(t *testing.T) {
 	assert.Equal(t, "custom-model-2", models[1])
 }
 
+func TestConnectOpenClaw_RedirectsMinimaxPortal_WhenPresent(t *testing.T) {
+	// If the user has a minimax-portal provider (OpenClaw's OAuth-based MiniMax),
+	// ConnectOpenClaw must redirect its baseUrl to krouter. All other fields
+	// (authHeader, oauth credentials, models) must be untouched.
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	initial := `{"models":{"providers":{"anthropic":{"apiKey":"sk-real"},"minimax-portal":{"baseUrl":"https://api.minimaxi.com/anthropic/v1","authHeader":true,"models":["MiniMax-M2.7"]}}}}`
+	require.NoError(t, os.WriteFile(cfg, []byte(initial), 0644))
+
+	require.NoError(t, config.ConnectOpenClaw(cfg))
+
+	data, _ := os.ReadFile(cfg)
+	var root map[string]any
+	require.NoError(t, json.Unmarshal(data, &root))
+
+	portal := root["models"].(map[string]any)["providers"].(map[string]any)["minimax-portal"].(map[string]any)
+	assert.Equal(t, "http://127.0.0.1:8402", portal["baseUrl"], "minimax-portal baseUrl must point to krouter")
+	assert.Equal(t, true, portal["authHeader"], "authHeader must be preserved")
+	models, _ := portal["models"].([]any)
+	assert.NotEmpty(t, models, "models list must be preserved")
+}
+
+func TestConnectOpenClaw_SkipsMinimaxPortal_WhenAbsent(t *testing.T) {
+	// minimax-portal is optional — must not be created if the user doesn't have it.
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	initial := `{"models":{"providers":{"anthropic":{"apiKey":"sk-real"}}}}`
+	require.NoError(t, os.WriteFile(cfg, []byte(initial), 0644))
+
+	require.NoError(t, config.ConnectOpenClaw(cfg))
+
+	data, _ := os.ReadFile(cfg)
+	var root map[string]any
+	require.NoError(t, json.Unmarshal(data, &root))
+
+	providers := root["models"].(map[string]any)["providers"].(map[string]any)
+	assert.NotContains(t, providers, "minimax-portal", "minimax-portal must not be created if absent")
+}
+
+func TestDisconnectOpenClaw_RestoresMinimaxPortalBaseURL(t *testing.T) {
+	// Disconnect must restore minimax-portal.baseUrl to the original MiniMax endpoint.
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	connected := `{"models":{"providers":{"anthropic":{"apiKey":"sk-real","baseUrl":"http://127.0.0.1:8402","api":"anthropic-messages"},"minimax-portal":{"baseUrl":"http://127.0.0.1:8402","authHeader":true,"models":["MiniMax-M2.7"]}}}}`
+	require.NoError(t, os.WriteFile(cfg, []byte(connected), 0644))
+
+	require.NoError(t, config.DisconnectOpenClaw(cfg))
+
+	data, _ := os.ReadFile(cfg)
+	var root map[string]any
+	require.NoError(t, json.Unmarshal(data, &root))
+
+	portal := root["models"].(map[string]any)["providers"].(map[string]any)["minimax-portal"].(map[string]any)
+	assert.Equal(t, "https://api.minimaxi.com/anthropic/v1", portal["baseUrl"], "minimax-portal baseUrl must be restored")
+	assert.Equal(t, true, portal["authHeader"], "authHeader must survive disconnect")
+}
+
+func TestDisconnectOpenClaw_IgnoresMinimaxPortal_WhenBaseURLIsNotKrouter(t *testing.T) {
+	// If minimax-portal.baseUrl is already something else (not krouter), don't touch it.
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	initial := `{"models":{"providers":{"anthropic":{"baseUrl":"http://127.0.0.1:8402","api":"anthropic-messages"},"minimax-portal":{"baseUrl":"https://some-other-proxy.example.com","authHeader":true}}}}`
+	require.NoError(t, os.WriteFile(cfg, []byte(initial), 0644))
+
+	require.NoError(t, config.DisconnectOpenClaw(cfg))
+
+	data, _ := os.ReadFile(cfg)
+	var root map[string]any
+	require.NoError(t, json.Unmarshal(data, &root))
+
+	portal := root["models"].(map[string]any)["providers"].(map[string]any)["minimax-portal"].(map[string]any)
+	assert.Equal(t, "https://some-other-proxy.example.com", portal["baseUrl"], "unrelated baseUrl must not be touched")
+}
+
 // ── Cursor ────────────────────────────────────────────────────────────────────
 
 func TestConnectCursor_SetsFields(t *testing.T) {
