@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.21] - 2026-05-18
+
+### Fixed
+- **macOS: "krouter is still running" / 两个 krouter 进程 / 无法升级** —
+  `krouter-installer` 现在启动时的第一个动作就是调用 `launchctl bootout`，
+  将正在运行的旧 daemon 从 launchd 监管中完全移除。此前：旧 daemon 注册了
+  `KeepAlive=true`，用户手动杀进程后 launchd 立即重启，导致永远无法替换；
+  macOS Finder 看到同名进程报错 "krouter is still running"，用户无从下手。
+  现在用户只需打开新版安装包，installer 会自动停掉旧进程再走安装流程，
+  无需任何手动操作。Linux/Windows 同理（systemctl stop / schtasks /End）。
+
+---
+
 ## [2.0.20] - 2026-05-18
 
 ### Fixed

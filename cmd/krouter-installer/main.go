@@ -12,11 +12,18 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/kinthaiofficial/krouter/internal/config"
 	"github.com/kinthaiofficial/krouter/internal/install"
 	"github.com/kinthaiofficial/krouter/internal/webui/installer"
 )
 
 func main() {
+	// Stop any running daemon before launching the wizard.
+	// This is the upgrade path: the old daemon is registered with KeepAlive=true,
+	// so killing it manually just causes launchd to restart it. bootout removes it
+	// from launchd supervision entirely, so the new binary can start cleanly.
+	stopRunningDaemon()
+
 	token, err := randomToken()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "krouter-installer: generate token:", err)
@@ -79,6 +86,19 @@ func daemonBinary() string {
 		}
 	}
 	return ""
+}
+
+// stopRunningDaemon stops the currently running krouter daemon (if any).
+// Best-effort: errors are silently ignored (daemon may not be installed yet).
+func stopRunningDaemon() {
+	switch runtime.GOOS {
+	case "darwin":
+		_ = config.StopLaunchAgent()
+	case "linux":
+		_ = config.StopSystemdService()
+	case "windows":
+		_ = config.StopTask()
+	}
 }
 
 func openBrowser(url string) {
