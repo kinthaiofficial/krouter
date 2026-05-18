@@ -274,6 +274,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/internal/devices", auth(http.HandlerFunc(s.handleDevices)))
 	mux.Handle("/internal/devices/", auth(http.HandlerFunc(s.handleDeviceDelete)))
 	mux.Handle("/internal/providers", auth(http.HandlerFunc(s.handleProviders)))
+	mux.Handle("/internal/agents", auth(http.HandlerFunc(s.handleAgents)))
 	mux.Handle("/internal/quota", auth(http.HandlerFunc(s.handleQuota)))
 	mux.Handle("/internal/update-apply", auth(http.HandlerFunc(s.handleUpdateApply)))
 	return mux
@@ -1001,6 +1002,16 @@ func (s *Server) handleProviders(w http.ResponseWriter, r *http.Request) {
 		out = []providerInfo{}
 	}
 	writeJSON(w, out)
+}
+
+// handleAgents handles GET /internal/agents.
+// Detects installed AI agents and reports their krouter connection status.
+func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, config.DetectAgentStatuses())
 }
 
 // handleQuota handles GET /internal/quota.

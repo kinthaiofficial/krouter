@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"time"
 )
 
@@ -34,6 +35,49 @@ func ConnectOpenClaw(configPath string) error {
 	})
 
 	return writeJSON(configPath, root)
+}
+
+// IsOpenClawConnected reports whether the OpenClaw config at configPath has its
+// Anthropic provider baseUrl pointing at the krouter proxy.
+func IsOpenClawConnected(configPath string) bool {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return false
+	}
+	var root map[string]any
+	if err := json.Unmarshal(data, &root); err != nil {
+		return false
+	}
+	provider := deepMap(root, "models", "providers", "anthropic")
+	if provider == nil {
+		return false
+	}
+	baseURL, _ := provider["baseUrl"].(string)
+	return baseURL == proxyBase
+}
+
+// ReadOpenClawProviderNames returns the names of LLM providers configured in
+// the OpenClaw config at configPath (e.g. ["anthropic", "minimax"]).
+// Returns nil on read/parse error.
+func ReadOpenClawProviderNames(configPath string) []string {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil
+	}
+	var root map[string]any
+	if err := json.Unmarshal(data, &root); err != nil {
+		return nil
+	}
+	providers := deepMap(root, "models", "providers")
+	if len(providers) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(providers))
+	for k := range providers {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // DisconnectOpenClaw removes kinthai routing fields from the OpenClaw config.

@@ -193,3 +193,67 @@ func TestDisconnectHermes_RemovesBaseURL(t *testing.T) {
 	anthropic := providers["anthropic"].(map[string]any)
 	assert.NotContains(t, anthropic, "base_url")
 }
+
+// ── IsOpenClawConnected ───────────────────────────────────────────────────────
+
+func TestIsOpenClawConnected_True(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	connected := `{"models":{"providers":{"anthropic":{"baseUrl":"http://127.0.0.1:8402","api":"anthropic-messages"}}}}`
+	require.NoError(t, os.WriteFile(cfg, []byte(connected), 0644))
+	assert.True(t, config.IsOpenClawConnected(cfg))
+}
+
+func TestIsOpenClawConnected_False_WrongURL(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	other := `{"models":{"providers":{"anthropic":{"baseUrl":"https://api.anthropic.com"}}}}`
+	require.NoError(t, os.WriteFile(cfg, []byte(other), 0644))
+	assert.False(t, config.IsOpenClawConnected(cfg))
+}
+
+func TestIsOpenClawConnected_False_NoBaseURL(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	require.NoError(t, os.WriteFile(cfg, []byte(`{}`), 0644))
+	assert.False(t, config.IsOpenClawConnected(cfg))
+}
+
+// ── ReadOpenClawProviderNames ─────────────────────────────────────────────────
+
+func TestReadOpenClawProviderNames_Multi(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	content := `{"models":{"providers":{"anthropic":{},"minimax":{},"openai":{}}}}`
+	require.NoError(t, os.WriteFile(cfg, []byte(content), 0644))
+
+	names := config.ReadOpenClawProviderNames(cfg)
+	assert.Equal(t, []string{"anthropic", "minimax", "openai"}, names)
+}
+
+func TestReadOpenClawProviderNames_Empty(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	require.NoError(t, os.WriteFile(cfg, []byte(`{}`), 0644))
+	assert.Nil(t, config.ReadOpenClawProviderNames(cfg))
+}
+
+// ── IsClaudeCodeConnected ─────────────────────────────────────────────────────
+
+func TestIsClaudeCodeConnected_True(t *testing.T) {
+	dir := t.TempDir()
+	rc := filepath.Join(dir, ".zshrc")
+	require.NoError(t, config.ConnectClaudeCode(rc))
+	assert.True(t, config.IsClaudeCodeConnected(rc))
+}
+
+func TestIsClaudeCodeConnected_False(t *testing.T) {
+	dir := t.TempDir()
+	rc := filepath.Join(dir, ".zshrc")
+	require.NoError(t, os.WriteFile(rc, []byte("# plain rc\n"), 0644))
+	assert.False(t, config.IsClaudeCodeConnected(rc))
+}
+
+func TestIsClaudeCodeConnected_MissingFile(t *testing.T) {
+	assert.False(t, config.IsClaudeCodeConnected("/tmp/nonexistent-rc-file"))
+}

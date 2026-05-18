@@ -13,6 +13,17 @@ type AgentInfo struct {
 	CLIPath    string // for claude-code: path from exec.LookPath
 }
 
+// AgentStatus enriches AgentInfo with live connection and provider data.
+type AgentStatus struct {
+	AgentInfo
+	// Connected is true when the agent is confirmed to be routing through the
+	// krouter proxy (baseUrl / env var points to 127.0.0.1:8402).
+	Connected bool `json:"connected"`
+	// Providers lists LLM provider names found in the agent's own config
+	// (non-empty only for agents whose config we can read, e.g. openclaw).
+	Providers []string `json:"providers,omitempty"`
+}
+
 // DetectInstalledAgents scans well-known paths for installed AI agents.
 // See spec/07-auto-config.md §5.
 func DetectInstalledAgents() []AgentInfo {
@@ -43,6 +54,34 @@ func DetectInstalledAgents() []AgentInfo {
 	}
 
 	return found
+}
+
+// DetectAgentStatuses returns all detected agents enriched with connection
+// status and (for supported agents) their configured LLM provider names.
+// Safe to call at any time — reads config files but never writes.
+func DetectAgentStatuses() []AgentStatus {
+	agents := DetectInstalledAgents()
+	if len(agents) == 0 {
+		return []AgentStatus{}
+	}
+
+	out := make([]AgentStatus, 0, len(agents))
+	rcPath := DetectShellRC()
+
+	for _, a := range agents {
+		s := AgentStatus{AgentInfo: a}
+		switch a.Name {
+		case "openclaw":
+			s.Connected = IsOpenClawConnected(a.ConfigPath)
+			s.Providers = ReadOpenClawProviderNames(a.ConfigPath)
+		case "claude-code":
+			s.Connected = IsClaudeCodeConnected(rcPath)
+		case "hermes", "cursor":
+			// Connection detection not yet implemented for these agents.
+		}
+		out = append(out, s)
+	}
+	return out
 }
 
 func fileExists(path string) bool {

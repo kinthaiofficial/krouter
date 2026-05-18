@@ -44,6 +44,16 @@ func DetectShellRC() string {
 	}
 }
 
+// IsClaudeCodeConnected reports whether the shell RC at shellRCPath contains
+// the krouter marker block (meaning ANTHROPIC_BASE_URL is set on shell login).
+func IsClaudeCodeConnected(shellRCPath string) bool {
+	content, err := readOrEmpty(shellRCPath)
+	if err != nil {
+		return false
+	}
+	return strings.Contains(content, markerBegin)
+}
+
 // ConnectClaudeCode appends the kinthai shell integration marker block to shellRCPath.
 // Idempotent: skips if the marker is already present.
 func ConnectClaudeCode(shellRCPath string) error {

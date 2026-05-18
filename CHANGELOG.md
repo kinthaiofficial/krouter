@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.25] - 2026-05-18
+
+### Added
+- **`GET /internal/agents`** — 新 API 端点，实时探测已安装的 AI agent 并报告
+  krouter 连接状态：
+  - OpenClaw: 检查 `~/.openclaw/openclaw.json` 是否存在，`models.providers.anthropic.baseUrl`
+    是否指向 `http://127.0.0.1:8402`，并列出配置文件中的所有 LLM provider 名称
+    （如 anthropic、minimax）
+  - Claude Code: 检查 `~/.zshrc` / `~/.bashrc` / `~/.bash_profile` 是否包含
+    krouter shell integration marker block
+  - Cursor / Hermes: 检测文件是否存在（连接状态检测后续实现）
+- **Providers 页 "AI Agents" 区块** — 展示每个 agent 的探测结果、连接状态
+  （Connected / Not connected 徽章）、配置文件路径、以及 agent 内部配置的
+  LLM provider 列表；每 15 s 自动刷新
+- `IsOpenClawConnected(configPath)` — 读取 OpenClaw 配置，判断是否已接入 krouter
+- `ReadOpenClawProviderNames(configPath)` — 读取 OpenClaw 配置内所有 provider 名称
+- `IsClaudeCodeConnected(shellRCPath)` — 检查 shell RC 是否包含 krouter marker
+- `DetectAgentStatuses()` — 在 `DetectInstalledAgents()` 基础上补充连接状态和 provider 列表
+- 8 个单元测试覆盖上述新函数
+
+---
+
 ## [2.0.24] - 2026-05-18
 
 ### Changed
