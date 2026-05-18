@@ -22,8 +22,6 @@ func newTestServer(t *testing.T) (*Server, *testHooks) {
 	ui := NullUI{}
 	orch, hooks := testOrchestrator(ui, Options{SrcBinary: "/tmp/krouter-src"})
 	srv := NewServer(testToken, orch)
-	srv.readInternalTokenFn = func() (string, error) { return "daemon-tok", nil }
-	srv.mintDaemonTicketFn = func(_ string) (string, error) { return "test-ticket-xyz", nil }
 	srv.waitForDaemonFn = func() {} // skip polling in unit tests
 	return srv, hooks
 }
@@ -152,8 +150,6 @@ func TestInstallServer_Finalize_ReturnsOK(t *testing.T) {
 
 func TestInstallServer_DaemonReady_NotUp(t *testing.T) {
 	srv, _ := newTestServer(t)
-	// Don't start a real daemon — readInternalTokenFn returns error.
-	srv.readInternalTokenFn = func() (string, error) { return "", errors.New("daemon not running") }
 
 	w := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(w, authed(httptest.NewRequest(http.MethodGet, "/api/install/daemon-ready", nil)))
@@ -180,14 +176,8 @@ func TestInstallServer_DaemonReady_ClosesShutdownCh(t *testing.T) {
 	}()
 
 	srv, _ := newTestServer(t)
-	// Point health check at our stub server.
-	srv.readInternalTokenFn = func() (string, error) { return "tok", nil }
-	srv.mintDaemonTicketFn = func(_ string) (string, error) { return "tkt", nil }
 
-	// Monkey-patch handleDaemonReady's internal http.Get by replacing the method
-	// is not directly injectable, so we start a real health responder on :8403's
-	// stand-in. Instead, verify ShutdownCh does NOT fire when ready:false.
-	// For the ready:true path, drive handleDaemonReady with a fake health server.
+	// Verify ShutdownCh fires via the sync.Once path (direct signal test).
 
 	// Verify ShutdownCh is open before the call.
 	select {

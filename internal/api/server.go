@@ -23,9 +23,7 @@
 //
 // Web UI endpoints:
 //
-//	POST /internal/auth/ticket     → mint single-use ticket (Bearer required)
-//	GET  /internal/auth/exchange   → exchange ticket for session cookie
-//	GET  /internal/events          → SSE stream (session cookie or Bearer)
+//	GET  /internal/events          → SSE stream (Bearer or same-origin browser)
 //	GET  /internal/settings        → read all settings
 //	PATCH /internal/settings       → update settings fields
 //	GET  /internal/budget          → today's cost + savings breakdown
@@ -87,10 +85,6 @@ type Server struct {
 	buildTime string
 	ports     struct{ proxy, mgmt int }
 
-	// Web UI auth.
-	sessions *sessionStore
-	tickets  *ticketStore
-
 	// SSE broadcast.
 	subsMu   sync.Mutex
 	subs     []chan sseEvent
@@ -101,12 +95,10 @@ type Server struct {
 // store may be nil (returns defaults for all store-backed endpoints).
 func New(store *storage.Store, version string, proxyPort, mgmtPort int) *Server {
 	return &Server{
-		store:    store,
-		startAt:  time.Now(),
-		version:  version,
-		ports:    struct{ proxy, mgmt int }{proxyPort, mgmtPort},
-		sessions: newSessionStore(),
-		tickets:  &ticketStore{},
+		store:   store,
+		startAt: time.Now(),
+		version: version,
+		ports:   struct{ proxy, mgmt int }{proxyPort, mgmtPort},
 	}
 }
 
@@ -234,12 +226,6 @@ func (s *Server) ServeWithTLS(ctx context.Context, host string, port int, certPE
 	}
 }
 
-// AuthMiddleware validates Bearer token OR session cookie.
-// Kept for backward compatibility with external callers; delegates to authMiddleware.
-func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
-	return s.authMiddleware(next)
-}
-
 // Handler returns the authenticated mux (used in tests without Serve).
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -250,14 +236,10 @@ func (s *Server) Handler() http.Handler {
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	// Auth endpoints — ticket mint requires Bearer; exchange requires no prior auth.
-	mux.HandleFunc("/internal/auth/ticket", s.handleMintTicket)
-	mux.HandleFunc("/internal/auth/exchange", s.handleExchangeTicket)
-
 	// Static Web UI.
 	mountUI(mux)
 
-	// Authenticated endpoints.
+	// All /internal/* endpoints: Bearer OR same-origin browser (CSRF guard built-in).
 	auth := s.authMiddleware
 	mux.Handle("/internal/status", auth(http.HandlerFunc(s.handleStatus)))
 	mux.Handle("/internal/logs", auth(http.HandlerFunc(s.handleLogs)))

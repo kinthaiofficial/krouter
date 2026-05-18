@@ -1,14 +1,11 @@
 package install
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/fs"
 	"net"
 	"net/http"
-	"os"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -26,21 +23,17 @@ type Server struct {
 	shutdownCh   chan struct{}
 
 	// Override for tests.
-	readInternalTokenFn func() (string, error)
-	mintDaemonTicketFn  func(internalToken string) (string, error)
-	waitForDaemonFn     func() // polls :8403/health; injectable for tests
-	uiAssets            fs.FS  // if non-nil, served at /
+	waitForDaemonFn func() // polls :8403/health; injectable for tests
+	uiAssets        fs.FS  // if non-nil, served at /
 }
 
 // NewServer creates a Server with the given install token and orchestrator.
 func NewServer(token string, orch *Orchestrator) *Server {
 	return &Server{
-		token:               token,
-		orch:                orch,
-		shutdownCh:          make(chan struct{}),
-		readInternalTokenFn: defaultReadInternalToken,
-		mintDaemonTicketFn:  defaultMintDaemonTicket,
-		waitForDaemonFn:     defaultWaitForDaemon,
+		token:           token,
+		orch:            orch,
+		shutdownCh:      make(chan struct{}),
+		waitForDaemonFn: defaultWaitForDaemon,
 	}
 }
 
@@ -251,16 +244,10 @@ func (s *Server) handleDaemonReady(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = resp.Body.Close()
 
-	redirectURL := "http://127.0.0.1:8403/krouter/"
-	if internalToken, err := s.readInternalTokenFn(); err == nil {
-		if ticket, err := s.mintDaemonTicketFn(internalToken); err == nil && ticket != "" {
-			redirectURL = fmt.Sprintf(
-				"http://127.0.0.1:8403/internal/auth/exchange?ticket=%s&redirect=/krouter/",
-				ticket,
-			)
-		}
-	}
-	writeJSON(w, map[string]any{"ready": true, "redirect_url": redirectURL})
+	// No ticket/session needed — the browser dashboard uses Origin-check auth.
+	// Direct redirect to the dashboard; browser's same-origin Origin header is
+	// sufficient for the management API to accept subsequent requests.
+	writeJSON(w, map[string]any{"ready": true, "redirect_url": "http://127.0.0.1:8403/krouter/"})
 
 	// Signal main to exit after the browser has had time to process the redirect.
 	go func() {
@@ -283,40 +270,3 @@ func defaultWaitForDaemon() {
 	}
 }
 
-func defaultReadInternalToken() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	data, err := os.ReadFile(filepath.Join(home, ".kinthai", "internal-token"))
-	if err != nil {
-		return "", err
-	}
-	return string(bytes.TrimSpace(data)), nil
-}
-
-func defaultMintDaemonTicket(internalToken string) (string, error) {
-	req, err := http.NewRequest(http.MethodPost, "http://127.0.0.1:8403/internal/auth/ticket", nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Authorization", "Bearer "+internalToken)
-
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("mint ticket: status %d", resp.StatusCode)
-	}
-	var body struct {
-		Ticket string `json:"ticket"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return "", err
-	}
-	return body.Ticket, nil
-}

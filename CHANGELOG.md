@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.34] - 2026-05-18
+
+### Changed
+- **Web UI 认证简化**：废弃 session cookie + ticket-exchange 方案，改为基于 `Origin` header 的 CSRF 防护。认证中间件决策顺序：① 有效 Bearer token → 无条件放行（CLI / 程序化访问）；② Origin 存在且不等于 `http://127.0.0.1:8403` → 403（跨域拦截，防 CSRF）；③ 无 Origin 或正确 Origin → 放行（curl / 浏览器 dashboard）。浏览器访问 dashboard 不再需要任何登录流程，daemon 重启也不影响体验。
+- **删除端点**：`POST /internal/auth/ticket`、`GET /internal/auth/exchange` 已移除
+- **install server 简化**：`handleDaemonReady` 不再 mint ticket，直接返回 `redirect_url: /krouter/`；移除 `readInternalTokenFn` / `mintDaemonTicketFn` 依赖
+
+### Security
+- 安全性等效：Origin header 由浏览器自动设置且不可被跨域 JS 伪造（W3C CORS 规范强制）；curl / CLI 不发 Origin，不受影响；有效 Bearer token 可绕过 CSRF 检查（持有 token 即已认证）
+
 ## [2.0.33] - 2026-05-18
 
 ### Fixed

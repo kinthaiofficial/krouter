@@ -63,12 +63,16 @@ func TestGetBudget_WithTodayRequests(t *testing.T) {
 	assert.InDelta(t, 0.5, body["cost_today_usd"], 0.001)
 }
 
-func TestGetBudget_RequiresAuth(t *testing.T) {
+func TestGetBudget_CrossOriginBlocked(t *testing.T) {
 	_, ts := newTestServer(t, nil)
-	resp, err := http.Get(ts.URL + "/internal/budget")
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet,
+		ts.URL+"/internal/budget", nil)
+	require.NoError(t, err)
+	req.Header.Set("Origin", "https://evil.com")
+	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
-	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 }
 
 func TestGetBudget_MethodNotAllowed(t *testing.T) {

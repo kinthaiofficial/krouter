@@ -116,12 +116,16 @@ func TestSSE_AllEventTypes(t *testing.T) {
 	}
 }
 
-func TestSSE_RequiresAuth(t *testing.T) {
+func TestSSE_CrossOriginBlocked(t *testing.T) {
 	_, ts := newTestServer(t, nil)
-	resp, err := http.Get(ts.URL + "/internal/events")
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet,
+		ts.URL+"/internal/events", nil)
+	require.NoError(t, err)
+	req.Header.Set("Origin", "https://evil.com")
+	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
-	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 }
 
 func TestSSE_MethodNotAllowed(t *testing.T) {

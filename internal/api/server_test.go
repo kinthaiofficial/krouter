@@ -71,25 +71,46 @@ func doRequest(t *testing.T, ts *httptest.Server, path, token string) *http.Resp
 	return resp
 }
 
-// ── Auth middleware ──────────────────────────────────────────────────────────
+// ── Auth / CSRF protection ───────────────────────────────────────────────────
 
-func TestAuth_MissingToken(t *testing.T) {
+func TestAuth_NoTokenNoOrigin_Allowed(t *testing.T) {
+	// curl-style: no Bearer token, no Origin header → allowed (no CSRF risk).
 	_, ts := newTestServer(t, nil)
 	resp := doRequest(t, ts, "/internal/status", "")
 	defer func() { _ = resp.Body.Close() }()
-	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
-func TestAuth_WrongToken(t *testing.T) {
+func TestAuth_CrossOrigin_Blocked(t *testing.T) {
+	// Cross-origin request without a valid Bearer token → 403.
 	_, ts := newTestServer(t, nil)
-	resp := doRequest(t, ts, "/internal/status", "wrong-token")
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet,
+		ts.URL+"/internal/status", nil)
+	require.NoError(t, err)
+	req.Header.Set("Origin", "https://evil.com")
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
-	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 }
 
 func TestAuth_CorrectToken(t *testing.T) {
 	_, ts := newTestServer(t, nil)
 	resp := doRequest(t, ts, "/internal/status", "test-token-123")
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestAuth_BearerOverridesOriginCheck(t *testing.T) {
+	// Correct Bearer token always works, even with a cross-origin header.
+	_, ts := newTestServer(t, nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet,
+		ts.URL+"/internal/status", nil)
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer test-token-123")
+	req.Header.Set("Origin", "https://some-remote-client.example.com")
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }

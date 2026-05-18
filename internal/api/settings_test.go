@@ -40,15 +40,16 @@ func TestGetSettings_ReturnsDefaults(t *testing.T) {
 	assert.Equal(t, "en", s.Language)
 }
 
-func TestGetSettings_RequiresAuth(t *testing.T) {
+func TestGetSettings_CrossOriginBlocked(t *testing.T) {
 	_, ts, _ := newTestServerWithSettings(t)
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet,
 		ts.URL+"/internal/settings", nil)
 	require.NoError(t, err)
+	req.Header.Set("Origin", "https://evil.com")
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
-	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 }
 
 func TestPatchSettings_Preset(t *testing.T) {
@@ -116,16 +117,17 @@ func TestPatchSettings_InvalidPreset(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 
-func TestPatchSettings_RequiresAuth(t *testing.T) {
+func TestPatchSettings_CrossOriginBlocked(t *testing.T) {
 	_, ts, _ := newTestServerWithSettings(t)
 	body := bytes.NewBufferString(`{"preset":"saver"}`)
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPatch,
 		ts.URL+"/internal/settings", body)
 	require.NoError(t, err)
+	req.Header.Set("Origin", "https://evil.com")
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
-	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 }
 
 func TestGetSettings_PatchRoundtrip(t *testing.T) {
