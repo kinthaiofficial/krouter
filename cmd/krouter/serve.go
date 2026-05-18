@@ -50,13 +50,19 @@ The daemon listens on two ports:
 			proxyPort, _ := cmd.Flags().GetInt("proxy-port")
 			mgmtPort, _ := cmd.Flags().GetInt("management-port")
 
-			// Exit silently if another instance is already serving on the proxy port.
-			// This prevents token-file clobbering when systemd or the installer
-			// starts a second copy while the first is still running.
+			// If the proxy port is already in use, wait for it to be freed before
+			// proceeding. During reinstall the old binary may still be shutting
+			// down when launchd/systemd starts the new one; waiting here means
+			// the new binary picks up the port as soon as the old one releases it
+			// instead of hitting launchd's 10 s ThrottleInterval restart delay.
+			// If the port is still busy after 10 s a permanent instance is running
+			// and we exit silently to avoid token-file clobbering.
 			if conn, err := net.DialTimeout("tcp",
 				fmt.Sprintf("127.0.0.1:%d", proxyPort), 200*time.Millisecond); err == nil {
 				conn.Close()
-				return nil
+				if !waitPortFree(fmt.Sprintf("127.0.0.1:%d", proxyPort), 10*time.Second, 100*time.Millisecond) {
+					return nil
+				}
 			}
 
 			logger := logging.New(logLevel)
@@ -260,6 +266,21 @@ func localLANIPs() []net.IP {
 		}
 	}
 	return ips
+}
+
+// waitPortFree polls addr every interval until it is no longer connectable or
+// timeout elapses. Returns true if the port became free, false on timeout.
+func waitPortFree(addr string, timeout, interval time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		conn, err := net.DialTimeout("tcp", addr, 200*time.Millisecond)
+		if err != nil {
+			return true
+		}
+		conn.Close()
+		time.Sleep(interval)
+	}
+	return false
 }
 
 // defaultDBPath returns the default SQLite database path (~/.kinthai/data.db).

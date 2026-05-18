@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.20] - 2026-05-18
+
+### Fixed
+- **macOS/Linux/Windows: "KRouter took too long to start" / two krouter processes** —
+  the proxy port-conflict guard in `serve.go` previously exited immediately (return nil)
+  when port 8402 was already in use. During reinstall the old binary is still shutting
+  down when launchd/systemd starts the new one, so the new binary would exit, launchd
+  would wait its default 10 s ThrottleInterval before retrying, and the installer's
+  60 s poll window would time out. The guard now polls every 100 ms (up to 10 s) for
+  the port to be freed; the new binary picks it up as soon as the old one releases it
+  with no ThrottleInterval delay. Falls back to silent exit only if the port is still
+  busy after 10 s (a permanent instance is genuinely running).
+- 4 unit tests covering `waitPortFree`: immediate return when free, waits until
+  released, times out correctly, distinguishes bound vs free address
+
+---
+
 ## [2.0.19] - 2026-05-18
 
 ### Added
