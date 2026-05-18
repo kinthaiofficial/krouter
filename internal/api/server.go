@@ -75,16 +75,17 @@ type sseEvent struct {
 
 // Server is the management API server.
 type Server struct {
-	token    string
-	store    *storage.Store
-	pricing  *pricing.Service
-	upgrade  *upgrade.Service
-	remote   *remote.Service
-	registry *providers.Registry
-	settings *config.Manager
-	startAt  time.Time
-	version  string
-	ports    struct{ proxy, mgmt int }
+	token     string
+	store     *storage.Store
+	pricing   *pricing.Service
+	upgrade   *upgrade.Service
+	remote    *remote.Service
+	registry  *providers.Registry
+	settings  *config.Manager
+	startAt   time.Time
+	version   string
+	buildTime string
+	ports     struct{ proxy, mgmt int }
 
 	// Web UI auth.
 	sessions *sessionStore
@@ -108,6 +109,9 @@ func New(store *storage.Store, version string, proxyPort, mgmtPort int) *Server 
 		tickets:  &ticketStore{},
 	}
 }
+
+// SetBuildTime stores the build timestamp for inclusion in /internal/status.
+func (s *Server) SetBuildTime(t string) { s.buildTime = t }
 
 // SetSettings wires in the settings manager for GET/PATCH /internal/settings.
 func (s *Server) SetSettings(m *config.Manager) { s.settings = m }
@@ -461,6 +465,9 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"pid":            os.Getpid(),
 		"proxy_port":     s.ports.proxy,
 		"mgmt_port":      s.ports.mgmt,
+	}
+	if s.buildTime != "" {
+		resp["build_time"] = s.buildTime
 	}
 	writeJSON(w, resp)
 }

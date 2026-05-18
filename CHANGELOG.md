@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.28] - 2026-05-18
+
+### Added
+- **Logs 页 SSE 实时追加**：`request_completed` 事件直接推送到 Logs 页，新请求无需等待轮询即时出现
+  - 单个稳定 SSE 连接；切换 agent 过滤器时通过 ref 避免 stale closure
+  - 内存上限 2000 条；超出后自动丢弃尾部
+- **Logs 页 Agent 下拉过滤器**：选中 agent 后使用 `?agent=name` 后端参数，只拉该 agent 的记录
+  - 下拉选项从 `/internal/agents` 动态读取
+  - 文本搜索框与 agent 过滤器可叠加使用
+- **`proxy → SSE` 接线**：`proxy.Server.SetOnComplete` 回调 + `serve.go` 接线，每次请求完成后立即广播 `request_completed` 事件（此前该事件类型存在但从未发送）
+- **About 页显示 build_time**：`/internal/status` 响应新增 `build_time` 字段；About 页在版本信息卡片中展示构建时间（`unknown` 时不显示）
+
+### Fixed
+- `request_completed` SSE 事件此前已在 Dashboard 监听但后端从未广播，现补全发送逻辑
+
 ## [2.0.27] - 2026-05-18
 
 ### Added

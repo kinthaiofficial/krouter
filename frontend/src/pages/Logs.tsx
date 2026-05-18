@@ -1,30 +1,78 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { Download } from 'lucide-react'
 import { api, type LogRecord } from '../api/client'
 
 const PAGE_SIZE = 50
 
+interface AgentOption {
+  name: string
+  label: string
+}
+
+const AGENT_LABELS: Record<string, string> = {
+  'openclaw': 'OpenClaw',
+  'claude-code': 'Claude Code',
+  'cursor': 'Cursor',
+  'hermes': 'Hermes',
+}
+
 export default function Logs() {
   const [search, setSearch] = useState('')
+  const [agentFilter, setAgentFilter] = useState('')
   const [page, setPage] = useState(0)
-  const { data: logs = [], isLoading } = useQuery({
-    queryKey: ['logs', 'full'],
-    queryFn: () => api.logs(500),
-    refetchInterval: 10_000,
+  const agentFilterRef = useRef(agentFilter)
+  useEffect(() => { agentFilterRef.current = agentFilter }, [agentFilter])
+
+  // Detected agents for the dropdown.
+  const { data: agentsRaw = [] } = useQuery<AgentOption[]>({
+    queryKey: ['agents-names'],
+    queryFn: () =>
+      fetch('/internal/agents', { credentials: 'include' })
+        .then((r) => r.json())
+        .then((list: { name: string }[]) =>
+          list.map((a) => ({ name: a.name, label: AGENT_LABELS[a.name] ?? a.name }))
+        ),
+    staleTime: 60_000,
   })
 
+  // Initial log fetch — keyed by agentFilter so it refetches on change.
+  const { data: fetchedLogs = [], isLoading } = useQuery({
+    queryKey: ['logs', 'full', agentFilter],
+    queryFn: () => api.logs(500, agentFilter || undefined),
+    staleTime: Infinity, // SSE keeps it live; only refetch on filter change
+  })
+
+  // Accumulator that starts from the fetched data and grows via SSE.
+  const [liveLogs, setLiveLogs] = useState<LogRecord[]>([])
+  useEffect(() => { setLiveLogs(fetchedLogs) }, [fetchedLogs])
+
+  // SSE — single stable connection; filter applied per-event via ref.
+  useEffect(() => {
+    const es = new EventSource('/internal/events', { withCredentials: true })
+    es.addEventListener('request_completed', (e) => {
+      try {
+        const rec = JSON.parse(e.data) as LogRecord
+        const filter = agentFilterRef.current
+        if (!filter || rec.agent === filter) {
+          setLiveLogs((prev) => [rec, ...prev].slice(0, 2000))
+        }
+      } catch { /* ignore malformed events */ }
+    })
+    return () => es.close()
+  }, []) // stable — no deps
+
   const filtered = useMemo(() => {
-    if (!search.trim()) return logs
+    if (!search.trim()) return liveLogs
     const q = search.toLowerCase()
-    return logs.filter(
+    return liveLogs.filter(
       (r) =>
         r.model.toLowerCase().includes(q) ||
         r.provider.toLowerCase().includes(q) ||
         (r.agent ?? '').toLowerCase().includes(q) ||
         r.id.toLowerCase().includes(q),
     )
-  }, [logs, search])
+  }, [liveLogs, search])
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
   const page_ = Math.min(page, Math.max(0, totalPages - 1))
@@ -59,13 +107,32 @@ export default function Logs() {
         </button>
       </div>
 
-      <input
-        type="search"
-        placeholder="Search by model, provider, agent…"
-        value={search}
-        onChange={(e) => { setSearch(e.target.value); setPage(0) }}
-        className="w-full max-w-sm border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-      />
+      <div className="flex items-center gap-3 flex-wrap">
+        <input
+          type="search"
+          placeholder="Search by model, provider, agent…"
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setPage(0) }}
+          className="w-full max-w-xs border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+
+        {agentsRaw.length > 0 && (
+          <select
+            value={agentFilter}
+            onChange={(e) => { setAgentFilter(e.target.value); setPage(0) }}
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white"
+          >
+            <option value="">All agents</option>
+            {agentsRaw.map((a) => (
+              <option key={a.name} value={a.name}>{a.label}</option>
+            ))}
+          </select>
+        )}
+
+        <span className="text-xs text-gray-400 ml-auto">
+          {filtered.length} records · live
+        </span>
+      </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {isLoading ? (

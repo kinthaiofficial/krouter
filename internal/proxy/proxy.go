@@ -65,10 +65,11 @@ type Server struct {
 	httpClient   *http.Client
 	anthropicURL string // legacy: used when engine == nil (test mode)
 
-	engine   *routing.Engine
-	registry *providers.Registry
-	store    *storage.Store
-	pricing  *pricing.Service
+	engine     *routing.Engine
+	registry   *providers.Registry
+	store      *storage.Store
+	pricing    *pricing.Service
+	onComplete func(storage.RequestRecord) // optional; called after every logged request
 }
 
 // Option configures a Server.
@@ -104,6 +105,10 @@ func WithStore(st *storage.Store) Option {
 func WithPricing(p *pricing.Service) Option {
 	return func(s *Server) { s.pricing = p }
 }
+
+// SetOnComplete registers a callback invoked (in a goroutine) after each
+// request record is written to the store. Used to broadcast SSE events.
+func (s *Server) SetOnComplete(fn func(storage.RequestRecord)) { s.onComplete = fn }
 
 // New creates a proxy server with the given options.
 func New(opts ...Option) *Server {
@@ -767,26 +772,32 @@ func (s *Server) storeNewULID() string {
 
 // logRequest writes a request record, provider health update, and (for Anthropic)
 // quota increments to SQLite in a single goroutine to avoid write contention.
+// After the insert it calls onComplete (if set) so callers can broadcast SSE events.
 func (s *Server) logRequest(ctx context.Context, rec storage.RequestRecord) {
-	if s.store == nil {
+	if s.store == nil && s.onComplete == nil {
 		return
 	}
 	go func() {
 		bg := context.Background()
-		if err := s.store.InsertRequest(bg, rec); err != nil {
-			s.logger.Error("failed to log request", "err", err)
-		}
-		if rec.StatusCode >= 200 && rec.StatusCode < 300 {
-			_ = s.store.RecordSuccess(bg, rec.Provider)
-			if rec.Provider == "anthropic" {
-				total := rec.InputTokens + rec.OutputTokens
-				if total > 0 {
-					_ = s.store.IncrementQuota(bg, "5h", int64(total))
-					_ = s.store.IncrementQuota(bg, "weekly", int64(total))
-				}
+		if s.store != nil {
+			if err := s.store.InsertRequest(bg, rec); err != nil {
+				s.logger.Error("failed to log request", "err", err)
 			}
-		} else if rec.StatusCode > 0 {
-			_ = s.store.RecordFailure(bg, rec.Provider, rec.StatusCode)
+			if rec.StatusCode >= 200 && rec.StatusCode < 300 {
+				_ = s.store.RecordSuccess(bg, rec.Provider)
+				if rec.Provider == "anthropic" {
+					total := rec.InputTokens + rec.OutputTokens
+					if total > 0 {
+						_ = s.store.IncrementQuota(bg, "5h", int64(total))
+						_ = s.store.IncrementQuota(bg, "weekly", int64(total))
+					}
+				}
+			} else if rec.StatusCode > 0 {
+				_ = s.store.RecordFailure(bg, rec.Provider, rec.StatusCode)
+			}
+		}
+		if s.onComplete != nil {
+			s.onComplete(rec)
 		}
 	}()
 }

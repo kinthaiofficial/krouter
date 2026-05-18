@@ -85,6 +85,7 @@ export interface StatusResponse {
   pid: number
   proxy_port: number
   mgmt_port: number
+  build_time?: string
 }
 
 export const api = {
@@ -94,7 +95,7 @@ export const api = {
   usage: () => get<Usage>('/internal/usage'),
   budget: () => get<Budget>('/internal/budget'),
   quota: () => get<QuotaItem[]>('/internal/quota'),
-  logs: (n = 20) => get<LogRecord[]>(`/internal/logs?n=${n}`),
+  logs: (n = 20, agent?: string) => get<LogRecord[]>(`/internal/logs?n=${n}${agent ? `&agent=${encodeURIComponent(agent)}` : ''}`),
   preset: () => get<{ preset: Preset }>('/internal/preset'),
   setPreset: (preset: Preset) => post<{ preset: Preset }>('/internal/preset', { preset }),
 }

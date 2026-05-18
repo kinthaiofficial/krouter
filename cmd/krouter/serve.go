@@ -171,6 +171,7 @@ The daemon listens on two ports:
 
 			// Management API server.
 			apiSrv := api.New(store, Version, proxyPort, mgmtPort)
+			apiSrv.SetBuildTime(BuildTime)
 			apiSrv.SetPricing(pricingSvc)
 			if upgradeSvc != nil {
 				apiSrv.SetUpgrade(upgradeSvc)
@@ -178,6 +179,26 @@ The daemon listens on two ports:
 			apiSrv.SetRemote(remoteSvc)
 			apiSrv.SetRegistry(reg)
 			apiSrv.SetSettings(settings)
+
+			// Broadcast completed requests as SSE events so the Web UI updates live.
+			proxySrv.SetOnComplete(func(rec storage.RequestRecord) {
+				apiSrv.Broadcast("request_completed", map[string]any{
+					"id":              rec.ID,
+					"ts":              rec.Timestamp.UTC().Format(time.RFC3339),
+					"agent":           rec.Agent,
+					"protocol":        rec.Protocol,
+					"requested_model": rec.RequestedModel,
+					"provider":        rec.Provider,
+					"model":           rec.Model,
+					"input_tokens":    rec.InputTokens,
+					"output_tokens":   rec.OutputTokens,
+					"cost_micro_usd":  rec.CostMicroUSD,
+					"cost_usd":        float64(rec.CostMicroUSD) / 1_000_000,
+					"latency_ms":      rec.LatencyMS,
+					"status_code":     rec.StatusCode,
+					"error_message":   rec.ErrorMessage,
+				})
+			})
 
 			// Start management API. When remote access is toggled, the API
 			// restarts to switch between plain HTTP (127.0.0.1) and TLS (0.0.0.0).

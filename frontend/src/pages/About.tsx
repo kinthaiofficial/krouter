@@ -43,6 +43,9 @@ export default function About() {
             <span>PID: {status.pid}</span>
             <span>Proxy port: {status.proxy_port}</span>
             <span>API port: {status.mgmt_port}</span>
+            {status.build_time && status.build_time !== 'unknown' && (
+              <span className="col-span-2">Built: {status.build_time}</span>
+            )}
           </div>
         )}
       </div>
