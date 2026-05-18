@@ -20,19 +20,13 @@ const placeholderAPIKey = "${ANTHROPIC_API_KEY}"
 const minimaxPortalOriginalBaseURL = "https://api.minimaxi.com/anthropic/v1"
 
 // defaultOpenClawModels is injected into models.providers.anthropic.models when
-// that field is absent. OpenClaw schema requires a non-nil array; without it the
-// agent crash-loops on startup. The list uses current production Claude model IDs.
-// Only injected when absent; existing user-configured lists are never overwritten.
-var defaultOpenClawModels = []any{
-	"claude-opus-4-5",
-	"claude-sonnet-4-5",
-	"claude-haiku-4-5",
-	"claude-3-7-sonnet-20250219",
-	"claude-3-5-sonnet-20241022",
-	"claude-3-5-haiku-20241022",
-	"claude-3-opus-20240229",
-	"claude-3-haiku-20240307",
-}
+// that field is absent. OpenClaw schema requires a non-nil array (undefined crashes
+// the agent on startup); an empty array satisfies the schema.
+// OpenClaw loads its model catalog from plugin discovery, not from this field,
+// so an empty array leaves model selection fully intact.
+// String elements (previous implementation) are schema-invalid — each entry must
+// be a ModelDefinition object {id, name, ...}.
+var defaultOpenClawModels = []any{}
 
 // ConnectOpenClaw points the OpenClaw anthropic provider at the krouter proxy.
 // Only baseUrl and api are written; apiKey and all other existing fields are

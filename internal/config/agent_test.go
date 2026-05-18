@@ -32,10 +32,11 @@ func TestConnectOpenClaw_SetsBaseURLAndApi(t *testing.T) {
 	assert.Equal(t, "anthropic-messages", provider["api"])
 	// Real apiKey must be preserved — never overwritten with placeholder.
 	assert.Equal(t, "sk-ant-real", provider["apiKey"])
-	// models must be present (OpenClaw schema requires a non-nil array).
+	// models must be present as an array (OpenClaw schema requires non-nil array;
+	// empty is valid — OpenClaw loads its catalog via plugin discovery, not this field).
 	models, ok := provider["models"].([]any)
 	assert.True(t, ok, "models must be an array")
-	assert.NotEmpty(t, models, "models must be non-empty")
+	assert.NotNil(t, models, "models must not be nil")
 }
 
 func TestConnectOpenClaw_PreservesExistingModels(t *testing.T) {

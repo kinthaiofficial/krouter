@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.33] - 2026-05-18
+
+### Fixed
+- **Bug D — `defaultOpenClawModels` 格式错误**：之前注入的是字符串数组（如 `["claude-opus-4-5", ...]`），但 OpenClaw `ModelDefinitionSchema` 要求每个元素是对象（`{id, name, ...}`），全新机器首次运行 `krouter connect openclaw` 时 OpenClaw 会 schema validation crash。改为注入空数组 `[]`：空数组满足 `z.array(ModelDefinitionSchema)` schema、不会 crash；OpenClaw 通过 plugin 系统动态加载模型目录，不依赖该字段内容
+
 ## [2.0.32] - 2026-05-18
 
 ### Fixed
