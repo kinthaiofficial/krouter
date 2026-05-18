@@ -20,7 +20,7 @@ const windowLimits: Record<string, number> = {
 export default function QuotaBar({ quota }: Props) {
   const limit = windowLimits[quota.window] ?? 1
   const pct = Math.min(100, (quota.tokens_used / limit) * 100)
-  const color = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-yellow-500' : 'bg-blue-500'
+  const color = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-yellow-500' : 'bg-brand'
 
   return (
     <div>

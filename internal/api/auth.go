@@ -122,7 +122,7 @@ func (s *Server) handleExchangeTicket(w http.ResponseWriter, r *http.Request) {
 
 	redirect := r.URL.Query().Get("redirect")
 	if redirect == "" {
-		redirect = "/ui/"
+		redirect = "/krouter/"
 	}
 	http.Redirect(w, r, redirect, http.StatusFound)
 }

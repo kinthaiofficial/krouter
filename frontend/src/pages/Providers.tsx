@@ -11,10 +11,11 @@ interface ProviderInfo {
 }
 
 // Known providers with setup hints.
-const KNOWN_PROVIDERS: Record<string, { label: string; envKey: string; docs?: string }> = {
+const KNOWN_PROVIDERS: Record<string, { label: string; envKey: string }> = {
   anthropic: { label: 'Anthropic', envKey: 'ANTHROPIC_API_KEY' },
   openai: { label: 'OpenAI', envKey: 'OPENAI_API_KEY' },
   deepseek: { label: 'DeepSeek', envKey: 'DEEPSEEK_API_KEY' },
+  minimax: { label: 'MiniMax', envKey: 'MINIMAX_API_KEY' },
   moonshot: { label: 'Moonshot', envKey: 'MOONSHOT_API_KEY' },
   qwen: { label: 'Qwen (Alibaba)', envKey: 'QWEN_API_KEY' },
   groq: { label: 'Groq', envKey: 'GROQ_API_KEY' },
@@ -22,10 +23,13 @@ const KNOWN_PROVIDERS: Record<string, { label: string; envKey: string; docs?: st
 }
 
 export default function Providers() {
-  const { data: providers = [], isLoading } = useQuery<ProviderInfo[]>({
+  const { data: providers = [], isLoading, isError } = useQuery<ProviderInfo[]>({
     queryKey: ['providers'],
     queryFn: () =>
-      fetch('/internal/providers', { credentials: 'include' }).then((r) => r.json()),
+      fetch('/internal/providers', { credentials: 'include' }).then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json() as Promise<ProviderInfo[]>
+      }),
     refetchInterval: 15_000,
   })
 
@@ -40,6 +44,8 @@ export default function Providers() {
 
       {isLoading ? (
         <p className="text-sm text-gray-400">Loading…</p>
+      ) : isError ? (
+        <p className="text-sm text-red-500">Failed to load providers. Is the daemon running?</p>
       ) : (
         <>
           {configured.length > 0 && (

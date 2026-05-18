@@ -22,14 +22,17 @@ export default function Layout() {
   })
 
   return (
-    <div className="flex min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+    <div className="flex min-h-screen bg-surface dark:bg-gray-900 text-gray-900 dark:text-gray-100">
       {/* Sidebar */}
-      <aside className="w-56 shrink-0 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
-        <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-          <span className="font-semibold text-base">krouter</span>
-          {status && (
-            <span className="ml-2 text-xs text-gray-400">v{status.version}</span>
-          )}
+      <aside className="w-56 shrink-0 bg-white dark:bg-gray-800 border-r border-border dark:border-gray-700 flex flex-col">
+        <div className="px-5 py-4 border-b border-border dark:border-gray-700 flex items-center gap-2.5">
+          <img src="/krouter/favicon.svg" alt="" className="w-6 h-6 shrink-0" />
+          <div>
+            <span className="font-bold text-sm text-gray-900 dark:text-gray-100">KRouter</span>
+            {status && (
+              <span className="ml-1.5 text-xs text-gray-400">v{status.version}</span>
+            )}
+          </div>
         </div>
         <nav className="flex-1 px-3 py-3 space-y-0.5">
           {nav.map(({ to, label, icon: Icon, end }) => (
@@ -41,7 +44,7 @@ export default function Layout() {
                 [
                   'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors',
                   isActive
-                    ? 'bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-medium'
+                    ? 'bg-brand-light text-brand font-medium'
                     : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700',
                 ].join(' ')
               }
@@ -56,7 +59,7 @@ export default function Layout() {
             </NavLink>
           ))}
         </nav>
-        <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-400">
+        <div className="px-5 py-3 border-t border-border dark:border-gray-700 text-xs text-gray-400">
           {status ? (
             <span>proxy :{status.proxy_port}</span>
           ) : (

@@ -43,8 +43,8 @@ export default function Settings() {
               className={[
                 'flex-1 rounded-lg border px-3 py-2 text-sm capitalize transition-colors',
                 settings.preset === p
-                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300'
-                  : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500',
+                  ? 'border-brand bg-brand-light text-brand'
+                  : 'border-border dark:border-gray-600 hover:border-brand/50 dark:hover:border-gray-500',
               ].join(' ')}
             >
               {p}

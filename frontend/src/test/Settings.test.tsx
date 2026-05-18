@@ -33,7 +33,7 @@ describe('Settings page', () => {
     renderWithProviders(<Settings />)
     await waitFor(() => screen.getByText('balanced'))
     const balanced = screen.getByRole('button', { name: 'balanced' })
-    expect(balanced.className).toContain('blue')
+    expect(balanced.className).toContain('brand')
   })
 
   it('notification category toggles are rendered', async () => {

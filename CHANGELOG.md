@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.16] - 2026-05-18
+
+### Changed
+- **Dashboard URL**: management UI now served at `/krouter/` instead of `/ui/` —
+  bookmarks and shell output now show `http://127.0.0.1:8403/krouter/`
+- **Dashboard branding**: sidebar, active-nav highlight, preset buttons, quota bars,
+  and action buttons now use the KRouter green brand palette (`#25d366`) to match
+  the installer wizard; sidebar shows the KRouter logo and version tag
+- **Routing Preset buttons**: clicking a preset now gives immediate visual feedback
+  (optimistic update) instead of waiting for the server round-trip to confirm
+
+### Fixed
+- **Providers page**: raw `fetch` now throws on non-2xx responses and surfaces an
+  error message instead of silently rendering an empty list
+- **Providers page**: MiniMax added to the known-providers list so its setup hint
+  (`Set MINIMAX_API_KEY to enable`) appears when the key is not configured
+
+---
+
 ## [2.0.15] - 2026-05-18
 
 ### Fixed

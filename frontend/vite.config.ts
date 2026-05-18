@@ -7,7 +7,7 @@ import { dirname, resolve } from 'path'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
-  base: '/ui/',
+  base: '/krouter/',
   plugins: [react(), tailwindcss()],
   build: {
     outDir: resolve(__dirname, '../internal/webui/dist'),

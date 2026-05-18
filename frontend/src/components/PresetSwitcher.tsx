@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import type { Preset } from '../api/client'
 
 interface Props {
@@ -12,19 +13,32 @@ const presets: { value: Preset; label: string; description: string }[] = [
 ]
 
 export default function PresetSwitcher({ current, onSelect }: Props) {
+  const [optimistic, setOptimistic] = useState<Preset | null>(null)
+  const display = optimistic ?? current
+
+  useEffect(() => {
+    setOptimistic(null)
+  }, [current])
+
+  function handleClick(p: Preset) {
+    if (p === display) return
+    setOptimistic(p)
+    onSelect(p)
+  }
+
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-border dark:border-gray-700 p-5">
       <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">Routing Preset</h2>
       <div className="flex gap-2">
         {presets.map((p) => (
           <button
             key={p.value}
-            onClick={() => onSelect(p.value)}
+            onClick={() => handleClick(p.value)}
             className={[
               'flex-1 rounded-lg border px-3 py-2 text-sm text-left transition-colors',
-              current === p.value
-                ? 'border-blue-500 bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300'
-                : 'border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-500',
+              display === p.value
+                ? 'border-brand bg-brand-light text-brand font-semibold'
+                : 'border-border dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-brand/50 dark:hover:border-gray-500',
             ].join(' ')}
           >
             <div className="font-medium">{p.label}</div>

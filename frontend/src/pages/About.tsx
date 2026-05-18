@@ -61,7 +61,7 @@ export default function About() {
             <button
               onClick={() => applyUpdate.mutate()}
               disabled={applyUpdate.isPending || applyUpdate.isSuccess}
-              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg px-4 py-2 disabled:opacity-50"
+              className="flex items-center gap-1.5 bg-brand hover:bg-brand-dark text-white text-sm rounded-lg px-4 py-2 disabled:opacity-50"
             >
               <RefreshCw size={14} className={applyUpdate.isPending ? 'animate-spin' : ''} />
               {applyUpdate.isSuccess ? 'Restarting…' : 'Apply Update'}

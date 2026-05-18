@@ -17,7 +17,7 @@ const queryClient = new QueryClient({
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter basename="/ui">
+      <BrowserRouter basename="/krouter">
         <Routes>
           <Route element={<Layout />}>
             <Route index element={<Dashboard />} />

@@ -201,7 +201,7 @@ func (s *Server) handleConnectAgent(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleFinalize marks the install complete and returns a redirect URL
-// to the main daemon UI (:8403/ui/).
+// to the main daemon UI (:8403/krouter/).
 func (s *Server) handleFinalize(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -240,11 +240,11 @@ func (s *Server) handleDaemonReady(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = resp.Body.Close()
 
-	redirectURL := "http://127.0.0.1:8403/ui/"
+	redirectURL := "http://127.0.0.1:8403/krouter/"
 	if internalToken, err := s.readInternalTokenFn(); err == nil {
 		if ticket, err := s.mintDaemonTicketFn(internalToken); err == nil && ticket != "" {
 			redirectURL = fmt.Sprintf(
-				"http://127.0.0.1:8403/internal/auth/exchange?ticket=%s&redirect=/ui/",
+				"http://127.0.0.1:8403/internal/auth/exchange?ticket=%s&redirect=/krouter/",
 				ticket,
 			)
 		}

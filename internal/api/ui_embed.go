@@ -8,14 +8,14 @@ import (
 	"github.com/kinthaiofficial/krouter/internal/webui"
 )
 
-// mountUI registers /ui/* routes with SPA fallback onto mux.
+// mountUI registers /krouter/* routes with SPA fallback onto mux.
 func mountUI(mux *http.ServeMux) {
 	sub, err := fs.Sub(webui.Assets, "dist")
 	if err != nil {
 		return
 	}
 	fileServer := http.FileServer(http.FS(sub))
-	mux.Handle("/ui/", http.StripPrefix("/ui", spaHandler(fileServer, sub)))
+	mux.Handle("/krouter/", http.StripPrefix("/krouter", spaHandler(fileServer, sub)))
 }
 
 // spaHandler wraps a file server: requests for missing files return index.html.

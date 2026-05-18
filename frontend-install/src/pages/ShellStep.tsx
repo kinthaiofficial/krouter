@@ -29,7 +29,7 @@ export default function ShellStep({ onNext }: Props) {
         await new Promise(r => setTimeout(r, 1500))
       }
       if (!stopped) {
-        setError('KRouter took too long to start. Open http://127.0.0.1:8403/ui/ manually.')
+        setError('KRouter took too long to start. Open http://127.0.0.1:8403/krouter/ manually.')
         setLaunching(false)
       }
     }
