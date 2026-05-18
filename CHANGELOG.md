@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.18] - 2026-05-18
+
+### Fixed
+- **macOS: two krouter processes / "KRouter took too long to start"** —
+  `launchctl unload` sends SIGTERM asynchronously and returns before the
+  process exits; the immediately-following `load` would start the new binary
+  while the old one still held the ports, causing the new binary to silently
+  exit (port-conflict guard in `serve.go`). launchd then waited its default
+  10 s before retrying, exceeding the installer's 60 s poll window.
+  `LoadLaunchAgent` now calls `WaitForProcessExit` after unload, polling
+  `pgrep -x krouter` every 100 ms (up to 5 s) before issuing `load`, so
+  the new binary always starts against free ports.
+
+### Added
+- `config.WaitForProcessExit(name, timeout, interval, checkFn)` — injectable
+  process-exit poller extracted from `LoadLaunchAgent` for unit testing
+- 6 unit tests for `WaitForProcessExit`: immediate return when already gone,
+  polls until checker returns false, times out correctly, passes correct name
+  to checker, zero-timeout returns immediately, exits on first false response
+
+---
+
 ## [2.0.17] - 2026-05-18
 
 ### Added

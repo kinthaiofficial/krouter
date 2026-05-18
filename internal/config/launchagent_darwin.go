@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 )
 
 // GeneratePlistContent returns the LaunchAgent plist XML for the given binary path.
@@ -69,11 +70,19 @@ func WriteLaunchAgentPlist(binaryPath string) (string, error) {
 	return plistPath, nil
 }
 
+// processExists reports whether a process with the exact name is running.
+func processExists(name string) bool {
+	return exec.Command("pgrep", "-x", name).Run() == nil
+}
+
 // LoadLaunchAgent registers and starts the daemon via launchctl.
-// Unloads first to ensure a stale process (e.g. from a previous install) is
-// replaced with the updated binary rather than kept running.
+// Unloads first, then waits for the old process to fully exit before loading,
+// preventing the new binary from failing to bind its ports due to a race.
 func LoadLaunchAgent(plistPath string) error {
 	_ = exec.Command("launchctl", "unload", plistPath).Run()
+	// launchctl unload sends SIGTERM but returns before the process exits.
+	// Wait up to 5 s for the old daemon to release its ports.
+	WaitForProcessExit("krouter", 5*time.Second, 100*time.Millisecond, processExists)
 	out, err := exec.Command("launchctl", "load", "-w", plistPath).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("launchctl load: %w — %s", err, out)
