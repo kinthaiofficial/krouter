@@ -88,8 +88,7 @@ export default function DetectStep({ onNext }: Props) {
       {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
 
       <div className="flex gap-3">
-        {/* Skip only shown when agents are found */}
-        {!noAgents && agents !== null && agents.length > 0 && (
+        {agents !== null && (
           <button
             onClick={onNext}
             className="flex-1 border border-border text-gray-600 font-medium py-2.5 px-4 rounded-xl hover:bg-surface transition-colors text-sm"
@@ -98,13 +97,15 @@ export default function DetectStep({ onNext }: Props) {
             Skip
           </button>
         )}
-        <button
-          onClick={handleConnect}
-          disabled={connecting || agents === null || noAgents}
-          className="flex-1 bg-brand hover:bg-brand-dark disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-2.5 px-4 rounded-xl transition-colors"
-        >
-          {connecting ? 'Connecting…' : 'Connect & Continue'}
-        </button>
+        {!noAgents && (
+          <button
+            onClick={handleConnect}
+            disabled={connecting || agents === null}
+            className="flex-1 bg-brand hover:bg-brand-dark disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-2.5 px-4 rounded-xl transition-colors"
+          >
+            {connecting ? 'Connecting…' : 'Connect & Continue'}
+          </button>
+        )}
       </div>
     </div>
   )
