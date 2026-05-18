@@ -1,10 +1,11 @@
 import { Outlet, NavLink } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { LayoutDashboard, ScrollText, Cpu, Settings2, Bell, Info } from 'lucide-react'
+import { LayoutDashboard, Bot, ScrollText, Cpu, Settings2, Bell, Info } from 'lucide-react'
 import { api } from '../api/client'
 
 const nav = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
+  { to: '/agents', label: 'Agents', icon: Bot },
   { to: '/logs', label: 'Logs', icon: ScrollText },
   { to: '/providers', label: 'Providers', icon: Cpu },
   { to: '/settings', label: 'Settings', icon: Settings2 },

@@ -275,6 +275,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/internal/devices/", auth(http.HandlerFunc(s.handleDeviceDelete)))
 	mux.Handle("/internal/providers", auth(http.HandlerFunc(s.handleProviders)))
 	mux.Handle("/internal/agents", auth(http.HandlerFunc(s.handleAgents)))
+	mux.Handle("/internal/agents/", auth(http.HandlerFunc(s.handleAgentAction)))
 	mux.Handle("/internal/quota", auth(http.HandlerFunc(s.handleQuota)))
 	mux.Handle("/internal/update-apply", auth(http.HandlerFunc(s.handleUpdateApply)))
 	return mux
@@ -477,13 +478,20 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 			n = parsed
 		}
 	}
+	agentFilter := r.URL.Query().Get("agent")
 
 	if s.store == nil {
 		writeJSON(w, []any{})
 		return
 	}
 
-	records, err := s.store.ListRequests(r.Context(), n)
+	var records []storage.RequestRecord
+	var err error
+	if agentFilter != "" {
+		records, err = s.store.ListRequestsByAgent(r.Context(), agentFilter, n)
+	} else {
+		records, err = s.store.ListRequests(r.Context(), n)
+	}
 	if err != nil {
 		http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
 		return
@@ -1004,14 +1012,154 @@ func (s *Server) handleProviders(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, out)
 }
 
+type agentStats struct {
+	RequestsToday   int     `json:"requests_today"`
+	CostTodayUSD    float64 `json:"cost_today_usd"`
+	SavingsTodayUSD float64 `json:"savings_today_usd"`
+}
+
+type agentWithStats struct {
+	config.AgentStatus
+	Stats agentStats `json:"stats"`
+}
+
 // handleAgents handles GET /internal/agents.
-// Detects installed AI agents and reports their krouter connection status.
+// Detects installed AI agents, reports connection status, and includes today's per-agent stats.
 func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	writeJSON(w, config.DetectAgentStatuses())
+
+	statuses := config.DetectAgentStatuses()
+	out := make([]agentWithStats, len(statuses))
+	todayStart := time.Now().UTC().Truncate(24 * time.Hour)
+
+	for i, a := range statuses {
+		out[i] = agentWithStats{AgentStatus: a}
+		if s.store != nil {
+			recs, err := s.store.ListRequestsByAgent(r.Context(), a.Name, 10000)
+			if err == nil {
+				for _, rec := range recs {
+					if rec.Timestamp.UTC().Before(todayStart) {
+						continue
+					}
+					out[i].Stats.RequestsToday++
+					out[i].Stats.CostTodayUSD += float64(rec.CostMicroUSD) / 1_000_000
+					if s.pricing != nil {
+						baseline := s.pricing.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens)
+						if saved := baseline - rec.CostMicroUSD; saved > 0 {
+							out[i].Stats.SavingsTodayUSD += float64(saved) / 1_000_000
+						}
+					}
+				}
+			}
+		}
+	}
+
+	writeJSON(w, out)
+}
+
+// handleAgentAction handles POST /internal/agents/{name}/connect and .../disconnect.
+func (s *Server) handleAgentAction(w http.ResponseWriter, r *http.Request) {
+	tail := strings.TrimPrefix(r.URL.Path, "/internal/agents/")
+	slash := strings.LastIndex(tail, "/")
+	if slash < 0 {
+		http.NotFound(w, r)
+		return
+	}
+	name, action := tail[:slash], tail[slash+1:]
+
+	switch action {
+	case "connect":
+		s.doAgentConnect(w, r, name)
+	case "disconnect":
+		s.doAgentDisconnect(w, r, name)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func (s *Server) doAgentConnect(w http.ResponseWriter, r *http.Request, name string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	agents := config.DetectInstalledAgents()
+	var found *config.AgentInfo
+	for i := range agents {
+		if agents[i].Name == name {
+			found = &agents[i]
+			break
+		}
+	}
+	if found == nil {
+		http.Error(w, `{"error":"agent not found"}`, http.StatusNotFound)
+		return
+	}
+
+	var err error
+	switch name {
+	case "openclaw":
+		err = config.ConnectOpenClaw(found.ConfigPath)
+	case "cursor":
+		err = config.ConnectCursor(found.ConfigPath)
+	case "hermes":
+		err = config.ConnectHermes(found.ConfigPath)
+	case "claude-code":
+		err = config.ConnectClaudeCode(config.DetectShellRC())
+	default:
+		http.Error(w, `{"error":"agent not supported"}`, http.StatusBadRequest)
+		return
+	}
+
+	if err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+func (s *Server) doAgentDisconnect(w http.ResponseWriter, r *http.Request, name string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	agents := config.DetectInstalledAgents()
+	var found *config.AgentInfo
+	for i := range agents {
+		if agents[i].Name == name {
+			found = &agents[i]
+			break
+		}
+	}
+	if found == nil {
+		http.Error(w, `{"error":"agent not found"}`, http.StatusNotFound)
+		return
+	}
+
+	var err error
+	switch name {
+	case "openclaw":
+		err = config.DisconnectOpenClaw(found.ConfigPath)
+	case "cursor":
+		err = config.DisconnectCursor(found.ConfigPath)
+	case "hermes":
+		err = config.DisconnectHermes(found.ConfigPath)
+	case "claude-code":
+		err = config.DisconnectClaudeCode(config.DetectShellRC())
+	default:
+		http.Error(w, `{"error":"agent not supported"}`, http.StatusBadRequest)
+		return
+	}
+
+	if err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
 }
 
 // handleQuota handles GET /internal/quota.

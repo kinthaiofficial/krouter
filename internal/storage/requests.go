@@ -51,6 +51,49 @@ func (s *Store) InsertRequest(ctx context.Context, r RequestRecord) error {
 	return err
 }
 
+// ListRequestsByAgent returns the most recent `limit` requests for a specific agent, newest first.
+func (s *Store) ListRequestsByAgent(ctx context.Context, agent string, limit int) ([]RequestRecord, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	const q = `SELECT
+		id, ts_utc, COALESCE(agent,''), protocol,
+		COALESCE(requested_model,''), COALESCE(actual_provider,''), COALESCE(actual_model,''),
+		COALESCE(input_tokens,0), COALESCE(output_tokens,0), COALESCE(cached_tokens,0),
+		COALESCE(cost_micro_usd,0), COALESCE(latency_ms,0),
+		COALESCE(status_code,0), COALESCE(error_message,'')
+		FROM requests
+		WHERE agent = ?
+		ORDER BY ts_utc DESC
+		LIMIT ?`
+
+	rows, err := s.db.QueryContext(ctx, q, agent, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []RequestRecord
+	for rows.Next() {
+		var r RequestRecord
+		var tsStr string
+		if err := rows.Scan(
+			&r.ID, &tsStr, &r.Agent, &r.Protocol,
+			&r.RequestedModel, &r.Provider, &r.Model,
+			&r.InputTokens, &r.OutputTokens, &r.CachedTokens,
+			&r.CostMicroUSD, &r.LatencyMS,
+			&r.StatusCode, &r.ErrorMessage,
+		); err != nil {
+			return nil, err
+		}
+		if t, err := time.Parse(time.RFC3339, tsStr); err == nil {
+			r.Timestamp = t
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 // ListRequests returns the most recent `limit` requests, newest first.
 func (s *Store) ListRequests(ctx context.Context, limit int) ([]RequestRecord, error) {
 	if limit <= 0 {

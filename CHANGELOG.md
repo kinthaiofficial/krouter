@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.27] - 2026-05-18
+
+### Added
+- **Agents 独立页**（P0 gap 补全）
+  - 左侧导航新增「Agents」入口（`Bot` 图标），位于 Dashboard 下方
+  - 每个 agent 卡片显示：连接状态徽章、配置文件路径、provider 列表、今日请求数 / 今日费用 / 今日节省
+  - **Connect / Disconnect 按钮**：直接修改 agent 配置文件（openclaw.json / settings.json / config.toml / shell rc），无需手动编辑
+  - 连接后提示：Claude Code 需要打开新终端；OpenClaw / Cursor 需要重启
+  - 展开 / 折叠 per-agent 请求日志（Show logs / Hide logs）
+  - Re-detect 按钮强制重新扫描已安装 agent
+- **`POST /internal/agents/{name}/connect`** / **`POST /internal/agents/{name}/disconnect`** 端点
+  - 支持 `openclaw` / `cursor` / `hermes` / `claude-code`
+  - 找不到 agent 返回 404；不支持的 agent 名返回 400
+- **`GET /internal/logs?agent={name}`** 过滤参数，返回指定 agent 的最近请求记录
+- **`GET /internal/agents`** 返回值新增 `stats` 字段（`requests_today` / `cost_today_usd` / `savings_today_usd`）
+- `storage.ListRequestsByAgent(ctx, agent, limit)` — 带 agent WHERE 过滤的存储层方法
+- `AgentInfo` 字段加 JSON tag（`name` / `config_path` / `cli_path`），修复之前 PascalCase 序列化 bug
+
+### Changed
+- Providers 页移除「AI Agents」子区块（内容已移至独立 Agents 页）
+
+---
+
 ## [2.0.26] - 2026-05-18
 
 ### Fixed

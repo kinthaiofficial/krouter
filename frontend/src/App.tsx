@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
+import Agents from './pages/Agents'
 import Logs from './pages/Logs'
 import Providers from './pages/Providers'
 import Settings from './pages/Settings'
@@ -21,6 +22,7 @@ export default function App() {
         <Routes>
           <Route element={<Layout />}>
             <Route index element={<Dashboard />} />
+            <Route path="agents" element={<Agents />} />
             <Route path="logs" element={<Logs />} />
             <Route path="providers" element={<Providers />} />
             <Route path="settings" element={<Settings />} />

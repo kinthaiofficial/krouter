@@ -8,9 +8,9 @@ import (
 
 // AgentInfo describes a detected local AI agent installation.
 type AgentInfo struct {
-	Name       string // "openclaw" | "hermes" | "cursor" | "claude-code"
-	ConfigPath string // absolute path to the agent's config file
-	CLIPath    string // for claude-code: path from exec.LookPath
+	Name       string `json:"name"`
+	ConfigPath string `json:"config_path,omitempty"`
+	CLIPath    string `json:"cli_path,omitempty"`
 }
 
 // AgentStatus enriches AgentInfo with live connection and provider data.
