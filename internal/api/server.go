@@ -389,6 +389,9 @@ func (s *Server) handleBudget(w http.ResponseWriter, r *http.Request) {
 					if rec.Timestamp.UTC().Before(todayStart) {
 						continue
 					}
+					if rec.CostMicroUSD <= 0 {
+						continue
+					}
 					baseline := s.pricing.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens)
 					if saved := baseline - rec.CostMicroUSD; saved > 0 {
 						totalSavings += saved
@@ -624,6 +627,9 @@ func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request) {
 				todayStr := todayStart.Format(time.RFC3339)
 				for _, rec := range recs {
 					if rec.Timestamp.UTC().Format(time.RFC3339) < todayStr {
+						continue
+					}
+					if rec.CostMicroUSD <= 0 {
 						continue
 					}
 					baseline := s.pricing.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens)

@@ -698,10 +698,18 @@ func rewriteModel(body []byte, newModel string) []byte {
 }
 
 // agentName extracts a best-effort agent identifier from the request.
+//
+// OpenClaw uses the Anthropic TypeScript SDK which sends "Anthropic/JS X.Y.Z" as
+// User-Agent — the string "openclaw" does NOT appear. The
+// "anthropic-dangerous-direct-browser-access" header is set by OpenClaw's SDK
+// client in every Anthropic-provider request and is absent from CLI tools like
+// Claude Code, making it the reliable secondary signal.
 func agentName(r *http.Request) string {
 	ua := strings.ToLower(r.Header.Get("User-Agent"))
 	switch {
 	case strings.Contains(ua, "openclaw"):
+		return "openclaw"
+	case r.Header.Get("anthropic-dangerous-direct-browser-access") == "true":
 		return "openclaw"
 	case strings.Contains(ua, "claude"):
 		return "claude-code"

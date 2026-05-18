@@ -52,6 +52,9 @@ var staticPrices = map[string]PriceEntry{
 	"gpt-4o-mini":     {Provider: "openai", InputCostPerToken: 0.15 / 1e6, OutputCostPerToken: 0.6 / 1e6},
 	"gpt-4-turbo":     {Provider: "openai", InputCostPerToken: 10.0 / 1e6, OutputCostPerToken: 30.0 / 1e6},
 	"gpt-3.5-turbo":   {Provider: "openai", InputCostPerToken: 0.5 / 1e6, OutputCostPerToken: 1.5 / 1e6},
+	// MiniMax (LiteLLM does not include these; static fallback from MiniMax API platform)
+	"MiniMax-M2.7":           {Provider: "minimax", InputCostPerToken: 0.30 / 1e6, OutputCostPerToken: 1.20 / 1e6},
+	"MiniMax-M2.7-highspeed": {Provider: "minimax", InputCostPerToken: 0.30 / 1e6, OutputCostPerToken: 1.20 / 1e6},
 }
 
 // Service maintains the LLM pricing table and computes costs.
