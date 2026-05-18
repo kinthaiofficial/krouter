@@ -46,3 +46,13 @@ func EnableSystemdService() error {
 func DisableSystemdService() error {
 	return fmt.Errorf("DisableSystemdService: %w", errLinuxOnly)
 }
+
+// StopSystemdService returns an error on non-Linux platforms.
+func StopSystemdService() error {
+	return fmt.Errorf("StopSystemdService: %w", errLinuxOnly)
+}
+
+// StartSystemdService returns an error on non-Linux platforms.
+func StartSystemdService() error {
+	return fmt.Errorf("StartSystemdService: %w", errLinuxOnly)
+}

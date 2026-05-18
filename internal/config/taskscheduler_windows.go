@@ -115,6 +115,15 @@ func UnregisterTask() error {
 	return nil
 }
 
+// StopTask ends the running Task Scheduler task via schtasks /End.
+func StopTask() error {
+	cmd := exec.Command("schtasks", "/End", "/TN", taskName)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("schtasks end: %w\n%s", err, out)
+	}
+	return nil
+}
+
 // SetEnvRegistry sets a user-level environment variable via setx (HKCU\Environment).
 // All new processes pick up the change immediately without needing a new shell.
 func SetEnvRegistry(key, value string) error {

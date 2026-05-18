@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.19] - 2026-05-18
+
+### Added
+- **`krouter start` / `krouter stop` CLI commands**: proper daemon lifecycle management
+  - macOS: `launchctl bootstrap gui/<uid> <plist>` / `launchctl bootout gui/<uid> <plist>`
+  - Linux: `systemctl --user start krouter` / `systemctl --user stop krouter`
+  - Windows: `schtasks /Run /TN krouter-daemon` / `schtasks /End /TN krouter-daemon`
+
+### Changed
+- **macOS: `LoadLaunchAgent` now uses `launchctl bootstrap/bootout`** instead of the
+  deprecated `load/unload` + `pgrep` polling approach. `launchctl bootout` is
+  synchronous and waits for the process to fully exit before returning, eliminating
+  the port-conflict race without any process-name polling.
+
+### Removed
+- `processExists` (pgrep-based process checker) — no longer needed now that
+  `launchctl bootout` provides synchronous process exit semantics
+
+---
+
 ## [2.0.18] - 2026-05-18
 
 ### Fixed

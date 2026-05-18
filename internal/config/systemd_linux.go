@@ -107,3 +107,33 @@ func DisableSystemdService() error {
 	}
 	return nil
 }
+
+// StopSystemdService runs "systemctl --user stop krouter".
+func StopSystemdService() error {
+	env, err := prepareUserSession()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command("systemctl", "--user", "stop", "krouter")
+	cmd.Env = env
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("systemctl stop: %w — %s", err, out)
+	}
+	return nil
+}
+
+// StartSystemdService runs "systemctl --user start krouter".
+func StartSystemdService() error {
+	env, err := prepareUserSession()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command("systemctl", "--user", "start", "krouter")
+	cmd.Env = env
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("systemctl start: %w — %s", err, out)
+	}
+	return nil
+}

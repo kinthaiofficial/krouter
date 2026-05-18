@@ -34,6 +34,11 @@ func UnregisterTask() error {
 	return errWindowsOnly
 }
 
+// StopTask is a stub on non-Windows platforms.
+func StopTask() error {
+	return errWindowsOnly
+}
+
 // SetEnvRegistry is a stub on non-Windows platforms.
 func SetEnvRegistry(key, value string) error {
 	return errWindowsOnly

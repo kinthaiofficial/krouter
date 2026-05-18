@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"time"
 )
 
 // GeneratePlistContent returns the LaunchAgent plist XML for the given binary path.
@@ -70,31 +69,55 @@ func WriteLaunchAgentPlist(binaryPath string) (string, error) {
 	return plistPath, nil
 }
 
-// processExists reports whether a process with the exact name is running.
-func processExists(name string) bool {
-	return exec.Command("pgrep", "-x", name).Run() == nil
+// launchctlTarget returns the per-user bootstrap target (e.g. "gui/501").
+func launchctlTarget() string {
+	return fmt.Sprintf("gui/%d", os.Getuid())
 }
 
-// LoadLaunchAgent registers and starts the daemon via launchctl.
-// Unloads first, then waits for the old process to fully exit before loading,
-// preventing the new binary from failing to bind its ports due to a race.
+// LoadLaunchAgent registers and starts the daemon via launchctl bootstrap.
+// Uses bootout first (synchronous — waits for the old process to fully exit)
+// then bootstraps the new binary, ensuring the ports are always free.
 func LoadLaunchAgent(plistPath string) error {
-	_ = exec.Command("launchctl", "unload", plistPath).Run()
-	// launchctl unload sends SIGTERM but returns before the process exits.
-	// Wait up to 5 s for the old daemon to release its ports.
-	WaitForProcessExit("krouter", 5*time.Second, 100*time.Millisecond, processExists)
-	out, err := exec.Command("launchctl", "load", "-w", plistPath).CombinedOutput()
+	target := launchctlTarget()
+	// Ignore bootout error: it fails if the service was never loaded (first install).
+	_ = exec.Command("launchctl", "bootout", target, plistPath).Run()
+	out, err := exec.Command("launchctl", "bootstrap", target, plistPath).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("launchctl load: %w — %s", err, out)
+		return fmt.Errorf("launchctl bootstrap: %w — %s", err, out)
 	}
 	return nil
 }
 
-// UnloadLaunchAgent stops and unregisters the daemon via launchctl.
+// UnloadLaunchAgent stops and unregisters the daemon via launchctl bootout.
 func UnloadLaunchAgent(plistPath string) error {
-	out, err := exec.Command("launchctl", "unload", plistPath).CombinedOutput()
+	target := launchctlTarget()
+	out, err := exec.Command("launchctl", "bootout", target, plistPath).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("launchctl unload: %w — %s", err, out)
+		return fmt.Errorf("launchctl bootout: %w — %s", err, out)
+	}
+	return nil
+}
+
+// StopLaunchAgent stops the running daemon via launchctl bootout.
+// bootout is synchronous — it waits until the process has fully exited.
+func StopLaunchAgent() error {
+	plistPath, err := LaunchAgentPlistPath()
+	if err != nil {
+		return err
+	}
+	return UnloadLaunchAgent(plistPath)
+}
+
+// StartLaunchAgent starts the daemon via launchctl bootstrap.
+func StartLaunchAgent() error {
+	plistPath, err := LaunchAgentPlistPath()
+	if err != nil {
+		return err
+	}
+	target := launchctlTarget()
+	out, err := exec.Command("launchctl", "bootstrap", target, plistPath).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("launchctl bootstrap: %w — %s", err, out)
 	}
 	return nil
 }

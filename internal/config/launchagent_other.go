@@ -58,3 +58,13 @@ func LoadLaunchAgent(_ string) error {
 func UnloadLaunchAgent(_ string) error {
 	return fmt.Errorf("UnloadLaunchAgent: %w", errDarwinOnly)
 }
+
+// StopLaunchAgent returns an error on non-macOS platforms.
+func StopLaunchAgent() error {
+	return fmt.Errorf("StopLaunchAgent: %w", errDarwinOnly)
+}
+
+// StartLaunchAgent returns an error on non-macOS platforms.
+func StartLaunchAgent() error {
+	return fmt.Errorf("StartLaunchAgent: %w", errDarwinOnly)
+}

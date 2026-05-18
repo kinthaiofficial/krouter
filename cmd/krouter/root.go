@@ -21,6 +21,8 @@ The same binary is used as daemon, CLI, and GUI helper. See subcommands.`,
 	cmd.AddCommand(
 		newServeCommand(),
 		newStatusCommand(),
+		newStartCommand(),
+		newStopCommand(),
 		newShellInitCommand(),
 		newConfigCommand(),
 		newBudgetCommand(),
