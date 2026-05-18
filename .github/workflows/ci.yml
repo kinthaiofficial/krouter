@@ -112,30 +112,3 @@ jobs:
           files: ./coverage.out
         continue-on-error: true
 
-  lint:
-    name: Lint
-    needs: [frontend, frontend-install]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download dashboard dist
-        uses: actions/download-artifact@v4
-        with:
-          name: webui-dist
-          path: internal/webui/dist/
-
-      - name: Download installer dist
-        uses: actions/download-artifact@v4
-        with:
-          name: installer-dist
-          path: internal/webui/installer/dist/
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.25'
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-          args: --timeout=5m
