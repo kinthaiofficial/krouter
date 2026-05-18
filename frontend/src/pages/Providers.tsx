@@ -5,21 +5,21 @@ interface ProviderInfo {
   name: string
   protocol: string
   available: boolean
+  configured: boolean
   consecutive_failures: number
   success_rate: number
   last_error_code?: number
 }
 
 // Known LLM providers with display labels and setup hints.
-const KNOWN_PROVIDERS: Record<string, { label: string; envKey: string }> = {
-  anthropic: { label: 'Anthropic', envKey: 'ANTHROPIC_API_KEY' },
-  openai: { label: 'OpenAI', envKey: 'OPENAI_API_KEY' },
-  deepseek: { label: 'DeepSeek', envKey: 'DEEPSEEK_API_KEY' },
-  minimax: { label: 'MiniMax', envKey: 'MINIMAX_API_KEY' },
-  moonshot: { label: 'Moonshot', envKey: 'MOONSHOT_API_KEY' },
-  qwen: { label: 'Qwen (Alibaba)', envKey: 'DASHSCOPE_API_KEY' },
-  groq: { label: 'Groq', envKey: 'GROQ_API_KEY' },
-  glm: { label: 'GLM (Zhipu)', envKey: 'ZHIPU_API_KEY' },
+const KNOWN_PROVIDERS: Record<string, { label: string; envKey: string; settingsKey: string }> = {
+  anthropic: { label: 'Anthropic', envKey: 'ANTHROPIC_API_KEY', settingsKey: '' },
+  deepseek: { label: 'DeepSeek', envKey: 'DEEPSEEK_API_KEY', settingsKey: 'deepseek' },
+  groq: { label: 'Groq', envKey: 'GROQ_API_KEY', settingsKey: 'groq' },
+  moonshot: { label: 'Moonshot', envKey: 'MOONSHOT_API_KEY', settingsKey: 'moonshot' },
+  qwen: { label: 'Qwen (Alibaba)', envKey: 'DASHSCOPE_API_KEY', settingsKey: 'qwen' },
+  glm: { label: 'GLM (Zhipu)', envKey: 'ZHIPU_API_KEY', settingsKey: 'glm' },
+  minimax: { label: 'MiniMax', envKey: 'MINIMAX_API_KEY', settingsKey: 'minimax' },
 }
 
 export default function Providers() {
@@ -33,9 +33,8 @@ export default function Providers() {
     refetchInterval: 15_000,
   })
 
-  const missingKeys = Object.entries(KNOWN_PROVIDERS).filter(
-    ([key]) => !providers.some((p) => p.name === key),
-  )
+  const activeProviders = providers.filter((p) => p.configured)
+  const inactiveProviders = providers.filter((p) => !p.configured)
 
   return (
     <div className="p-6 space-y-6 max-w-3xl mx-auto">
@@ -48,18 +47,19 @@ export default function Providers() {
           <p className="text-sm text-red-500">Failed to load providers. Is the daemon running?</p>
         ) : (
           <>
-            {providers.length > 0 && (
+            {activeProviders.length > 0 && (
               <div className="space-y-2">
                 <p className="text-xs text-gray-400">Active (API key configured)</p>
-                {providers.map((p) => <ProviderCard key={p.name} provider={p} />)}
+                {activeProviders.map((p) => <ProviderCard key={p.name} provider={p} />)}
               </div>
             )}
-            {missingKeys.length > 0 && (
+            {inactiveProviders.length > 0 && (
               <div className="space-y-2 mt-3">
                 <p className="text-xs text-gray-400">Not configured</p>
-                {missingKeys.map(([key, meta]) => (
-                  <MissingCard key={key} name={key} meta={meta} />
-                ))}
+                {inactiveProviders.map((p) => {
+                  const meta = KNOWN_PROVIDERS[p.name]
+                  return <MissingCard key={p.name} name={p.name} meta={meta ?? { label: p.name, envKey: '', settingsKey: '' }} />
+                })}
               </div>
             )}
           </>
@@ -101,13 +101,16 @@ function ProviderCard({ provider: p }: { provider: ProviderInfo }) {
   )
 }
 
-function MissingCard({ meta }: { name: string; meta: { label: string; envKey: string } }) {
+function MissingCard({ meta }: { name: string; meta: { label: string; envKey: string; settingsKey: string } }) {
+  const hint = meta.envKey
+    ? `Set ${meta.envKey} env var, or add "${meta.settingsKey}" to provider_keys in ~/.kinthai/settings.json`
+    : 'No API key required'
   return (
     <div className="bg-gray-50 rounded-xl border border-dashed border-gray-200 p-4 flex items-center gap-4">
       <AlertCircle size={20} className="text-gray-300 shrink-0" />
       <div className="flex-1 min-w-0">
         <p className="font-medium text-sm text-gray-400">{meta.label}</p>
-        <p className="text-xs text-gray-400 font-mono">Set {meta.envKey} to enable</p>
+        <p className="text-xs text-gray-400">{hint}</p>
       </div>
     </div>
   )

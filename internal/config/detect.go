@@ -51,6 +51,8 @@ func DetectInstalledAgents() []AgentInfo {
 
 	if path, err := exec.LookPath("claude"); err == nil {
 		found = append(found, AgentInfo{Name: "claude-code", CLIPath: path})
+	} else if path := findClaudeInKnownPaths(home); path != "" {
+		found = append(found, AgentInfo{Name: "claude-code", CLIPath: path})
 	}
 
 	return found
@@ -87,4 +89,21 @@ func DetectAgentStatuses() []AgentStatus {
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// findClaudeInKnownPaths searches well-known installation paths for the claude
+// binary. Used when exec.LookPath fails (e.g. daemon PATH is minimal).
+func findClaudeInKnownPaths(home string) string {
+	candidates := []string{
+		filepath.Join(home, ".claude", "local", "claude"),   // npm install -g @anthropic-ai/claude-code
+		filepath.Join(home, ".local", "bin", "claude"),
+		"/usr/local/bin/claude",
+		"/opt/homebrew/bin/claude",
+	}
+	for _, p := range candidates {
+		if fileExists(p) {
+			return p
+		}
+	}
+	return ""
 }

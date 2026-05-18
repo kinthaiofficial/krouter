@@ -43,6 +43,17 @@ func TestGeneratePlistContent_ValidXML(t *testing.T) {
 	assert.Contains(t, s, "</plist>")
 }
 
+func TestGeneratePlistContent_ContainsExpandedPATH(t *testing.T) {
+	content := config.GeneratePlistContent("/bin/krouter", "/Users/alice")
+	s := string(content)
+	assert.Contains(t, s, "EnvironmentVariables")
+	assert.Contains(t, s, "/Users/alice/.claude/local", "PATH must include Claude Code install dir")
+	assert.Contains(t, s, "/opt/homebrew/bin", "PATH must include Homebrew")
+	assert.Contains(t, s, "/usr/local/bin", "PATH must include /usr/local/bin")
+	assert.Contains(t, s, "<key>HOME</key>")
+	assert.Contains(t, s, "/Users/alice", "HOME must match homeDir")
+}
+
 func TestWriteLaunchAgentPlist_ReturnsError_OnNonMacOS(t *testing.T) {
 	_, err := config.WriteLaunchAgentPlist("/tmp/krouter")
 	if err == nil {

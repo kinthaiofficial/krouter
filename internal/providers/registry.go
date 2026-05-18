@@ -15,6 +15,13 @@ import (
 	"sync"
 )
 
+// Configurable is an optional interface for providers that require an API key.
+// Providers that do not implement this interface are assumed to always have a
+// key available (e.g. transparent proxies like the Anthropic adapter).
+type Configurable interface {
+	HasKey() bool
+}
+
 // Provider is the interface all provider adapters implement.
 type Provider interface {
 	Name() string

@@ -21,8 +21,13 @@ var supportedModels = []string{
 	"gemma2-9b-it",
 }
 
-// New creates a Groq provider adapter.
+// New creates a Groq provider adapter that reads its key from GROQ_API_KEY.
 // If client is nil, a default streaming-safe client is used.
 func New(client *http.Client) *openaiAdapter.Adapter {
 	return openaiAdapter.New("groq", baseURL, "GROQ_API_KEY", supportedModels, client)
+}
+
+// NewWithKeyFn creates a Groq adapter whose API key is retrieved by keyFn at request time.
+func NewWithKeyFn(keyFn func() string, client *http.Client) *openaiAdapter.Adapter {
+	return openaiAdapter.NewWithKeyFn("groq", baseURL, keyFn, supportedModels, client)
 }

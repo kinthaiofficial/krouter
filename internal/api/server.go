@@ -308,6 +308,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			Language               *string            `json:"language"`
 			NotificationCategories map[string]bool    `json:"notification_categories"`
 			BudgetWarnings         map[string]float64 `json:"budget_warnings"`
+			ProviderKeys           map[string]string  `json:"provider_keys"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
 			http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
@@ -337,6 +338,18 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			}
 			for k, v := range patch.BudgetWarnings {
 				current.BudgetWarnings[k] = v
+			}
+		}
+		if patch.ProviderKeys != nil {
+			if current.ProviderKeys == nil {
+				current.ProviderKeys = make(map[string]string)
+			}
+			for k, v := range patch.ProviderKeys {
+				if v == "" {
+					delete(current.ProviderKeys, k) // empty string = remove key
+				} else {
+					current.ProviderKeys[k] = v
+				}
 			}
 		}
 		if err := mgr.Set(current); err != nil {
@@ -987,6 +1000,7 @@ func (s *Server) handleProviders(w http.ResponseWriter, r *http.Request) {
 		Name                string  `json:"name"`
 		Protocol            string  `json:"protocol"`
 		Available           bool    `json:"available"`
+		Configured          bool    `json:"configured"` // true = API key is present
 		ConsecutiveFailures int     `json:"consecutive_failures"`
 		SuccessRate         float64 `json:"success_rate"`
 		LastErrorCode       int     `json:"last_error_code,omitempty"`
@@ -996,13 +1010,18 @@ func (s *Server) handleProviders(w http.ResponseWriter, r *http.Request) {
 
 	if s.registry != nil {
 		for _, p := range s.registry.All() {
+			configured := true // transparent proxies (e.g. anthropic) are always configured
+			if c, ok := p.(providers.Configurable); ok {
+				configured = c.HasKey()
+			}
 			info := providerInfo{
 				Name:        p.Name(),
 				Protocol:    string(p.Protocol()),
-				Available:   true,
+				Available:   configured, // unavailable if no key
+				Configured:  configured,
 				SuccessRate: 1.0,
 			}
-			if s.store != nil {
+			if configured && s.store != nil {
 				if ps, err := s.store.GetProviderStatus(r.Context(), p.Name()); err == nil && ps != nil {
 					info.ConsecutiveFailures = ps.ConsecutiveFailures
 					info.SuccessRate = ps.RollingSuccessRate

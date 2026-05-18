@@ -29,6 +29,12 @@ type Settings struct {
 	DaemonURL              string             `json:"daemon_url,omitempty"`
 	NotificationCategories map[string]bool    `json:"notification_categories"`
 	BudgetWarnings         map[string]float64 `json:"budget_warnings"`
+	// ProviderKeys stores API keys for secondary providers (deepseek, groq, etc.)
+	// so the daemon can authenticate when running as a LaunchAgent without shell env.
+	// Keys use the provider name (e.g. "deepseek", "groq"); values are the API keys.
+	// File is stored at 0600 permissions. DO NOT store Anthropic keys here — those
+	// come from the agent's own request headers (krouter is a transparent proxy).
+	ProviderKeys           map[string]string  `json:"provider_keys,omitempty"`
 }
 
 func applyDefaults(s Settings) Settings {

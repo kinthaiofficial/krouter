@@ -21,8 +21,14 @@ var supportedModels = []string{
 	"deepseek-reasoner",
 }
 
-// New creates a DeepSeek provider adapter.
+// New creates a DeepSeek provider adapter that reads its key from DEEPSEEK_API_KEY.
 // If client is nil, a default streaming-safe client is used.
 func New(client *http.Client) *openaiAdapter.Adapter {
 	return openaiAdapter.New("deepseek", baseURL, "DEEPSEEK_API_KEY", supportedModels, client)
+}
+
+// NewWithKeyFn creates a DeepSeek adapter whose API key is retrieved by keyFn
+// at request time. Prefer this over New when running as a LaunchAgent.
+func NewWithKeyFn(keyFn func() string, client *http.Client) *openaiAdapter.Adapter {
+	return openaiAdapter.NewWithKeyFn("deepseek", baseURL, keyFn, supportedModels, client)
 }

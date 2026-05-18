@@ -22,9 +22,14 @@ var supportedModels = []string{
 	"glm-4-airx",
 }
 
-// New creates a Zhipu GLM provider adapter.
+// New creates a Zhipu GLM provider adapter that reads its key from ZHIPU_API_KEY.
 // If client is nil, a default streaming-safe client is used.
 func New(client *http.Client) *openaiAdapter.Adapter {
 	// GLM uses /v4 instead of /v1 for its API path.
 	return openaiAdapter.NewWithPathReplace("glm", baseURL, "/v4", "ZHIPU_API_KEY", supportedModels, client)
+}
+
+// NewWithKeyFn creates a GLM adapter whose API key is retrieved by keyFn at request time.
+func NewWithKeyFn(keyFn func() string, client *http.Client) *openaiAdapter.Adapter {
+	return openaiAdapter.NewWithPathReplaceAndKeyFn("glm", baseURL, "/v4", keyFn, supportedModels, client)
 }

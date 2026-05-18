@@ -100,34 +100,33 @@ The daemon listens on two ports:
 				},
 			}
 
-			// Provider registry.
+			// Settings manager — must be created before the provider registry so
+			// providers can read keys from settings at request time.
+			configPath, _ := cmd.Flags().GetString("config")
+			settings := config.New(configPath)
+
+			// keyFn returns a key-getter that checks settings first, then the env var.
+			// Called per-request so keys added to settings after daemon start take effect.
+			keyFn := func(envVar, settingsKey string) func() string {
+				return func() string {
+					if k := settings.Get().ProviderKeys[settingsKey]; k != "" {
+						return k
+					}
+					return os.Getenv(envVar)
+				}
+			}
+
+			// Provider registry — all providers are always registered.
+			// Providers without a configured key will report HasKey()=false and be
+			// skipped by the routing engine until a key is configured.
 			reg := providers.New()
 			reg.Register(anthropicadapter.New("https://api.anthropic.com", sharedClient))
-			// Register DeepSeek if the API key is available.
-			if os.Getenv("DEEPSEEK_API_KEY") != "" {
-				reg.Register(deepseekadapter.New(sharedClient))
-				logger.Info("deepseek provider registered")
-			}
-			if os.Getenv("GROQ_API_KEY") != "" {
-				reg.Register(groqadapter.New(sharedClient))
-				logger.Info("groq provider registered")
-			}
-			if os.Getenv("MOONSHOT_API_KEY") != "" {
-				reg.Register(moonshotadapter.New(sharedClient))
-				logger.Info("moonshot-cn provider registered")
-			}
-			if os.Getenv("ZHIPU_API_KEY") != "" {
-				reg.Register(glmadapter.New(sharedClient))
-				logger.Info("glm provider registered")
-			}
-			if os.Getenv("DASHSCOPE_API_KEY") != "" {
-				reg.Register(qwenadapter.New(sharedClient))
-				logger.Info("qwen provider registered")
-			}
-			if os.Getenv("MINIMAX_API_KEY") != "" {
-				reg.Register(minimaxadapter.New(sharedClient))
-				logger.Info("minimax provider registered")
-			}
+			reg.Register(deepseekadapter.NewWithKeyFn(keyFn("DEEPSEEK_API_KEY", "deepseek"), sharedClient))
+			reg.Register(groqadapter.NewWithKeyFn(keyFn("GROQ_API_KEY", "groq"), sharedClient))
+			reg.Register(moonshotadapter.NewWithKeyFn(keyFn("MOONSHOT_API_KEY", "moonshot"), sharedClient))
+			reg.Register(glmadapter.NewWithKeyFn(keyFn("ZHIPU_API_KEY", "glm"), sharedClient))
+			reg.Register(qwenadapter.NewWithKeyFn(keyFn("DASHSCOPE_API_KEY", "qwen"), sharedClient))
+			reg.Register(minimaxadapter.NewWithKeyFn(keyFn("MINIMAX_API_KEY", "minimax"), sharedClient))
 
 			// Routing engine.
 			engine := routing.New(reg)
@@ -145,10 +144,6 @@ The daemon listens on two ports:
 				proxy.WithStore(store),
 				proxy.WithPricing(pricingSvc),
 			)
-
-			// Settings manager (for language preference used by notifications).
-			configPath, _ := cmd.Flags().GetString("config")
-			settings := config.New(configPath)
 
 			// Notifications service — polls CDN feed every 6h.
 			notifSvc := notifications.New(store, settings, reg, Version)

@@ -69,3 +69,25 @@ func TestDetectInstalledAgents_Hermes(t *testing.T) {
 	}
 	assert.True(t, found, "expected hermes to be detected")
 }
+
+func TestDetectInstalledAgents_ClaudeCode_KnownPath(t *testing.T) {
+	// Simulate the claude binary in ~/.claude/local/claude (npm install -g path)
+	// with a PATH that contains no directories (LaunchAgent scenario: no claude in PATH).
+	home := withHome(t)
+	t.Setenv("PATH", "") // empty PATH — exec.LookPath will always fail
+
+	claudeDir := filepath.Join(home, ".claude", "local")
+	require.NoError(t, os.MkdirAll(claudeDir, 0755))
+	claudePath := filepath.Join(claudeDir, "claude")
+	require.NoError(t, os.WriteFile(claudePath, []byte("#!/bin/sh\necho claude"), 0755))
+
+	agents := config.DetectInstalledAgents()
+	found := false
+	for _, a := range agents {
+		if a.Name == "claude-code" {
+			found = true
+			assert.Equal(t, claudePath, a.CLIPath)
+		}
+	}
+	assert.True(t, found, "claude-code must be found via known path fallback when not in PATH")
+}

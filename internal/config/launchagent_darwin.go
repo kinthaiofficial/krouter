@@ -11,8 +11,18 @@ import (
 
 // GeneratePlistContent returns the LaunchAgent plist XML for the given binary path.
 // Exported so tests can call it cross-platform.
+//
+// EnvironmentVariables sets an expanded PATH so the daemon can find tools like
+// `claude` (installed at ~/.claude/local/claude or via Homebrew) even though
+// LaunchAgent does not inherit the user's interactive shell environment.
 func GeneratePlistContent(binaryPath, homeDir string) []byte {
 	logDir := filepath.Join(homeDir, ".kinthai")
+	// Common tool install paths; order matters (higher-priority first).
+	expandedPATH := homeDir + "/.claude/local:" +
+		homeDir + "/.local/bin:" +
+		homeDir + "/go/bin:" +
+		"/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:" +
+		"/usr/bin:/bin:/usr/sbin:/sbin"
 	return []byte(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -25,6 +35,13 @@ func GeneratePlistContent(binaryPath, homeDir string) []byte {
     <string>` + binaryPath + `</string>
     <string>serve</string>
   </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>` + expandedPATH + `</string>
+    <key>HOME</key>
+    <string>` + homeDir + `</string>
+  </dict>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>

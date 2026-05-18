@@ -14,6 +14,11 @@ var errDarwinOnly = errors.New("LaunchAgent is only supported on macOS")
 // Available on all platforms for testing purposes.
 func GeneratePlistContent(binaryPath, homeDir string) []byte {
 	logDir := path.Join(homeDir, ".kinthai")
+	expandedPATH := homeDir + "/.claude/local:" +
+		homeDir + "/.local/bin:" +
+		homeDir + "/go/bin:" +
+		"/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:" +
+		"/usr/bin:/bin:/usr/sbin:/sbin"
 	return []byte(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -26,6 +31,13 @@ func GeneratePlistContent(binaryPath, homeDir string) []byte {
     <string>` + binaryPath + `</string>
     <string>serve</string>
   </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>` + expandedPATH + `</string>
+    <key>HOME</key>
+    <string>` + homeDir + `</string>
+  </dict>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>

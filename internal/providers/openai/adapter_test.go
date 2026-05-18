@@ -58,6 +58,49 @@ func TestAdapter_Forward_RewritesURL(t *testing.T) {
 	assert.Empty(t, capturedXAPIKey, "x-api-key should be stripped")
 }
 
+func TestAdapter_HasKey_FalseWhenNoEnvVar(t *testing.T) {
+	t.Setenv("DEEPSEEK_API_KEY", "")
+	a := openaiAdapter.New("deepseek", "https://api.deepseek.com", "DEEPSEEK_API_KEY", []string{"deepseek-chat"}, nil)
+	assert.False(t, a.HasKey())
+}
+
+func TestAdapter_HasKey_TrueFromEnvVar(t *testing.T) {
+	t.Setenv("DEEPSEEK_API_KEY", "sk-ds-test")
+	a := openaiAdapter.New("deepseek", "https://api.deepseek.com", "DEEPSEEK_API_KEY", []string{"deepseek-chat"}, nil)
+	assert.True(t, a.HasKey())
+}
+
+func TestAdapter_HasKey_TrueFromKeyFn(t *testing.T) {
+	a := openaiAdapter.NewWithKeyFn("deepseek", "https://api.deepseek.com", func() string { return "sk-fn-key" }, []string{"deepseek-chat"}, nil)
+	assert.True(t, a.HasKey())
+}
+
+func TestAdapter_HasKey_FalseFromKeyFnReturnsEmpty(t *testing.T) {
+	a := openaiAdapter.NewWithKeyFn("deepseek", "https://api.deepseek.com", func() string { return "" }, []string{"deepseek-chat"}, nil)
+	assert.False(t, a.HasKey())
+}
+
+func TestAdapter_NewWithKeyFn_UsesKeyFnNotEnvVar(t *testing.T) {
+	t.Setenv("DEEPSEEK_API_KEY", "sk-env-key") // env var present but should be ignored
+
+	var capturedAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	a := openaiAdapter.NewWithKeyFn("deepseek", srv.URL, func() string { return "sk-fn-key" }, []string{"deepseek-chat"}, nil)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost,
+		"http://placeholder/v1/chat/completions", http.NoBody)
+	resp, err := a.Forward(context.Background(), req)
+	require.NoError(t, err)
+	_ = resp.Body.Close()
+
+	assert.Equal(t, "Bearer sk-fn-key", capturedAuth, "keyFn must override env var")
+}
+
 func TestAdapter_Forward_StripsAnthropicHeaders(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "sk-openai-test")
 

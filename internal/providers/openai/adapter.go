@@ -24,25 +24,45 @@ type Adapter struct {
 	baseURL     string // e.g. "https://api.deepseek.com" (no trailing slash, no /v1)
 	pathReplace string // if non-empty, replaces the /v1 prefix in incoming paths
 	apiKeyEnv   string // env var name for the API key, e.g. "DEEPSEEK_API_KEY"
+	apiKeyFn    func() string // optional: overrides apiKeyEnv; called per-request
 	models      []string
 	httpClient  *http.Client
 }
 
-// New creates an OpenAI-compatible adapter.
+// New creates an OpenAI-compatible adapter that reads its API key from the
+// named environment variable at request time.
 //
 //   - name:      provider name ("deepseek", "openai", etc.)
 //   - baseURL:   upstream base URL without path, e.g. "https://api.deepseek.com"
-//   - models:    list of model IDs this provider supports
 //   - apiKeyEnv: environment variable name holding the API key
+//   - models:    list of model IDs this provider supports
 //   - client:    HTTP client; nil uses a default streaming-safe client
 func New(name, baseURL, apiKeyEnv string, models []string, client *http.Client) *Adapter {
 	return NewWithPathReplace(name, baseURL, "", apiKeyEnv, models, client)
+}
+
+// NewWithKeyFn creates an OpenAI-compatible adapter whose API key is retrieved
+// by calling keyFn at request time (e.g. to read from settings + env fallback).
+// Use this instead of New when the key must survive LaunchAgent restarts.
+func NewWithKeyFn(name, baseURL string, keyFn func() string, models []string, client *http.Client) *Adapter {
+	return newWithPathReplaceAndKeyFn(name, baseURL, "", keyFn, models, client)
 }
 
 // NewWithPathReplace creates an OpenAI-compatible adapter with a path prefix override.
 // pathReplace replaces the incoming /v1 path prefix; e.g. "/v4" for GLM,
 // "/compatible-mode/v1" for Qwen. Empty string means no replacement.
 func NewWithPathReplace(name, baseURL, pathReplace, apiKeyEnv string, models []string, client *http.Client) *Adapter {
+	a := newWithPathReplaceAndKeyFn(name, baseURL, pathReplace, nil, models, client)
+	a.apiKeyEnv = apiKeyEnv
+	return a
+}
+
+// NewWithPathReplaceAndKeyFn combines path-prefix override with a key function.
+func NewWithPathReplaceAndKeyFn(name, baseURL, pathReplace string, keyFn func() string, models []string, client *http.Client) *Adapter {
+	return newWithPathReplaceAndKeyFn(name, baseURL, pathReplace, keyFn, models, client)
+}
+
+func newWithPathReplaceAndKeyFn(name, baseURL, pathReplace string, keyFn func() string, models []string, client *http.Client) *Adapter {
 	if client == nil {
 		client = &http.Client{
 			Transport: &http.Transport{
@@ -56,10 +76,22 @@ func NewWithPathReplace(name, baseURL, pathReplace, apiKeyEnv string, models []s
 		name:        name,
 		baseURL:     strings.TrimRight(baseURL, "/"),
 		pathReplace: pathReplace,
-		apiKeyEnv:   apiKeyEnv,
+		apiKeyFn:    keyFn,
 		models:      models,
 		httpClient:  client,
 	}
+}
+
+// HasKey reports whether a non-empty API key is currently available.
+// Satisfies the providers.Configurable optional interface.
+func (a *Adapter) HasKey() bool { return a.resolveKey() != "" }
+
+// resolveKey returns the API key, preferring apiKeyFn over the env var.
+func (a *Adapter) resolveKey() string {
+	if a.apiKeyFn != nil {
+		return a.apiKeyFn()
+	}
+	return os.Getenv(a.apiKeyEnv)
 }
 
 func (a *Adapter) Name() string                { return a.name }
@@ -88,8 +120,7 @@ func (a *Adapter) Forward(ctx context.Context, req *http.Request) (*http.Respons
 
 	// Inject OpenAI-style auth. The incoming request may carry Anthropic headers
 	// (x-api-key) which must be removed; we substitute our own key.
-	apiKey := os.Getenv(a.apiKeyEnv)
-	upstreamReq.Header.Set("Authorization", "Bearer "+apiKey)
+	upstreamReq.Header.Set("Authorization", "Bearer "+a.resolveKey())
 	upstreamReq.Header.Del("x-api-key")
 	upstreamReq.Header.Del("anthropic-version")
 	upstreamReq.Header.Del("anthropic-beta")
