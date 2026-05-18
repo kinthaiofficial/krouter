@@ -10,9 +10,19 @@ import (
 
 const proxyBase = "http://127.0.0.1:8402"
 
-// ConnectOpenClaw modifies the OpenClaw JSON config to route through kinthai.
-// Creates a timestamped backup before modification.
-// Target: models.providers.anthropic.{baseUrl, apiKey, api}
+// placeholderAPIKey is the broken value written by old krouter versions.
+// DisconnectOpenClaw removes it so users are not left with an unusable key.
+const placeholderAPIKey = "${ANTHROPIC_API_KEY}"
+
+// ConnectOpenClaw points the OpenClaw anthropic provider at the krouter proxy.
+// Only baseUrl and api are written; apiKey and all other existing fields are
+// preserved unchanged.
+//
+// Rationale: OpenClaw runs as a LaunchAgent and does not inherit shell env, so
+// a literal "${ANTHROPIC_API_KEY}" placeholder would never be expanded — the
+// user's real key must come from OpenClaw's own config, not from krouter.
+// setNestedJSON previously replaced the whole anthropic node, destroying
+// existing keys (e.g. a real MiniMax apiKey stored there). Merge instead.
 func ConnectOpenClaw(configPath string) error {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -28,11 +38,14 @@ func ConnectOpenClaw(configPath string) error {
 		return fmt.Errorf("openclaw: parse config: %w", err)
 	}
 
-	setNestedJSON(root, []string{"models", "providers", "anthropic"}, map[string]any{
-		"baseUrl": proxyBase,
-		"apiKey":  "${ANTHROPIC_API_KEY}",
-		"api":     "anthropic-messages",
-	})
+	// Navigate/create models.providers.anthropic without replacing existing fields.
+	models := ensureMap(root, "models")
+	providers := ensureMap(models, "providers")
+	anthropic := ensureMap(providers, "anthropic")
+
+	anthropic["baseUrl"] = proxyBase
+	anthropic["api"] = "anthropic-messages"
+	// Never touch apiKey — the user's real key must stay as-is.
 
 	return writeJSON(configPath, root)
 }
@@ -80,7 +93,9 @@ func ReadOpenClawProviderNames(configPath string) []string {
 	return names
 }
 
-// DisconnectOpenClaw removes kinthai routing fields from the OpenClaw config.
+// DisconnectOpenClaw removes krouter's routing fields from the OpenClaw config.
+// Only removes baseUrl, api, and (if it's the broken placeholder) apiKey.
+// Real user-supplied apiKeys are never touched.
 func DisconnectOpenClaw(configPath string) error {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -92,11 +107,14 @@ func DisconnectOpenClaw(configPath string) error {
 		return fmt.Errorf("openclaw: parse config: %w", err)
 	}
 
-	// Remove the kinthai-set fields from models.providers.anthropic.
 	if provider := deepMap(root, "models", "providers", "anthropic"); provider != nil {
 		delete(provider, "baseUrl")
-		delete(provider, "apiKey")
 		delete(provider, "api")
+		// Remove only the broken placeholder written by old krouter versions;
+		// leave real user-supplied apiKeys intact.
+		if provider["apiKey"] == placeholderAPIKey {
+			delete(provider, "apiKey")
+		}
 	}
 
 	return writeJSON(configPath, root)
@@ -112,19 +130,14 @@ func backupFile(path string, data []byte) error {
 	return nil
 }
 
-// setNestedJSON navigates the map tree via keys and sets the leaf to value,
-// creating intermediate maps as needed.
-func setNestedJSON(root map[string]any, keys []string, value any) {
-	if len(keys) == 1 {
-		root[keys[0]] = value
-		return
+// ensureMap returns the map at root[key], creating it if absent or wrong type.
+func ensureMap(root map[string]any, key string) map[string]any {
+	if m, ok := root[key].(map[string]any); ok {
+		return m
 	}
-	next, ok := root[keys[0]].(map[string]any)
-	if !ok {
-		next = make(map[string]any)
-		root[keys[0]] = next
-	}
-	setNestedJSON(next, keys[1:], value)
+	m := make(map[string]any)
+	root[key] = m
+	return m
 }
 
 // deepMap navigates the map tree and returns the leaf map, or nil if not found.

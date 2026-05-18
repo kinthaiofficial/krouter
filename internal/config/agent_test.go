@@ -15,10 +15,10 @@ import (
 
 // ── OpenClaw ─────────────────────────────────────────────────────────────────
 
-func TestConnectOpenClaw_SetsBaseURL(t *testing.T) {
+func TestConnectOpenClaw_SetsBaseURLAndApi(t *testing.T) {
 	dir := t.TempDir()
 	cfg := filepath.Join(dir, "openclaw.json")
-	initial := `{"models":{"providers":{"anthropic":{"apiKey":"sk-ant"}}}}`
+	initial := `{"models":{"providers":{"anthropic":{"apiKey":"sk-ant-real"}}}}`
 	require.NoError(t, os.WriteFile(cfg, []byte(initial), 0644))
 
 	require.NoError(t, config.ConnectOpenClaw(cfg))
@@ -30,6 +30,29 @@ func TestConnectOpenClaw_SetsBaseURL(t *testing.T) {
 	provider := root["models"].(map[string]any)["providers"].(map[string]any)["anthropic"].(map[string]any)
 	assert.Equal(t, "http://127.0.0.1:8402", provider["baseUrl"])
 	assert.Equal(t, "anthropic-messages", provider["api"])
+	// Real apiKey must be preserved — never overwritten with placeholder.
+	assert.Equal(t, "sk-ant-real", provider["apiKey"])
+}
+
+func TestConnectOpenClaw_NoApiKeyInjectedWhenMissing(t *testing.T) {
+	// User never configured anthropic — krouter must not inject a placeholder.
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	initial := `{"models":{"providers":{"minimax":{"apiKey":"mm-real"}}}}`
+	require.NoError(t, os.WriteFile(cfg, []byte(initial), 0644))
+
+	require.NoError(t, config.ConnectOpenClaw(cfg))
+
+	data, _ := os.ReadFile(cfg)
+	var root map[string]any
+	require.NoError(t, json.Unmarshal(data, &root))
+
+	provider := root["models"].(map[string]any)["providers"].(map[string]any)["anthropic"].(map[string]any)
+	assert.Equal(t, "http://127.0.0.1:8402", provider["baseUrl"])
+	assert.NotContains(t, provider, "apiKey", "krouter must not inject apiKey placeholder")
+	// Other providers must be untouched.
+	minimax := root["models"].(map[string]any)["providers"].(map[string]any)["minimax"].(map[string]any)
+	assert.Equal(t, "mm-real", minimax["apiKey"])
 }
 
 func TestConnectOpenClaw_CreatesBackup(t *testing.T) {
@@ -49,10 +72,11 @@ func TestConnectOpenClaw_CreatesBackup(t *testing.T) {
 	assert.True(t, backupFound, "expected backup file")
 }
 
-func TestDisconnectOpenClaw_RemovesBaseURL(t *testing.T) {
+func TestDisconnectOpenClaw_RemovesBaseURLAndApi(t *testing.T) {
 	dir := t.TempDir()
 	cfg := filepath.Join(dir, "openclaw.json")
-	connected := `{"models":{"providers":{"anthropic":{"baseUrl":"http://127.0.0.1:8402","api":"anthropic-messages","apiKey":"${ANTHROPIC_API_KEY}"}}}}`
+	// Simulate a clean new-style install (no apiKey).
+	connected := `{"models":{"providers":{"anthropic":{"baseUrl":"http://127.0.0.1:8402","api":"anthropic-messages","apiKey":"sk-real"}}}}`
 	require.NoError(t, os.WriteFile(cfg, []byte(connected), 0644))
 
 	require.NoError(t, config.DisconnectOpenClaw(cfg))
@@ -64,6 +88,27 @@ func TestDisconnectOpenClaw_RemovesBaseURL(t *testing.T) {
 	provider := root["models"].(map[string]any)["providers"].(map[string]any)["anthropic"].(map[string]any)
 	assert.NotContains(t, provider, "baseUrl")
 	assert.NotContains(t, provider, "api")
+	// Real apiKey must survive disconnect.
+	assert.Equal(t, "sk-real", provider["apiKey"])
+}
+
+func TestDisconnectOpenClaw_RemovesOldPlaceholderApiKey(t *testing.T) {
+	// Old krouter versions wrote "${ANTHROPIC_API_KEY}" as a literal string.
+	// Disconnect must clean that up.
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	old := `{"models":{"providers":{"anthropic":{"baseUrl":"http://127.0.0.1:8402","api":"anthropic-messages","apiKey":"${ANTHROPIC_API_KEY}"}}}}`
+	require.NoError(t, os.WriteFile(cfg, []byte(old), 0644))
+
+	require.NoError(t, config.DisconnectOpenClaw(cfg))
+
+	data, _ := os.ReadFile(cfg)
+	var root map[string]any
+	require.NoError(t, json.Unmarshal(data, &root))
+
+	provider := root["models"].(map[string]any)["providers"].(map[string]any)["anthropic"].(map[string]any)
+	assert.NotContains(t, provider, "baseUrl")
+	assert.NotContains(t, provider, "apiKey", "placeholder apiKey must be removed")
 }
 
 // ── Cursor ────────────────────────────────────────────────────────────────────

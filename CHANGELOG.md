@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.26] - 2026-05-18
+
+### Fixed
+- **OpenClaw config 写入逻辑双重 bug 修复**
+  - **Bug A（crash loop）**：旧版 `ConnectOpenClaw` 向 `models.providers.anthropic.apiKey`
+    写入字面量 `"${ANTHROPIC_API_KEY}"`。OpenClaw 作为 LaunchAgent 运行，不继承 shell
+    环境，该占位符从不展开，直接作为无效 API key 发给 Anthropic，导致 OpenClaw
+    crash loop。新版完全不写 `apiKey`——用户自己的真实 key 必须保留在 OpenClaw 配置里。
+  - **Bug B（字段覆盖）**：旧版用 `setNestedJSON` 把整个 `anthropic` 节点替换成三个固定字段，
+    销毁用户原有的所有配置（如 minimax apiKey、models 列表）。新版改为 merge：只写
+    `baseUrl` 和 `api`，所有其他字段原样保留。
+  - **旧版清理**：`DisconnectOpenClaw` 现在会识别并删除旧版写入的 `${ANTHROPIC_API_KEY}`
+    占位符，修复升级路径；真实 apiKey 永远不会被 Disconnect 删除。
+  - 5 个测试覆盖：baseUrl+api 设置、apiKey 不注入、backup 创建、disconnect 保留真实 key、
+    disconnect 清除占位符
+
+---
+
 ## [2.0.25] - 2026-05-18
 
 ### Added

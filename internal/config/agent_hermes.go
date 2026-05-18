@@ -24,7 +24,7 @@ func ConnectHermes(configPath string) error {
 		return fmt.Errorf("hermes: parse TOML: %w", err)
 	}
 
-	setNestedJSON(root, []string{"providers", "anthropic", "base_url"}, proxyBase)
+	ensureMap(ensureMap(root, "providers"), "anthropic")["base_url"] = proxyBase
 
 	return writeTOML(configPath, root)
 }
