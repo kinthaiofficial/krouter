@@ -61,6 +61,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/install/shell-integration", s.withAuth(s.handleShellIntegration))
 	mux.HandleFunc("/api/install/connect-agent", s.withAuth(s.handleConnectAgent))
 	mux.HandleFunc("/api/install/finalize", s.withAuth(s.handleFinalize))
+	mux.HandleFunc("/api/install/daemon-ready", s.withAuth(s.handleDaemonReady))
 
 	// Health — no auth needed.
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
@@ -216,25 +217,39 @@ func (s *Server) handleFinalize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Wait for the daemon that was started by RegisterService to be reachable,
-	// so that the redirect URL can carry a valid session ticket.
-	s.waitForDaemonFn()
+	s.finalized.Store(true)
+	// Return immediately — the client polls /api/install/daemon-ready to wait
+	// for the daemon and obtain a session ticket once it is up.
+	writeJSON(w, map[string]string{"status": "ok"})
+}
 
-	// Mint a session ticket so the browser can log into the main UI immediately.
+// handleDaemonReady checks whether the daemon is reachable and, if so, mints
+// a one-time session ticket so the browser can open the dashboard authenticated.
+// The client polls this endpoint every ~1.5 s while showing a "starting" screen.
+func (s *Server) handleDaemonReady(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get("http://127.0.0.1:8403/health")
+	if err != nil || resp.StatusCode != http.StatusOK {
+		writeJSON(w, map[string]any{"ready": false})
+		return
+	}
+	_ = resp.Body.Close()
+
 	redirectURL := "http://127.0.0.1:8403/ui/"
-	internalToken, err := s.readInternalTokenFn()
-	if err == nil {
-		ticket, tickErr := s.mintDaemonTicketFn(internalToken)
-		if tickErr == nil && ticket != "" {
+	if internalToken, err := s.readInternalTokenFn(); err == nil {
+		if ticket, err := s.mintDaemonTicketFn(internalToken); err == nil && ticket != "" {
 			redirectURL = fmt.Sprintf(
 				"http://127.0.0.1:8403/internal/auth/exchange?ticket=%s&redirect=/ui/",
 				ticket,
 			)
 		}
 	}
-
-	s.finalized.Store(true)
-	writeJSON(w, map[string]string{"redirect_url": redirectURL})
+	writeJSON(w, map[string]any{"ready": true, "redirect_url": redirectURL})
 }
 
 // defaultWaitForDaemon polls :8403/health until the daemon responds or 10 s elapses.

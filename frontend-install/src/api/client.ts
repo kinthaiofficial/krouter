@@ -35,5 +35,7 @@ export const api = {
       agent,
       config_path: configPath ?? '',
     }),
-  finalize: () => call<{ redirect_url: string }>('POST', '/api/install/finalize'),
+  finalize: () => call<{ status: string }>('POST', '/api/install/finalize'),
+  daemonReady: () =>
+    call<{ ready: boolean; redirect_url?: string }>('GET', '/api/install/daemon-ready'),
 }

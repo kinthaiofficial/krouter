@@ -138,7 +138,7 @@ func TestInstallServer_ConnectAgent_MissingName(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-func TestInstallServer_Finalize_ReturnsRedirectURL(t *testing.T) {
+func TestInstallServer_Finalize_ReturnsOK(t *testing.T) {
 	srv, _ := newTestServer(t)
 
 	w := httptest.NewRecorder()
@@ -147,22 +147,22 @@ func TestInstallServer_Finalize_ReturnsRedirectURL(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	var resp map[string]string
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.Contains(t, resp["redirect_url"], "test-ticket-xyz")
-	assert.Contains(t, resp["redirect_url"], "exchange")
+	assert.Equal(t, "ok", resp["status"])
 }
 
-func TestInstallServer_Finalize_FallsBackWithoutDaemon(t *testing.T) {
+func TestInstallServer_DaemonReady_NotUp(t *testing.T) {
 	srv, _ := newTestServer(t)
+	// Don't start a real daemon — readInternalTokenFn returns error.
 	srv.readInternalTokenFn = func() (string, error) { return "", errors.New("daemon not running") }
 
 	w := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(w, authed(httptest.NewRequest(http.MethodPost, "/api/install/finalize", nil)))
+	srv.Handler().ServeHTTP(w, authed(httptest.NewRequest(http.MethodGet, "/api/install/daemon-ready", nil)))
 
+	// No daemon listening on 8403 in tests → ready: false.
 	require.Equal(t, http.StatusOK, w.Code)
-	var resp map[string]string
+	var resp map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	// Falls back to /ui/ without ticket.
-	assert.Equal(t, "http://127.0.0.1:8403/ui/", resp["redirect_url"])
+	assert.Equal(t, false, resp["ready"])
 }
 
 func TestInstallServer_TokenReplay_FinalizeOnlyOnce(t *testing.T) {

@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.15] - 2026-05-18
+
+### Fixed
+- **macOS: "Open KRouter Dashboard" showed connection error on first install** —
+  two root causes fixed:
+  1. `launchctl load -w` is a no-op when the service is already loaded (reinstall
+     case), leaving the old process running; `LoadLaunchAgent` now unloads first so
+     the daemon is always restarted with the updated binary.
+  2. Even with the unload fix, timing cannot be fully guaranteed; the installer now
+     shows a "Starting KRouter daemon…" spinner and polls `/api/install/daemon-ready`
+     every 1.5 s (up to 60 s) before navigating to the dashboard, so the browser
+     only opens the URL once the daemon is actually accepting connections.
+- **macOS: skipping shell integration left `MarkInstalled` uncalled** — `DoneStep`
+  now calls `finalize` (idempotent) before polling, ensuring the
+  `~/.kinthai/installed` marker is always written regardless of which path through
+  the wizard the user takes.
+
+---
+
 ## [2.0.14] - 2026-05-17
 
 ### Fixed

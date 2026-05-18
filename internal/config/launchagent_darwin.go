@@ -70,7 +70,10 @@ func WriteLaunchAgentPlist(binaryPath string) (string, error) {
 }
 
 // LoadLaunchAgent registers and starts the daemon via launchctl.
+// Unloads first to ensure a stale process (e.g. from a previous install) is
+// replaced with the updated binary rather than kept running.
 func LoadLaunchAgent(plistPath string) error {
+	_ = exec.Command("launchctl", "unload", plistPath).Run()
 	out, err := exec.Command("launchctl", "load", "-w", plistPath).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("launchctl load: %w — %s", err, out)
