@@ -11,6 +11,8 @@ package minimax
 
 import (
 	"net/http"
+	"strings"
+	"sync"
 
 	anthropicAdapter "github.com/kinthaiofficial/krouter/internal/providers/anthropic"
 )
@@ -22,6 +24,33 @@ const baseURL = "https://api.minimaxi.com/anthropic"
 var supportedModels = []string{
 	"MiniMax-M2.7",
 	"MiniMax-M2.7-highspeed",
+}
+
+// tokenCache holds the most recently seen OAuth Bearer token for MiniMax.
+// Used by QuotaPoller to call token_plan/remains. Never persisted to disk.
+var tokenCache struct {
+	mu    sync.RWMutex
+	token string
+}
+
+// CacheOAuthToken stores the most recently observed MiniMax OAuth token in memory.
+// Called by the proxy on each MiniMax request. Token is never written to disk or logs.
+func CacheOAuthToken(authHeader string) {
+	token := strings.TrimPrefix(authHeader, "Bearer ")
+	token = strings.TrimSpace(token)
+	if token == "" || token == authHeader {
+		return
+	}
+	tokenCache.mu.Lock()
+	tokenCache.token = token
+	tokenCache.mu.Unlock()
+}
+
+// GetCachedToken returns the most recently cached OAuth token, or "" if none seen yet.
+func GetCachedToken() string {
+	tokenCache.mu.RLock()
+	defer tokenCache.mu.RUnlock()
+	return tokenCache.token
 }
 
 // New creates a MiniMax provider adapter that transparently proxies requests,

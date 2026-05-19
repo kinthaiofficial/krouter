@@ -31,6 +31,7 @@ import (
 	"github.com/kinthaiofficial/krouter/internal/logging"
 	"github.com/kinthaiofficial/krouter/internal/pricing"
 	"github.com/kinthaiofficial/krouter/internal/providers"
+	"github.com/kinthaiofficial/krouter/internal/providers/minimax"
 	"github.com/kinthaiofficial/krouter/internal/routing"
 	"github.com/kinthaiofficial/krouter/internal/storage"
 )
@@ -245,6 +246,11 @@ func (s *Server) handleAnthropicWithRouting(
 		s.logger.Error("provider not found in registry", "provider", dec.Provider)
 		http.Error(w, "internal error: provider unavailable", http.StatusBadGateway)
 		return
+	}
+
+	// Cache MiniMax OAuth token for the quota poller (never persisted to disk).
+	if dec.Provider == "minimax" {
+		minimax.CacheOAuthToken(r.Header.Get("Authorization"))
 	}
 
 	// Build request for the provider (copy headers, set body).

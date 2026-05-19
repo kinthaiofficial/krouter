@@ -7,6 +7,7 @@
 package routing
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/kinthaiofficial/krouter/internal/providers"
@@ -61,11 +62,28 @@ type PricingSource interface {
 	InputCostPerToken(model string) float64
 }
 
+// SubscriptionInfo carries quota state for a subscription-based provider.
+type SubscriptionInfo struct {
+	Available        bool
+	Model            string  // e.g. "MiniMax-M2.7" or "MiniMax-M2.7-highspeed"
+	Remaining        int64   // calls left in current window
+	Total            int64   // window call limit
+	EffectiveCostUSD float64 // amortised per-call cost (monthly_price / monthly_calls)
+}
+
+// SubscriptionSource reports quota state for call-count-based providers (e.g. MiniMax).
+// Routing prefers these providers when available; their effective per-call cost
+// (~$0.000031) is lower than any per-token provider.
+type SubscriptionSource interface {
+	GetSubscriptionInfo(ctx context.Context, provider string) SubscriptionInfo
+}
+
 // Engine makes routing decisions.
 type Engine struct {
-	registry *providers.Registry
-	health   HealthChecker // optional; nil means no health-based routing
-	pricing  PricingSource // optional; nil falls back to hardcoded model names
+	registry     *providers.Registry
+	health       HealthChecker      // optional; nil means no health-based routing
+	pricing      PricingSource      // optional; nil falls back to hardcoded model names
+	subscription SubscriptionSource // optional; nil means no subscription-aware routing
 }
 
 // New creates a routing engine backed by the given provider registry.
@@ -82,6 +100,35 @@ func (e *Engine) WithHealth(h HealthChecker) {
 // cheapest/most-capable model dynamically instead of using hardcoded names.
 func (e *Engine) WithPricing(p PricingSource) {
 	e.pricing = p
+}
+
+// WithSubscription attaches a subscription quota source for call-count-based
+// providers (e.g. MiniMax). When available, these providers are preferred because
+// their effective per-call cost (~$0.000031) is lower than any per-token provider.
+func (e *Engine) WithSubscription(s SubscriptionSource) {
+	e.subscription = s
+}
+
+// subscriptionInfo returns quota info for a provider, or zero value if not available.
+// Uses background context so routing decisions are never blocked by I/O.
+func (e *Engine) subscriptionInfo(provider string) SubscriptionInfo {
+	if e.subscription == nil {
+		return SubscriptionInfo{}
+	}
+	return e.subscription.GetSubscriptionInfo(context.Background(), provider)
+}
+
+// subscriptionDecision builds a Decision from SubscriptionInfo.
+func subscriptionDecision(provider string, info SubscriptionInfo) Decision {
+	return Decision{
+		Provider:         provider,
+		Model:            info.Model,
+		EstimatedCostUSD: info.EffectiveCostUSD,
+		Reason: fmt.Sprintf(
+			"MiniMax 订阅（有效成本 $%.6f，配额剩余 %d/%d）",
+			info.EffectiveCostUSD, info.Remaining, info.Total,
+		),
+	}
 }
 
 // isHealthy returns false if the provider has ≥3 consecutive failures.
@@ -142,8 +189,18 @@ func (e *Engine) Decide(req Request, preset string) Decision {
 
 // decideBalanced honours the requested model; prefers the provider that explicitly
 // supports it, then falls back to fallbackModel on the default provider.
+// When MiniMax subscription is available, it is preferred over per-token providers.
 func (e *Engine) decideBalanced(req Request) Decision {
 	proto := providers.Protocol(req.Protocol)
+
+	// Prefer subscription provider when available (cost dominates for all request sizes).
+	if !req.HasImages && proto == providers.ProtocolAnthropic {
+		if info := e.subscriptionInfo("minimax"); info.Available {
+			if _, ok := e.registry.Get("minimax"); ok {
+				return subscriptionDecision("minimax", info)
+			}
+		}
+	}
 
 	// Prefer a provider that explicitly lists the requested model.
 	provider := e.pickProviderForModel(proto, req.RequestedModel)
@@ -169,11 +226,22 @@ func (e *Engine) decideBalanced(req Request) Decision {
 // decideSaver routes to the cheapest available provider.
 //
 // Rules (spec/02-routing-engine.md §4):
+//   - MiniMax subscription available → MiniMax first (effective cost ~$0.000031)
 //   - Anthropic protocol + no images → claude-haiku (cheapest Anthropic)
 //   - OpenAI protocol → deepseek-chat (if DEEPSEEK_API_KEY set), else gpt-4o-mini fallback
 //   - HasImages → claude-sonnet (cheapest Anthropic with reliable multimodal)
 func (e *Engine) decideSaver(req Request) Decision {
 	proto := providers.Protocol(req.Protocol)
+
+	// Subscription provider (MiniMax) beats all per-token providers on cost.
+	// Skip for image requests — MiniMax may not support multimodal reliably.
+	if !req.HasImages && proto == providers.ProtocolAnthropic {
+		if info := e.subscriptionInfo("minimax"); info.Available {
+			if _, ok := e.registry.Get("minimax"); ok {
+				return subscriptionDecision("minimax", info)
+			}
+		}
+	}
 
 	// Multimodal requires a capable model regardless of preset.
 	if req.HasImages {
@@ -262,8 +330,19 @@ func (e *Engine) decideSaver(req Request) Decision {
 }
 
 // decideQuality upgrades complex requests; otherwise honours the request.
+// For simple requests (not complex), MiniMax subscription is preferred when available.
 func (e *Engine) decideQuality(req Request) Decision {
 	proto := providers.Protocol(req.Protocol)
+
+	// For non-complex requests, subscription cost wins even in Quality mode.
+	isComplex := req.HasImages || (req.HasTools && req.InputTokenEst > 4000)
+	if !isComplex && !req.HasImages && proto == providers.ProtocolAnthropic {
+		if info := e.subscriptionInfo("minimax"); info.Available {
+			if _, ok := e.registry.Get("minimax"); ok {
+				return subscriptionDecision("minimax", info)
+			}
+		}
+	}
 
 	provider := e.pickProviderForModel(proto, req.RequestedModel)
 	if provider == nil {
@@ -278,7 +357,7 @@ func (e *Engine) decideQuality(req Request) Decision {
 	reason := fmt.Sprintf("Quality: honoring requested model %s via %s", model, provider.Name())
 
 	// Upgrade complex tasks to the highest-capability (most expensive) model.
-	isComplex := req.HasImages || (req.HasTools && req.InputTokenEst > 4000)
+	isComplex = req.HasImages || (req.HasTools && req.InputTokenEst > 4000)
 	if isComplex && proto == providers.ProtocolAnthropic {
 		// With live pricing: pick the most expensive available model.
 		if expProv, expModel := e.mostExpensiveProviderModel(proto); expProv != nil {

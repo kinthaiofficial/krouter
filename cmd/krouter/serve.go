@@ -142,6 +142,9 @@ The daemon listens on two ports:
 			pricingSvc := pricing.New(store)
 			engine.WithPricing(pricingSvc)
 
+			// Subscription quota source — wraps store for the routing engine.
+			engine.WithSubscription(newSubscriptionSource(store))
+
 			// Proxy server.
 			proxySrv := proxy.New(
 				proxy.WithLogger(logger),
@@ -177,6 +180,12 @@ The daemon listens on two ports:
 				}
 			})
 			pricingSvc.StartSync(ctx, 24*time.Hour)
+
+			// MiniMax subscription quota poller — uses cached OAuth token from proxied requests.
+			minimaxPoller := minimaxadapter.NewQuotaPoller(store, &http.Client{
+				Timeout: 15 * time.Second, Transport: bgTransport,
+			})
+			go minimaxPoller.Start(ctx)
 
 			// Notifications service — polls CDN feed every 6h.
 			notifSvc := notifications.New(store, settings, reg, Version)
@@ -344,6 +353,42 @@ func waitPortFree(addr string, timeout, interval time.Duration) bool {
 		time.Sleep(interval)
 	}
 	return false
+}
+
+// subscriptionSource implements routing.SubscriptionSource via the storage layer.
+type subscriptionSource struct {
+	store *storage.Store
+}
+
+func newSubscriptionSource(store *storage.Store) *subscriptionSource {
+	return &subscriptionSource{store: store}
+}
+
+func (s *subscriptionSource) GetSubscriptionInfo(ctx context.Context, provider string) routing.SubscriptionInfo {
+	quotas, err := s.store.GetAllSubscriptionQuotas(ctx)
+	if err != nil {
+		return routing.SubscriptionInfo{}
+	}
+	for _, q := range quotas {
+		if q.Provider != provider {
+			continue
+		}
+		if !q.IsAvailable() {
+			continue
+		}
+		model := "MiniMax-M2.7"
+		if q.Highspeed {
+			model = "MiniMax-M2.7-highspeed"
+		}
+		return routing.SubscriptionInfo{
+			Available:        true,
+			Model:            model,
+			Remaining:        q.TotalCount - q.UsedCount,
+			Total:            q.TotalCount,
+			EffectiveCostUSD: q.EffectiveCostUSD(),
+		}
+	}
+	return routing.SubscriptionInfo{}
 }
 
 // defaultDBPath returns the default SQLite database path (~/.kinthai/data.db).
