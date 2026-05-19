@@ -41,6 +41,26 @@ func TestUpsertAndGetAllPrices(t *testing.T) {
 	assert.InDelta(t, 0.000003, entries[0].InputCostPerToken, 1e-10)
 }
 
+func TestUpsertPrice_RawJSONRoundtrip(t *testing.T) {
+	s := openMigratedStore(t)
+	ctx := context.Background()
+
+	raw := `{"input_cost_per_token":0.000003,"litellm_provider":"anthropic"}`
+	require.NoError(t, s.UpsertPrice(ctx, storage.PriceCacheEntry{
+		ModelID:            "claude-test",
+		Provider:           "anthropic",
+		InputCostPerToken:  0.000003,
+		OutputCostPerToken: 0.000015,
+		RawJSON:            raw,
+		UpdatedAt:          time.Now().UTC(),
+	}))
+
+	entries, err := s.GetAllPrices(ctx)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.Equal(t, raw, entries[0].RawJSON)
+}
+
 func TestUpsertPrice_UpdatesExisting(t *testing.T) {
 	s := openMigratedStore(t)
 	ctx := context.Background()

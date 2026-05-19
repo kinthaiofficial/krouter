@@ -137,7 +137,6 @@ The daemon listens on two ports:
 
 			// Pricing service.
 			pricingSvc := pricing.New(store)
-			pricingSvc.StartSync(ctx, 24*time.Hour)
 
 			// Proxy server.
 			proxySrv := proxy.New(
@@ -151,13 +150,14 @@ The daemon listens on two ports:
 			// Proxy refresh — re-detects OS proxy every 60s (handles VPN/network changes).
 			go proxymgr.RefreshLoop(ctx, transport, 60*time.Second)
 
-			// Proxy-aware HTTP client for background services (announcements, upgrade).
-			// Uses the same proxy detection as the provider transport so VPN/network
-			// changes are reflected without requiring a daemon restart.
+			// Proxy-aware HTTP client for background services (announcements, upgrade,
+			// pricing sync). Uses the same proxy detection as the provider transport.
 			bgTransport := &http.Transport{
 				Proxy:           proxymgr.ProxyFunc(),
 				IdleConnTimeout: 90 * time.Second,
 			}
+			pricingSvc.WithHTTPClient(&http.Client{Timeout: 30 * time.Second, Transport: bgTransport})
+			pricingSvc.StartSync(ctx, 24*time.Hour)
 
 			// Notifications service — polls CDN feed every 6h.
 			notifSvc := notifications.New(store, settings, reg, Version)

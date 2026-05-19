@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.39] - 2026-05-19
+
+### Fixed
+- **pricing: 同步请求不走 OS 代理**：`pricing.Service` 之前用硬编码 `&http.Client{}` 访问 `raw.githubusercontent.com`，在国内受限网络下每 24h 同步必超时。新增 `WithHTTPClient(*http.Client) *Service` 方法；`serve.go` 在创建 `bgTransport`（与 notifications/upgrade 共享的代理感知 transport）后立即注入，然后才调用 `StartSync`。
+- **pricing: `raw_json` 列有 schema 但从不写入**：`syncOnce` 写 `UpsertPrice` 时缺失 `RawJSON` 字段，导致 `pricing_cache.raw_json` 始终为空字符串，无法用于调试。修复：`parseLiteLLM` 返回内部 `parsedEntry{PriceEntry, RawJSON}` 结构，将原始 JSON bytes 一并传到 `UpsertPrice`；内存价格表（`prices` map）仍只保存 `PriceEntry`，内存占用不变。
+
 ## [2.0.38] - 2026-05-19
 
 ### Fixed

@@ -87,6 +87,13 @@ func NewWithSyncURL(store *storage.Store, syncURL string) *Service {
 	return s
 }
 
+// WithHTTPClient replaces the default HTTP client. Useful for injecting a
+// proxy-aware client at daemon startup.
+func (s *Service) WithHTTPClient(c *http.Client) *Service {
+	s.httpClient = c
+	return s
+}
+
 // SyncOnceForTest triggers a single sync immediately (test helper).
 func (s *Service) SyncOnceForTest(ctx context.Context) {
 	s.syncOnce(ctx)
@@ -227,7 +234,7 @@ func (s *Service) syncOnce(ctx context.Context) {
 	// Merge into in-memory table (don't delete existing entries not in new data).
 	s.mu.Lock()
 	for k, v := range updated {
-		s.prices[k] = v
+		s.prices[k] = v.PriceEntry
 	}
 	s.mu.Unlock()
 
@@ -244,6 +251,7 @@ func (s *Service) syncOnce(ctx context.Context) {
 				OutputCostPerToken:      entry.OutputCostPerToken,
 				CachedInputCostPerToken: entry.CachedInputCostPerToken,
 				MaxTokens:               entry.MaxTokens,
+				RawJSON:                 entry.RawJSON,
 				UpdatedAt:               now,
 			})
 		}
@@ -265,15 +273,22 @@ type liteLLMEntry struct {
 	Provider                string  `json:"litellm_provider"`
 }
 
+// parsedEntry combines a PriceEntry with the original raw JSON bytes for DB storage.
+type parsedEntry struct {
+	PriceEntry
+	RawJSON string
+}
+
 // parseLiteLLM parses the top-level map from LiteLLM JSON.
-// Returns only entries that have non-zero input cost.
-func (s *Service) parseLiteLLM(data []byte) (map[string]PriceEntry, error) {
+// Returns only entries that have non-zero input cost. RawJSON carries the
+// original per-model bytes for storage in the pricing_cache.raw_json column.
+func (s *Service) parseLiteLLM(data []byte) (map[string]parsedEntry, error) {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("unmarshal: %w", err)
 	}
 
-	out := make(map[string]PriceEntry, len(raw))
+	out := make(map[string]parsedEntry, len(raw))
 	for modelID, entryRaw := range raw {
 		var e liteLLMEntry
 		if err := json.Unmarshal(entryRaw, &e); err != nil {
@@ -282,12 +297,15 @@ func (s *Service) parseLiteLLM(data []byte) (map[string]PriceEntry, error) {
 		if e.InputCostPerToken == 0 {
 			continue // skip free/unknown models without pricing
 		}
-		out[modelID] = PriceEntry{
-			Provider:                e.Provider,
-			InputCostPerToken:       e.InputCostPerToken,
-			OutputCostPerToken:      e.OutputCostPerToken,
-			CachedInputCostPerToken: e.CacheReadInputTokenCost,
-			MaxTokens:               e.MaxTokens,
+		out[modelID] = parsedEntry{
+			PriceEntry: PriceEntry{
+				Provider:                e.Provider,
+				InputCostPerToken:       e.InputCostPerToken,
+				OutputCostPerToken:      e.OutputCostPerToken,
+				CachedInputCostPerToken: e.CacheReadInputTokenCost,
+				MaxTokens:               e.MaxTokens,
+			},
+			RawJSON: string(entryRaw),
 		}
 	}
 	return out, nil
