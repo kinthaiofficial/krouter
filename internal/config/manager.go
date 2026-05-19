@@ -22,19 +22,31 @@ import (
 	"sync"
 )
 
+// RoutingOverride specifies per-agent routing behaviour overrides.
+type RoutingOverride struct {
+	// AlwaysUse directs all requests from this agent to a specific model,
+	// bypassing preset logic. Example: "deepseek-chat".
+	AlwaysUse string `json:"always_use,omitempty"`
+	// Preset overrides the active preset for this agent. Example: "saver".
+	Preset string `json:"preset,omitempty"`
+}
+
 // Settings is the JSON-serializable user settings.
 type Settings struct {
-	Preset                 string             `json:"preset"`
-	Language               string             `json:"language"`
-	DaemonURL              string             `json:"daemon_url,omitempty"`
-	NotificationCategories map[string]bool    `json:"notification_categories"`
-	BudgetWarnings         map[string]float64 `json:"budget_warnings"`
+	Preset                 string                     `json:"preset"`
+	Language               string                     `json:"language"`
+	DaemonURL              string                     `json:"daemon_url,omitempty"`
+	NotificationCategories map[string]bool            `json:"notification_categories"`
+	BudgetWarnings         map[string]float64         `json:"budget_warnings"`
 	// ProviderKeys stores API keys for secondary providers (deepseek, groq, etc.)
 	// so the daemon can authenticate when running as a LaunchAgent without shell env.
 	// Keys use the provider name (e.g. "deepseek", "groq"); values are the API keys.
 	// File is stored at 0600 permissions. DO NOT store Anthropic keys here — those
 	// come from the agent's own request headers (krouter is a transparent proxy).
-	ProviderKeys           map[string]string  `json:"provider_keys,omitempty"`
+	ProviderKeys           map[string]string          `json:"provider_keys,omitempty"`
+	// RoutingOverrides allows per-agent routing customisation.
+	// Keys are agent names ("openclaw", "claude-code", "cursor", "unknown").
+	RoutingOverrides       map[string]RoutingOverride `json:"routing_overrides,omitempty"`
 }
 
 func applyDefaults(s Settings) Settings {
@@ -80,6 +92,21 @@ func (m *Manager) Get() Settings {
 		return applyDefaults(Settings{})
 	}
 	return applyDefaults(s)
+}
+
+// GetRoutingOverride implements routing.OverrideSource.
+// Returns the alwaysUse model and preset override for the given agent name,
+// or ("", "") if no override is configured.
+func (m *Manager) GetRoutingOverride(agentName string) (alwaysUse, preset string) {
+	s := m.Get()
+	if s.RoutingOverrides == nil {
+		return "", ""
+	}
+	o, ok := s.RoutingOverrides[agentName]
+	if !ok {
+		return "", ""
+	}
+	return o.AlwaysUse, o.Preset
 }
 
 // MigrateKeys rewrites any legacy provider key names to their current names.

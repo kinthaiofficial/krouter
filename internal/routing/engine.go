@@ -9,9 +9,47 @@ package routing
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/kinthaiofficial/krouter/internal/providers"
 )
+
+// complexityKeywords indicate a request that likely benefits from a more capable model.
+var complexityKeywords = []string{
+	"debug", "refactor", "architect", "design", "analyze",
+	"optimize", "implement", "review", "audit", "migration",
+}
+
+// ComplexityScore returns a score in [0.0, 1.0] estimating request complexity.
+// Scores >= 0.4 are treated as "complex" by the Quality preset.
+// Exported for testing; internal callers use the same function.
+func ComplexityScore(req Request) float64 {
+	score := 0.0
+
+	if req.HasImages {
+		score += 0.4
+	}
+	if req.InputTokenEst > 10000 {
+		score += 0.4
+	} else if req.InputTokenEst > 4000 {
+		score += 0.2
+	}
+	if req.HasTools && req.InputTokenEst > 4000 {
+		score += 0.15
+	}
+
+	sp := strings.ToLower(req.SystemPrompt)
+	for _, kw := range complexityKeywords {
+		if strings.Contains(sp, kw) {
+			score += 0.05
+		}
+	}
+
+	if score > 1.0 {
+		return 1.0
+	}
+	return score
+}
 
 // Preset constants match the values stored in settings_kv.
 const (
@@ -93,6 +131,12 @@ type SubscriptionSource interface {
 	GetSubscriptionInfo(ctx context.Context, provider string) SubscriptionInfo
 }
 
+// OverrideSource provides per-agent routing overrides configured by the user.
+// An empty alwaysUse and preset mean "no override for this agent".
+type OverrideSource interface {
+	GetRoutingOverride(agentName string) (alwaysUse, preset string)
+}
+
 // Engine makes routing decisions.
 type Engine struct {
 	registry     *providers.Registry
@@ -100,6 +144,7 @@ type Engine struct {
 	pricing      PricingSource      // optional; nil falls back to hardcoded model names
 	subscription SubscriptionSource // optional; nil means no subscription-aware routing
 	quota        QuotaSource        // optional; nil means no quota-based downgrade
+	overrides    OverrideSource     // optional; nil means no per-agent overrides
 }
 
 // New creates a routing engine backed by the given provider registry.
@@ -128,6 +173,11 @@ func (e *Engine) WithSubscription(s SubscriptionSource) {
 // WithQuota attaches a quota source for Anthropic token budget downgrade logic.
 func (e *Engine) WithQuota(q QuotaSource) {
 	e.quota = q
+}
+
+// WithOverrides attaches a per-agent routing override source.
+func (e *Engine) WithOverrides(o OverrideSource) {
+	e.overrides = o
 }
 
 // subscriptionInfo returns quota info for a provider, or zero value if not available.
@@ -198,14 +248,144 @@ func (e *Engine) pickProviderForModel(proto providers.Protocol, model string) pr
 // preset must be one of "saver", "balanced", "quality" (case-sensitive).
 // An empty or unrecognised preset is treated as "balanced".
 func (e *Engine) Decide(req Request, preset string) Decision {
+	// Per-agent override takes priority over preset and quota logic.
+	if e.overrides != nil && req.AgentName != "" {
+		if alwaysUse, overridePreset := e.overrides.GetRoutingOverride(req.AgentName); alwaysUse != "" {
+			proto := providers.Protocol(req.Protocol)
+			provider := e.pickProviderForModel(proto, alwaysUse)
+			if provider != nil {
+				dec := Decision{
+					Provider: provider.Name(),
+					Model:    alwaysUse,
+					Reason:   fmt.Sprintf("per-agent override for %s: always_use %s", req.AgentName, alwaysUse),
+				}
+				e.enrichDecision(&dec, req)
+				return dec
+			}
+		} else if overridePreset != "" {
+			preset = overridePreset
+		}
+	}
+
 	preset = e.applyQuotaDowngrade(preset)
+	var dec Decision
 	switch preset {
 	case PresetSaver:
-		return e.decideSaver(req)
+		dec = e.decideSaver(req)
 	case PresetQuality:
-		return e.decideQuality(req)
+		dec = e.decideQuality(req)
 	default:
-		return e.decideBalanced(req)
+		dec = e.decideBalanced(req)
+	}
+	e.enrichDecision(&dec, req)
+	return dec
+}
+
+// FallbackDecide returns the next routing decision after excluding already-tried
+// provider/model pairs. It is called by the proxy layer on 5xx or timeout errors.
+// Returns a zero Decision (Provider == "") when no further fallback is available.
+// 401 and 429 responses must NOT trigger fallback — the caller is responsible for
+// checking the status code before calling this method.
+func (e *Engine) FallbackDecide(req Request, preset string, tried map[string]bool) Decision {
+	proto := providers.Protocol(req.Protocol)
+	if proto == providers.ProtocolAnthropic {
+		return e.fallbackAnthropic(req, tried)
+	}
+	return e.fallbackOpenAI(req, tried)
+}
+
+// fallbackAnthropic returns the next lower Anthropic model tier: opus→sonnet→haiku.
+// It scans from highest to lowest tier, skipping any tier already in tried.
+func (e *Engine) fallbackAnthropic(_ Request, tried map[string]bool) Decision {
+	type tier struct {
+		matchSubstr   string
+		fallbackModel string
+		label         string
+	}
+	// Ordered from highest to lowest capability.
+	tiers := []tier{
+		{"opus", "claude-sonnet-4-6", "sonnet"},
+		{"sonnet", "claude-haiku-4-5-20251001", "haiku"},
+	}
+
+	if _, ok := e.registry.Get("anthropic"); !ok || !e.isHealthy("anthropic") {
+		return Decision{}
+	}
+
+	for _, t := range tiers {
+		// Is any tried model at this tier?
+		var srcModel string
+		for k := range tried {
+			if parts := strings.SplitN(k, "/", 2); len(parts) == 2 {
+				if strings.Contains(strings.ToLower(parts[1]), t.matchSubstr) {
+					srcModel = parts[1]
+					break
+				}
+			}
+		}
+		if srcModel == "" {
+			continue // this tier was not tried yet
+		}
+		// Tier was tried — offer the fallback if not already tried.
+		fbKey := "anthropic/" + t.fallbackModel
+		if tried[fbKey] {
+			continue // fallback also exhausted; check next tier
+		}
+		return Decision{
+			Provider: "anthropic",
+			Model:    t.fallbackModel,
+			Reason:   fmt.Sprintf("5xx fallback: %s → %s", srcModel, t.label),
+		}
+	}
+	return Decision{}
+}
+
+// fallbackOpenAI returns the next healthy same-protocol provider not already tried.
+func (e *Engine) fallbackOpenAI(req Request, tried map[string]bool) Decision {
+	proto := providers.Protocol(req.Protocol)
+	for _, p := range e.registry.All() {
+		if p.Protocol() != proto || !e.isHealthy(p.Name()) {
+			continue
+		}
+		model := req.RequestedModel
+		if len(p.SupportedModels()) > 0 && !modelSupported(p.SupportedModels(), model) {
+			model = p.SupportedModels()[0]
+		}
+		key := p.Name() + "/" + model
+		if tried[key] {
+			continue
+		}
+		return Decision{
+			Provider: p.Name(),
+			Model:    model,
+			Reason:   fmt.Sprintf("5xx fallback: switching to %s/%s", p.Name(), model),
+		}
+	}
+	return Decision{}
+}
+
+// enrichDecision fills EstimatedCostUSD and appends a savings note to Reason
+// when the routing decision is cheaper than the originally requested model.
+func (e *Engine) enrichDecision(dec *Decision, req Request) {
+	if e.pricing == nil || dec.Provider == "" || req.InputTokenEst == 0 {
+		return
+	}
+
+	// Fill EstimatedCostUSD if not already set (subscription decisions set it themselves).
+	if dec.EstimatedCostUSD == 0 && dec.Model != "" {
+		costPerToken := e.pricing.InputCostPerToken(dec.Model)
+		dec.EstimatedCostUSD = costPerToken * float64(req.InputTokenEst)
+	}
+
+	// Append savings note when routing to a cheaper model than what was requested.
+	if dec.Model == req.RequestedModel || req.RequestedModel == "" {
+		return
+	}
+	requestedCost := e.pricing.InputCostPerToken(req.RequestedModel) * float64(req.InputTokenEst)
+	routedCost := e.pricing.InputCostPerToken(dec.Model) * float64(req.InputTokenEst)
+	if requestedCost > 0 && routedCost < requestedCost {
+		savings := (requestedCost - routedCost) / requestedCost * 100
+		dec.Reason = fmt.Sprintf("%s（比 %s 便宜 %.0f%%）", dec.Reason, req.RequestedModel, savings)
 	}
 }
 
@@ -386,12 +566,13 @@ func (e *Engine) decideSaver(req Request) Decision {
 }
 
 // decideQuality upgrades complex requests; otherwise honours the request.
-// For simple requests (not complex), MiniMax subscription is preferred when available.
+// Complexity is determined by complexityScore >= 0.4.
+// For simple requests, MiniMax subscription is preferred when available.
 func (e *Engine) decideQuality(req Request) Decision {
 	proto := providers.Protocol(req.Protocol)
+	isComplex := ComplexityScore(req) >= 0.4
 
-	// For non-complex requests, subscription cost wins even in Quality mode.
-	isComplex := req.HasImages || (req.HasTools && req.InputTokenEst > 4000)
+	// For non-complex requests without images, subscription cost wins even in Quality mode.
 	if !isComplex && !req.HasImages && proto == providers.ProtocolAnthropic {
 		if info := e.subscriptionInfo("minimax"); info.Available {
 			if _, ok := e.registry.Get("minimax"); ok {
@@ -414,7 +595,6 @@ func (e *Engine) decideQuality(req Request) Decision {
 
 	// Upgrade complex tasks to the highest-capability (most expensive) model,
 	// unless the Opus 24h cap has been reached.
-	isComplex = req.HasImages || (req.HasTools && req.InputTokenEst > 4000)
 	opusBlocked := e.isOpusBlocked()
 	if isComplex && proto == providers.ProtocolAnthropic && !opusBlocked {
 		// With live pricing: pick the most expensive available model.

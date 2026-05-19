@@ -148,6 +148,9 @@ The daemon listens on two ports:
 			// Anthropic quota source — budget-based downgrade logic.
 			engine.WithQuota(newQuotaSource(store, settings))
 
+			// Per-agent routing overrides from settings.
+			engine.WithOverrides(settings)
+
 			// Proxy server.
 			proxySrv := proxy.New(
 				proxy.WithLogger(logger),

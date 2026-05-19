@@ -232,56 +232,31 @@ func (s *Server) handleAnthropicWithRouting(
 		AgentName:      agentName(r),
 	}
 
-	dec := s.engine.Decide(req, preset)
+	upstreamResp, dec, err := s.tryWithFallback(r.Context(), r.Header, body, req, preset, "/v1/messages")
+	if err != nil {
+		if r.Context().Err() != nil {
+			s.logger.Debug("client disconnected before upstream responded")
+			return
+		}
+		s.logger.Error("provider forward failed (all fallbacks exhausted)", "err", err)
+		http.Error(w, "bad gateway", http.StatusBadGateway)
+		return
+	}
+	defer func() { _ = upstreamResp.Body.Close() }()
+
 	s.logger.Debug("routing decision",
 		"provider", dec.Provider,
 		"model", dec.Model,
 		"reason", dec.Reason,
 	)
 
-	// Rewrite model in body if the engine chose a different one.
-	if dec.Model != requestedModel {
-		body = rewriteModel(body, dec.Model)
-	}
-
-	provider, ok := s.registry.Get(dec.Provider)
-	if !ok {
-		s.logger.Error("provider not found in registry", "provider", dec.Provider)
-		http.Error(w, "internal error: provider unavailable", http.StatusBadGateway)
-		return
-	}
-
 	// Cache MiniMax OAuth token for the quota poller (never persisted to disk).
 	if dec.Provider == "minimax" {
 		minimax.CacheOAuthToken(r.Header.Get("Authorization"))
 	}
 
-	// Build request for the provider (copy headers, set body).
-	// URL host is intentionally "placeholder" — the adapter rewrites it.
-	upstreamReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost,
-		"http://placeholder/v1/messages", bytes.NewReader(body))
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	copyRequestHeaders(upstreamReq.Header, r.Header)
-
-	upstreamResp, err := provider.Forward(r.Context(), upstreamReq)
-	if err != nil {
-		if r.Context().Err() != nil {
-			s.logger.Debug("client disconnected before upstream responded")
-			return
-		}
-		s.logger.Error("provider forward failed", "err", err)
-		s.recordProviderHealth(dec.Provider, 0)
-		http.Error(w, "bad gateway", http.StatusBadGateway)
-		return
-	}
-	defer func() { _ = upstreamResp.Body.Close() }()
-
 	// Forward safe response headers.
 	statusCode := upstreamResp.StatusCode
-	s.recordProviderHealth(dec.Provider, statusCode)
 	for k, vs := range upstreamResp.Header {
 		if hopByHopHeaders[strings.ToLower(k)] {
 			continue
@@ -338,6 +313,101 @@ func (s *Server) handleAnthropicWithRouting(
 			StatusCode:     statusCode,
 		})
 	}
+}
+
+// tryWithFallback forwards the request to the provider selected by the routing engine,
+// retrying with a downgraded provider/model on 5xx or network errors (up to 2 retries).
+// Returns the first successful response or the last 5xx response if no fallback is available.
+// 4xx responses are returned immediately without retrying.
+// Caller is responsible for closing resp.Body.
+func (s *Server) tryWithFallback(
+	ctx context.Context,
+	headers http.Header,
+	body []byte,
+	req routing.Request,
+	preset string,
+	path string,
+) (*http.Response, routing.Decision, error) {
+	dec := s.engine.Decide(req, preset)
+	tried := make(map[string]bool)
+
+	var lastErrBody []byte
+	var lastErrStatus int
+
+	for attempt := 0; attempt < 3; attempt++ {
+		key := dec.Provider + "/" + dec.Model
+		if tried[key] {
+			break
+		}
+		tried[key] = true
+
+		provider, ok := s.registry.Get(dec.Provider)
+		if !ok {
+			return nil, dec, fmt.Errorf("provider %q not in registry", dec.Provider)
+		}
+
+		// Rewrite model in body if engine chose a different model.
+		reqBody := body
+		if dec.Model != req.RequestedModel {
+			reqBody = rewriteModel(body, dec.Model)
+		}
+
+		upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
+			"http://placeholder"+path, bytes.NewReader(reqBody))
+		if err != nil {
+			return nil, dec, err
+		}
+		copyRequestHeaders(upstreamReq.Header, headers)
+
+		resp, err := provider.Forward(ctx, upstreamReq)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil, dec, err
+			}
+			s.recordProviderHealth(dec.Provider, 0)
+			fb := s.engine.FallbackDecide(req, preset, tried)
+			if fb.Provider == "" {
+				return nil, dec, fmt.Errorf("forward failed and no fallback available: %w", err)
+			}
+			dec = fb
+			continue
+		}
+
+		// 4xx: return immediately, no retry.
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			s.recordProviderHealth(dec.Provider, resp.StatusCode)
+			return resp, dec, nil
+		}
+
+		// 5xx: try fallback.
+		if resp.StatusCode >= 500 {
+			lastErrStatus = resp.StatusCode
+			lastErrBody, _ = io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+			_ = resp.Body.Close()
+			s.recordProviderHealth(dec.Provider, resp.StatusCode)
+			fb := s.engine.FallbackDecide(req, preset, tried)
+			if fb.Provider == "" {
+				break // no more fallbacks — return the last 5xx below
+			}
+			dec = fb
+			continue
+		}
+
+		// 2xx/3xx: success.
+		s.recordProviderHealth(dec.Provider, resp.StatusCode)
+		return resp, dec, nil
+	}
+
+	// Reconstruct a response from the last 5xx body so the client sees the error.
+	if lastErrStatus > 0 {
+		return &http.Response{
+			StatusCode: lastErrStatus,
+			Status:     fmt.Sprintf("%d %s", lastErrStatus, http.StatusText(lastErrStatus)),
+			Header:     make(http.Header),
+			Body:       io.NopCloser(bytes.NewReader(lastErrBody)),
+		}, dec, nil
+	}
+	return nil, dec, fmt.Errorf("all providers failed")
 }
 
 // forwardToUpstream is the legacy direct-forward path (used when engine is nil).
@@ -585,46 +655,25 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 		SystemPrompt:   systemPrompt,
 		AgentName:      agentName(r),
 	}
-	dec := s.engine.Decide(req, preset)
+
+	upstreamResp, dec, err := s.tryWithFallback(r.Context(), r.Header, body, req, preset, "/v1/chat/completions")
+	if err != nil {
+		if r.Context().Err() != nil {
+			return
+		}
+		s.logger.Error("provider forward failed (all fallbacks exhausted)", "err", err)
+		http.Error(w, "bad gateway", http.StatusBadGateway)
+		return
+	}
+	defer func() { _ = upstreamResp.Body.Close() }()
+
 	s.logger.Debug("routing decision",
 		"provider", dec.Provider,
 		"model", dec.Model,
 		"reason", dec.Reason,
 	)
 
-	if dec.Model != parsed.Model {
-		body = rewriteModel(body, dec.Model)
-	}
-
-	provider, ok := s.registry.Get(dec.Provider)
-	if !ok {
-		s.logger.Error("provider not found in registry", "provider", dec.Provider)
-		http.Error(w, "internal error: provider unavailable", http.StatusBadGateway)
-		return
-	}
-
-	upstreamReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost,
-		"http://placeholder/v1/chat/completions", bytes.NewReader(body))
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	copyRequestHeaders(upstreamReq.Header, r.Header)
-
-	upstreamResp, err := provider.Forward(r.Context(), upstreamReq)
-	if err != nil {
-		if r.Context().Err() != nil {
-			return
-		}
-		s.logger.Error("provider forward failed", "err", err)
-		s.recordProviderHealth(dec.Provider, 0)
-		http.Error(w, "bad gateway", http.StatusBadGateway)
-		return
-	}
-	defer func() { _ = upstreamResp.Body.Close() }()
-
 	statusCode := upstreamResp.StatusCode
-	s.recordProviderHealth(dec.Provider, statusCode)
 	for k, vs := range upstreamResp.Header {
 		if hopByHopHeaders[strings.ToLower(k)] {
 			continue

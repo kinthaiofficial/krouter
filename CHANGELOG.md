@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.46] - 2026-05-19
+
+### Added
+- **5xx Fallback 链**：proxy 层新增 `tryWithFallback`，当 provider 返回 5xx 或网络错误时自动调用 `engine.FallbackDecide`，最多重试 2 次；Anthropic 协议按 opus→sonnet→haiku 降档，OpenAI 协议切换到其他同协议 provider；4xx（401/429）直接透传，不触发重试。
+- **复杂度评分（`ComplexityScore`）**：替换原来的布尔判断（`HasImages || HasTools && tokens>4000`），综合图片、大 token 量、HasTools 组合、system prompt 关键词（debug / refactor / architect 等 10 个）计算 0.0~1.0 分值；Quality preset 以 ≥0.4 为复杂请求阈值，决定是否升级到 Opus。
+- **`EstimatedCostUSD` 填充**：`enrichDecision` 在 routing engine 内部自动计算路由决策的预估花费，填入 `Decision.EstimatedCostUSD`；当路由模型比请求模型便宜时，在 `Reason` 末尾追加"比 X 便宜 Y%"。
+- **per-agent 路由覆盖**：`settings.json` 新增 `routing_overrides` 字段，支持按 agent 名（openclaw / claude-code / cursor / unknown）配置 `always_use`（强制使用特定模型）或 `preset`（覆盖活跃 preset）；engine 通过新增的 `OverrideSource` 接口注入，daemon 启动时由 `config.Manager` 实现。
+
 ## [2.0.45] - 2026-05-19
 
 ### Added
