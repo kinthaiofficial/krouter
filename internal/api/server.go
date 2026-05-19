@@ -275,6 +275,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/internal/update-apply", auth(http.HandlerFunc(s.handleUpdateApply)))
 	mux.Handle("/internal/models/refresh", auth(http.HandlerFunc(s.handleModelsRefresh)))
 	mux.Handle("/internal/models", auth(http.HandlerFunc(s.handleModels)))
+	mux.Handle("/internal/pricing/status", auth(http.HandlerFunc(s.handlePricingStatus)))
 	return mux
 }
 
@@ -1293,6 +1294,105 @@ func (s *Server) handleModelsRefresh(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 	writeJSON(w, map[string]bool{"ok": true})
+}
+
+// handlePricingStatus handles GET /internal/pricing/status.
+// Returns pricing sync metadata, model count, top models by usage, and monthly cost/savings.
+func (s *Server) handlePricingStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	type topModelRow struct {
+		Model          string  `json:"model"`
+		Provider       string  `json:"provider"`
+		Requests       int     `json:"requests"`
+		CostUSD        float64 `json:"cost_usd"`
+		InputPerMTok   float64 `json:"input_per_mtok"`
+		OutputPerMTok  float64 `json:"output_per_mtok"`
+	}
+
+	type pricingStatusResponse struct {
+		LastSyncAt       string        `json:"last_sync_at"`       // RFC3339 or ""
+		Source           string        `json:"source"`             // "live" | "cache" | "static"
+		ModelCount       int           `json:"model_count"`
+		TopModels        []topModelRow `json:"top_models"`
+		CostThisMonthUSD float64       `json:"cost_this_month_usd"`
+		SavedThisMonthUSD float64      `json:"saved_this_month_usd"`
+	}
+
+	resp := pricingStatusResponse{
+		TopModels: []topModelRow{},
+	}
+
+	// Sync metadata.
+	if s.store != nil {
+		resp.LastSyncAt, _ = s.store.GetSyncMeta(r.Context(), "last_sync_at")
+	}
+
+	// Source classification.
+	if resp.LastSyncAt != "" {
+		if t, err := time.Parse(time.RFC3339, resp.LastSyncAt); err == nil && time.Since(t) < 25*time.Hour {
+			resp.Source = "live"
+		} else {
+			resp.Source = "cache"
+		}
+	} else {
+		resp.Source = "static"
+	}
+
+	// Model count.
+	if s.pricing != nil {
+		resp.ModelCount = s.pricing.ModelCount()
+	}
+
+	// Monthly cost and savings window.
+	now := time.Now().UTC()
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+
+	if s.store != nil {
+		// Total cost this month.
+		if total, err := s.store.SumCostMicroUSD(r.Context(), monthStart); err == nil {
+			resp.CostThisMonthUSD = float64(total) / 1_000_000
+		}
+
+		// Savings this month.
+		if s.pricing != nil {
+			if recs, err := s.store.ListRequestsSince(r.Context(), monthStart, 100000); err == nil {
+				var savedMicro int64
+				for _, rec := range recs {
+					if rec.CostMicroUSD <= 0 {
+						continue
+					}
+					baseline := s.pricing.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens)
+					if saved := baseline - rec.CostMicroUSD; saved > 0 {
+						savedMicro += saved
+					}
+				}
+				resp.SavedThisMonthUSD = float64(savedMicro) / 1_000_000
+			}
+		}
+
+		// Top 10 models by usage (last 30 days).
+		since30d := now.AddDate(0, 0, -30)
+		if stats, err := s.store.TopModelsByUsage(r.Context(), since30d, 10); err == nil {
+			for _, st := range stats {
+				row := topModelRow{
+					Model:    st.Model,
+					Provider: st.Provider,
+					Requests: st.Requests,
+					CostUSD:  st.CostUSD,
+				}
+				if s.pricing != nil {
+					row.InputPerMTok, row.OutputPerMTok = s.pricing.PriceFor(st.Model)
+				}
+				resp.TopModels = append(resp.TopModels, row)
+			}
+		}
+	}
+
+	writeJSON(w, resp)
 }
 
 // discoverOpenClawModels runs model discovery for all providers configured in

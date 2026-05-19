@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api, type Settings as ISettings, type Preset } from '../api/client'
+import { api, type Settings as ISettings, type Preset, type PricingStatus } from '../api/client'
 
 const PRESETS: Preset[] = ['saver', 'balanced', 'quality']
 
@@ -14,11 +14,32 @@ const BUDGET_THRESHOLDS = [
   { key: 'weekly', label: 'Weekly limit ($)' },
 ]
 
+function fmtUSD(n: number) {
+  return n < 0.001 ? '<$0.001' : `$${n.toFixed(3)}`
+}
+
+function fmtMTok(n: number) {
+  if (!n) return '—'
+  return `$${n.toFixed(2)}/M`
+}
+
+function fmtSyncTime(iso: string) {
+  if (!iso) return 'Never'
+  const d = new Date(iso)
+  return d.toLocaleString()
+}
+
 export default function Settings() {
   const qc = useQueryClient()
   const { data: settings, isLoading } = useQuery({
     queryKey: ['settings'],
     queryFn: api.settings,
+  })
+
+  const { data: pricing } = useQuery<PricingStatus>({
+    queryKey: ['pricingStatus'],
+    queryFn: api.pricingStatus,
+    refetchInterval: 60_000,
   })
 
   const save = useMutation({
@@ -117,6 +138,68 @@ export default function Settings() {
             </div>
           ))}
         </div>
+      </section>
+
+      {/* Pricing */}
+      <section className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-medium">Pricing Data</h2>
+          {pricing && (
+            <span className={[
+              'text-xs px-2 py-0.5 rounded-full font-medium',
+              pricing.source === 'live' ? 'bg-green-100 text-green-700' :
+              pricing.source === 'cache' ? 'bg-yellow-100 text-yellow-700' :
+              'bg-gray-100 text-gray-500',
+            ].join(' ')}>
+              {pricing.source}
+            </span>
+          )}
+        </div>
+
+        {pricing ? (
+          <>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+              <span className="text-gray-500">Last synced</span>
+              <span className="font-mono text-xs">{fmtSyncTime(pricing.last_sync_at)}</span>
+              <span className="text-gray-500">Models tracked</span>
+              <span>{pricing.model_count.toLocaleString()}</span>
+              <span className="text-gray-500">Cost this month</span>
+              <span>{fmtUSD(pricing.cost_this_month_usd)}</span>
+              <span className="text-gray-500">Saved this month</span>
+              <span className="text-green-600 font-medium">{fmtUSD(pricing.saved_this_month_usd)}</span>
+            </div>
+
+            {pricing.top_models.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs text-gray-400 uppercase tracking-wide">Top models (30 days)</p>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-gray-400 border-b border-gray-100">
+                      <th className="text-left py-1 font-normal">Model</th>
+                      <th className="text-right py-1 font-normal">Reqs</th>
+                      <th className="text-right py-1 font-normal">Cost</th>
+                      <th className="text-right py-1 font-normal">In/M</th>
+                      <th className="text-right py-1 font-normal">Out/M</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pricing.top_models.map((m) => (
+                      <tr key={`${m.provider}/${m.model}`} className="border-b border-gray-50">
+                        <td className="py-1 text-gray-700 max-w-[140px] truncate" title={m.model}>{m.model}</td>
+                        <td className="py-1 text-right tabular-nums">{m.requests}</td>
+                        <td className="py-1 text-right tabular-nums">{fmtUSD(m.cost_usd)}</td>
+                        <td className="py-1 text-right tabular-nums">{fmtMTok(m.input_per_mtok)}</td>
+                        <td className="py-1 text-right tabular-nums">{fmtMTok(m.output_per_mtok)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-gray-400">Loading…</p>
+        )}
       </section>
 
       {save.isError && (

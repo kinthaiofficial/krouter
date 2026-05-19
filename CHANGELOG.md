@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.41] - 2026-05-19
+
+### Added
+- **Settings → Pricing 页面（spec/04-pricing.md §8）**：Settings 页面新增 Pricing Data 区块，展示：
+  - 最近同步时间、数据来源徽标（`live` / `cache` / `static`）、已追踪模型数量
+  - 本月总花费与节省金额（micro-USD 精度）
+  - 过去 30 天 Top 10 模型使用表格（请求数、花费、输入/输出每百万 token 价格）
+- **`GET /internal/pricing/status`** 管理 API 端点：返回同步元信息、模型统计、本月聚合花费及 30 天热门模型列表。
+- **`pricing.Service.ModelCount() int`**：返回当前内存价格表中的模型数量，供 API 层展示。
+- **`pricing.Service.PriceFor(model string) (inputPerMTok, outputPerMTok float64)`**：按模型返回每百万 token 的输入/输出价格，便于前端展示不做单位换算。
+- **`storage.Store.TopModelsByUsage(ctx, since, limit)`**：按请求数降序汇总指定时间窗口内的模型使用统计。
+- **`storage.Store.ListRequestsSince(ctx, since, limit)`**：按时间段查询请求记录，用于月度节省计算。
+
 ## [2.0.40] - 2026-05-19
 
 ### Added

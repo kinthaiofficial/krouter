@@ -91,6 +91,76 @@ func (s *Store) SetSyncMeta(ctx context.Context, key, value string) error {
 	return err
 }
 
+// ModelUsageStat aggregates per-model usage from the requests table.
+type ModelUsageStat struct {
+	Model    string
+	Provider string
+	Requests int
+	CostUSD  float64
+}
+
+// TopModelsByUsage returns the most-used models since sinceUTC, ordered by
+// request count descending. At most limit rows are returned.
+func (s *Store) TopModelsByUsage(ctx context.Context, since time.Time, limit int) ([]ModelUsageStat, error) {
+	const q = `SELECT
+		COALESCE(actual_model,''), COALESCE(provider,''),
+		COUNT(*), COALESCE(SUM(cost_micro_usd),0) / 1000000.0
+	FROM requests
+	WHERE ts_utc >= ?
+	GROUP BY actual_model, provider
+	ORDER BY COUNT(*) DESC
+	LIMIT ?`
+	rows, err := s.db.QueryContext(ctx, q, since.UTC().Format(time.RFC3339), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []ModelUsageStat
+	for rows.Next() {
+		var m ModelUsageStat
+		if err := rows.Scan(&m.Model, &m.Provider, &m.Requests, &m.CostUSD); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// ListRequestsSince returns up to limit requests on or after sinceUTC, newest first.
+func (s *Store) ListRequestsSince(ctx context.Context, since time.Time, limit int) ([]RequestRecord, error) {
+	const q = `SELECT id, ts_utc,
+		COALESCE(agent,''), protocol,
+		COALESCE(requested_model,''), COALESCE(actual_provider,''), COALESCE(actual_model,''),
+		COALESCE(input_tokens,0), COALESCE(output_tokens,0), COALESCE(cached_tokens,0),
+		COALESCE(cost_micro_usd,0), COALESCE(latency_ms,0),
+		COALESCE(status_code,0), COALESCE(error_message,'')
+		FROM requests WHERE ts_utc >= ? ORDER BY ts_utc DESC LIMIT ?`
+	rows, err := s.db.QueryContext(ctx, q, since.UTC().Format(time.RFC3339), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []RequestRecord
+	for rows.Next() {
+		var r RequestRecord
+		var tsStr string
+		if err := rows.Scan(
+			&r.ID, &tsStr, &r.Agent, &r.Protocol,
+			&r.RequestedModel, &r.Provider, &r.Model,
+			&r.InputTokens, &r.OutputTokens, &r.CachedTokens,
+			&r.CostMicroUSD, &r.LatencyMS,
+			&r.StatusCode, &r.ErrorMessage,
+		); err != nil {
+			return nil, err
+		}
+		if t, err := time.Parse(time.RFC3339, tsStr); err == nil {
+			r.Timestamp = t
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 // SumCostMicroUSD returns the total cost in micro-USD for requests since sinceUTC.
 func (s *Store) SumCostMicroUSD(ctx context.Context, sinceUTC time.Time) (int64, error) {
 	const q = `SELECT COALESCE(SUM(cost_micro_usd),0) FROM requests WHERE ts_utc >= ?`

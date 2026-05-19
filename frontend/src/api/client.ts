@@ -88,6 +88,24 @@ export interface StatusResponse {
   build_time?: string
 }
 
+export interface TopModelRow {
+  model: string
+  provider: string
+  requests: number
+  cost_usd: number
+  input_per_mtok: number
+  output_per_mtok: number
+}
+
+export interface PricingStatus {
+  last_sync_at: string          // RFC3339 or ""
+  source: 'live' | 'cache' | 'static'
+  model_count: number
+  top_models: TopModelRow[]
+  cost_this_month_usd: number
+  saved_this_month_usd: number
+}
+
 export const api = {
   status: () => get<StatusResponse>('/internal/status'),
   settings: () => get<Settings>('/internal/settings'),
@@ -98,4 +116,5 @@ export const api = {
   logs: (n = 20, agent?: string) => get<LogRecord[]>(`/internal/logs?n=${n}${agent ? `&agent=${encodeURIComponent(agent)}` : ''}`),
   preset: () => get<{ preset: Preset }>('/internal/preset'),
   setPreset: (preset: Preset) => post<{ preset: Preset }>('/internal/preset', { preset }),
+  pricingStatus: () => get<PricingStatus>('/internal/pricing/status'),
 }

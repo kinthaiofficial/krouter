@@ -324,6 +324,26 @@ func (s *Service) InputCostPerToken(model string) float64 {
 	return e.InputCostPerToken
 }
 
+// ModelCount returns the number of models currently in the pricing table.
+func (s *Service) ModelCount() int {
+	s.mu.RLock()
+	n := len(s.prices)
+	s.mu.RUnlock()
+	return n
+}
+
+// PriceFor returns input and output costs per million tokens for the given model.
+// Returns (0, 0) for unknown models.
+func (s *Service) PriceFor(model string) (inputPerMTok, outputPerMTok float64) {
+	s.mu.RLock()
+	e, ok := s.prices[model]
+	s.mu.RUnlock()
+	if !ok {
+		return 0, 0
+	}
+	return e.InputCostPerToken * 1e6, e.OutputCostPerToken * 1e6
+}
+
 // BaselineCostFor computes the cost of a request using the "balanced" baseline
 // (i.e., as if the user's requested model had been used at Anthropic pricing).
 // Used for savings computation in the usage API.
