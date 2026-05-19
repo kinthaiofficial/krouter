@@ -128,6 +128,25 @@ func (a *Adapter) DiscoverModels(ctx context.Context, keyFn func() string) ([]pr
 	return out, nil
 }
 
+// Ping sends a GET /v1/models request to verify connectivity.
+// A 401 response is expected for unauthenticated calls and indicates the API is reachable.
+// Implements providers.Pinger.
+func (a *Adapter) Ping(ctx context.Context) (latencyMS int64, statusCode int, err error) {
+	start := time.Now()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.baseURL+"/v1/models", nil)
+	if err != nil {
+		return 0, 0, err
+	}
+	req.Header.Set("anthropic-version", "2023-06-01")
+	resp, err := a.httpClient.Do(req)
+	elapsed := time.Since(start).Milliseconds()
+	if err != nil {
+		return elapsed, 0, err
+	}
+	_ = resp.Body.Close()
+	return elapsed, resp.StatusCode, nil
+}
+
 // Forward rewrites the request URL to point at the upstream base URL, then
 // executes the HTTP call and returns the full response.
 // The caller is responsible for closing resp.Body.

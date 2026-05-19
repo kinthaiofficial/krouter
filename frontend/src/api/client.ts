@@ -106,6 +106,45 @@ export interface PricingStatus {
   saved_this_month_usd: number
 }
 
+export interface DashboardStats {
+  weekly: { requests: number; cost_usd: number; savings_usd: number }
+  providers: { name: string; requests: number; cost_usd: number }[]
+  agents_connected: number
+}
+
+export interface ProviderInfo {
+  name: string
+  protocol: string
+  available: boolean
+  configured: boolean
+  consecutive_failures: number
+  success_rate: number
+  last_error_code?: number
+  requests_today: number
+  cost_today_usd: number
+  latency_p50_ms: number
+  latency_p95_ms: number
+}
+
+export interface ProviderTestResult {
+  latency_ms: number
+  status_code: number
+  ok: boolean
+  error?: string
+}
+
+export interface BackupInfo {
+  filename: string
+  path: string
+  created_at: string
+  size_kb: number
+}
+
+export interface AgentDiff {
+  before: string
+  after: string
+}
+
 export const api = {
   status: () => get<StatusResponse>('/internal/status'),
   settings: () => get<Settings>('/internal/settings'),
@@ -117,4 +156,16 @@ export const api = {
   preset: () => get<{ preset: Preset }>('/internal/preset'),
   setPreset: (preset: Preset) => post<{ preset: Preset }>('/internal/preset', { preset }),
   pricingStatus: () => get<PricingStatus>('/internal/pricing/status'),
+  dashboardStats: () => get<DashboardStats>('/internal/dashboard/stats'),
+  providers: () => get<ProviderInfo[]>('/internal/providers'),
+  testProvider: (name: string) => post<ProviderTestResult>(`/internal/providers/${encodeURIComponent(name)}/test`),
+  agentBackups: (name: string) => get<BackupInfo[]>(`/internal/agents/${encodeURIComponent(name)}/backups`),
+  agentDiff: (name: string) => post<AgentDiff>(`/internal/agents/${encodeURIComponent(name)}/diff`),
+  agentRestore: (name: string, filename: string) => post<{ ok: boolean }>(`/internal/agents/${encodeURIComponent(name)}/restore`, { filename }),
+  logsInRange: (from: string, to: string, agent?: string) =>
+    get<LogRecord[]>(`/internal/logs?from=${from}&to=${to}${agent ? `&agent=${encodeURIComponent(agent)}` : ''}`),
+  logsExportUrl: (from: string, to: string, agent?: string) =>
+    `/internal/logs/export?from=${from}&to=${to}${agent ? `&agent=${encodeURIComponent(agent)}` : ''}`,
+  resetData: () => post<{ ok: boolean }>('/internal/settings/reset-data'),
+  uninstall: () => post<{ ok: boolean }>('/internal/settings/uninstall'),
 }

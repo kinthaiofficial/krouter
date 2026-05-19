@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, type Settings as ISettings, type Preset, type PricingStatus } from '../api/client'
 
@@ -7,6 +8,10 @@ const NOTIFICATION_CATEGORIES = [
   { key: 'quota_warning', label: 'Quota Warnings' },
   { key: 'announcement_new', label: 'New Announcements' },
   { key: 'upgrade_available', label: 'Updates Available' },
+  { key: 'free_credit', label: 'Free Credits' },
+  { key: 'provider_news', label: 'Provider News' },
+  { key: 'tip', label: 'Tips & Suggestions' },
+  { key: 'critical_warning', label: 'Critical Warnings' },
 ]
 
 const BUDGET_THRESHOLDS = [
@@ -45,6 +50,18 @@ export default function Settings() {
   const save = useMutation({
     mutationFn: (patch: Partial<ISettings>) => api.patchSettings(patch),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['settings'] }),
+  })
+
+  const [exportFrom, setExportFrom] = useState('')
+  const [exportTo, setExportTo] = useState('')
+
+  const resetData = useMutation({
+    mutationFn: api.resetData,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['logs'] }),
+  })
+
+  const uninstall = useMutation({
+    mutationFn: api.uninstall,
   })
 
   if (isLoading || !settings) return <div className="p-6 text-sm text-gray-400">Loading…</div>
@@ -199,6 +216,85 @@ export default function Settings() {
           </>
         ) : (
           <p className="text-sm text-gray-400">Loading…</p>
+        )}
+      </section>
+
+      {/* Data Management */}
+      <section className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+        <h2 className="text-sm font-medium">Data Management</h2>
+
+        {/* Export logs */}
+        <div className="space-y-2">
+          <p className="text-xs text-gray-500">Export request logs as CSV by date range.</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              type="date"
+              value={exportFrom}
+              onChange={(e) => setExportFrom(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white"
+            />
+            <span className="text-sm text-gray-400">to</span>
+            <input
+              type="date"
+              value={exportTo}
+              onChange={(e) => setExportTo(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white"
+            />
+            <a
+              href={exportFrom && exportTo ? api.logsExportUrl(exportFrom, exportTo) : '#'}
+              download
+              onClick={(e) => { if (!exportFrom || !exportTo) e.preventDefault() }}
+              className={[
+                'flex items-center gap-1.5 text-sm border rounded-lg px-3 py-1.5',
+                exportFrom && exportTo
+                  ? 'border-gray-200 text-gray-600 hover:text-gray-900 hover:border-gray-400'
+                  : 'border-gray-100 text-gray-300 cursor-not-allowed',
+              ].join(' ')}
+            >
+              Export CSV
+            </a>
+          </div>
+        </div>
+
+        {/* Reset data */}
+        <div className="flex items-center justify-between pt-2 border-t border-gray-50">
+          <div>
+            <p className="text-sm font-medium text-gray-700">Reset All Data</p>
+            <p className="text-xs text-gray-400">Delete all request history from the local database.</p>
+          </div>
+          <button
+            onClick={() => {
+              if (window.confirm('Delete all request history? This cannot be undone.')) {
+                resetData.mutate()
+              }
+            }}
+            disabled={resetData.isPending}
+            className="text-sm text-red-600 border border-red-200 rounded-lg px-3 py-1.5 hover:bg-red-50 disabled:opacity-40"
+          >
+            {resetData.isPending ? 'Resetting…' : 'Reset Data'}
+          </button>
+        </div>
+
+        {/* Uninstall */}
+        <div className="flex items-center justify-between pt-2 border-t border-gray-50">
+          <div>
+            <p className="text-sm font-medium text-gray-700">Uninstall</p>
+            <p className="text-xs text-gray-400">Disconnect all agents. Run <code className="font-mono text-xs">krouter uninstall</code> to remove service files.</p>
+          </div>
+          <button
+            onClick={() => {
+              if (window.confirm('Disconnect all agents? You can reconnect them later.')) {
+                uninstall.mutate()
+              }
+            }}
+            disabled={uninstall.isPending}
+            className="text-sm text-red-600 border border-red-200 rounded-lg px-3 py-1.5 hover:bg-red-50 disabled:opacity-40"
+          >
+            {uninstall.isPending ? 'Disconnecting…' : 'Uninstall'}
+          </button>
+        </div>
+        {(resetData.isError || uninstall.isError) && (
+          <p className="text-sm text-red-500">Operation failed. Please try again.</p>
         )}
       </section>
 

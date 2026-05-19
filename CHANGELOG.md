@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.47] - 2026-05-19
+
+### Added
+- **Dashboard 周报统计**：新增 `GET /internal/dashboard/stats` 端点，返回近 7 天请求数、花费、节省金额、provider 分布及已连接 agent 数量；Dashboard 页面新增"This Week"汇总卡片和 provider 分布饼图（recharts）。
+- **Provider 今日统计**：`GET /internal/providers` 响应新增 `requests_today`、`cost_today_usd`、`latency_p50_ms`、`latency_p95_ms` 字段，Providers 页面展示今日请求量和延迟百分位。
+- **Provider Test 按钮**：新增 `POST /internal/providers/{name}/test` 端点，向 provider 发起轻量连通性探测（Anthropic 测 API 可达性，OpenAI-compatible 测 key 有效性）；Providers 页面每个卡片增加 Test 按钮，实时显示延迟和 HTTP 状态码。
+- **Agent 配置 diff 预览**：新增 `POST /internal/agents/{name}/diff` 端点，返回 connect 前后的配置 JSON diff（不写文件）；Agents 页面在 OpenClaw 点击 Connect 时先弹出 before/after 对比模态框，确认后再执行。
+- **Agent 备份管理**：新增 `GET /internal/agents/{name}/backups` 和 `POST /internal/agents/{name}/restore` 端点；Agents 页面每个已知 config-path 的 agent 卡片底部增加可折叠"Backups"面板，列出所有备份并支持一键还原。
+- **日志日期范围过滤**：`GET /internal/logs` 新增 `?from=YYYY-MM-DD&to=YYYY-MM-DD` 参数；Logs 页面新增两个日期选择器，设置后按范围过滤记录。
+- **日志 CSV 导出接口**：新增 `GET /internal/logs/export?from=&to=` 端点，返回 CSV 文件下载；Settings 页面新增日期范围输入 + Export CSV 链接。
+- **数据管理**：新增 `POST /internal/settings/reset-data`（清空请求历史）、`POST /internal/settings/uninstall`（断开所有 agent 连接）；Settings 页面新增"Data Management"分区含上述两个操作按钮。
+- **通知类别扩展**：`HandleEvent` 新增四种通知类型：`free_credit`（免费额度到账）、`provider_news`（provider 更新）、`tip`（节省建议）、`critical_warning`（严重告警）；Settings 页面通知偏好列表同步补全这四项。
+- **`Pinger` 接口**：`providers` 包新增 `Pinger` 可选接口；Anthropic 和 OpenAI 适配器各实现 `Ping(ctx) (latencyMS, statusCode, err)` 方法。
+
 ## [2.0.46] - 2026-05-19
 
 ### Added

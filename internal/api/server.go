@@ -38,6 +38,7 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -45,6 +46,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -281,6 +283,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/internal/devices", auth(http.HandlerFunc(s.handleDevices)))
 	mux.Handle("/internal/devices/", auth(http.HandlerFunc(s.handleDeviceDelete)))
 	mux.Handle("/internal/providers", auth(http.HandlerFunc(s.handleProviders)))
+	mux.Handle("/internal/providers/", auth(http.HandlerFunc(s.handleProviderAction)))
 	mux.Handle("/internal/agents", auth(http.HandlerFunc(s.handleAgents)))
 	mux.Handle("/internal/agents/", auth(http.HandlerFunc(s.handleAgentAction)))
 	mux.Handle("/internal/quota", auth(http.HandlerFunc(s.handleQuota)))
@@ -288,6 +291,10 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/internal/models/refresh", auth(http.HandlerFunc(s.handleModelsRefresh)))
 	mux.Handle("/internal/models", auth(http.HandlerFunc(s.handleModels)))
 	mux.Handle("/internal/pricing/status", auth(http.HandlerFunc(s.handlePricingStatus)))
+	mux.Handle("/internal/dashboard/stats", auth(http.HandlerFunc(s.handleDashboardStats)))
+	mux.Handle("/internal/logs/export", auth(http.HandlerFunc(s.handleLogsExport)))
+	mux.Handle("/internal/settings/reset-data", auth(http.HandlerFunc(s.handleResetData)))
+	mux.Handle("/internal/settings/uninstall", auth(http.HandlerFunc(s.handleUninstall)))
 	return mux
 }
 
@@ -515,6 +522,8 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	agentFilter := r.URL.Query().Get("agent")
+	fromStr := r.URL.Query().Get("from")
+	toStr := r.URL.Query().Get("to")
 
 	if s.store == nil {
 		writeJSON(w, []any{})
@@ -523,7 +532,17 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 
 	var records []storage.RequestRecord
 	var err error
-	if agentFilter != "" {
+	if fromStr != "" && toStr != "" {
+		from, ferr := time.Parse("2006-01-02", fromStr)
+		to, terr := time.Parse("2006-01-02", toStr)
+		if ferr == nil && terr == nil {
+			to = to.Add(24*time.Hour - time.Second) // include all of the 'to' day
+			records, err = s.store.ListRequestsInRange(r.Context(), from, to, agentFilter, n)
+		} else {
+			http.Error(w, `{"error":"invalid date format, use YYYY-MM-DD"}`, http.StatusBadRequest)
+			return
+		}
+	} else if agentFilter != "" {
 		records, err = s.store.ListRequestsByAgent(r.Context(), agentFilter, n)
 	} else {
 		records, err = s.store.ListRequests(r.Context(), n)
@@ -1023,6 +1042,10 @@ func (s *Server) handleProviders(w http.ResponseWriter, r *http.Request) {
 		ConsecutiveFailures int     `json:"consecutive_failures"`
 		SuccessRate         float64 `json:"success_rate"`
 		LastErrorCode       int     `json:"last_error_code,omitempty"`
+		RequestsToday       int     `json:"requests_today"`
+		CostTodayUSD        float64 `json:"cost_today_usd"`
+		LatencyP50MS        int64   `json:"latency_p50_ms"`
+		LatencyP95MS        int64   `json:"latency_p95_ms"`
 	}
 
 	var out []providerInfo
@@ -1045,6 +1068,13 @@ func (s *Server) handleProviders(w http.ResponseWriter, r *http.Request) {
 					info.ConsecutiveFailures = ps.ConsecutiveFailures
 					info.SuccessRate = ps.RollingSuccessRate
 					info.LastErrorCode = ps.LastErrorCode
+				}
+				todayStart := time.Now().UTC().Truncate(24 * time.Hour)
+				if ps, err := s.store.ProviderStatSince(r.Context(), p.Name(), todayStart); err == nil {
+					info.RequestsToday = ps.RequestCount
+					info.CostTodayUSD = float64(ps.CostMicroUSD) / 1_000_000
+					info.LatencyP50MS = ps.P50MS
+					info.LatencyP95MS = ps.P95MS
 				}
 			}
 			out = append(out, info)
@@ -1120,6 +1150,12 @@ func (s *Server) handleAgentAction(w http.ResponseWriter, r *http.Request) {
 		s.doAgentConnect(w, r, name)
 	case "disconnect":
 		s.doAgentDisconnect(w, r, name)
+	case "diff":
+		s.doAgentDiff(w, r, name)
+	case "backups":
+		s.doAgentBackups(w, r, name)
+	case "restore":
+		s.doAgentRestore(w, r, name)
 	default:
 		http.NotFound(w, r)
 	}
@@ -1208,6 +1244,330 @@ func (s *Server) doAgentDisconnect(w http.ResponseWriter, r *http.Request, name 
 		return
 	}
 	writeJSON(w, map[string]bool{"ok": true})
+}
+
+// doAgentDiff handles POST /internal/agents/{name}/diff
+// Returns the proposed config changes without applying them.
+func (s *Server) doAgentDiff(w http.ResponseWriter, r *http.Request, name string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	agents := config.DetectInstalledAgents()
+	var found *config.AgentInfo
+	for i := range agents {
+		if agents[i].Name == name {
+			found = &agents[i]
+			break
+		}
+	}
+	if found == nil {
+		http.Error(w, `{"error":"agent not found"}`, http.StatusNotFound)
+		return
+	}
+	switch name {
+	case "openclaw":
+		before, after, err := config.PreviewOpenClawConnect(found.ConfigPath)
+		if err != nil {
+			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]string{
+			"before": string(before),
+			"after":  string(after),
+		})
+	default:
+		http.Error(w, `{"error":"diff not supported for this agent"}`, http.StatusBadRequest)
+	}
+}
+
+// doAgentBackups handles GET /internal/agents/{name}/backups
+func (s *Server) doAgentBackups(w http.ResponseWriter, r *http.Request, name string) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	agents := config.DetectInstalledAgents()
+	var found *config.AgentInfo
+	for i := range agents {
+		if agents[i].Name == name {
+			found = &agents[i]
+			break
+		}
+	}
+	if found == nil {
+		http.Error(w, `{"error":"agent not found"}`, http.StatusNotFound)
+		return
+	}
+	if found.ConfigPath == "" {
+		writeJSON(w, []config.BackupInfo{})
+		return
+	}
+	writeJSON(w, config.ListBackups(found.ConfigPath))
+}
+
+// doAgentRestore handles POST /internal/agents/{name}/restore
+func (s *Server) doAgentRestore(w http.ResponseWriter, r *http.Request, name string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	agents := config.DetectInstalledAgents()
+	var found *config.AgentInfo
+	for i := range agents {
+		if agents[i].Name == name {
+			found = &agents[i]
+			break
+		}
+	}
+	if found == nil {
+		http.Error(w, `{"error":"agent not found"}`, http.StatusNotFound)
+		return
+	}
+	var body struct {
+		Filename string `json:"filename"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Filename == "" {
+		http.Error(w, `{"error":"filename required"}`, http.StatusBadRequest)
+		return
+	}
+	// Security: ensure filename has no path separators.
+	if strings.ContainsAny(body.Filename, "/\\") {
+		http.Error(w, `{"error":"invalid filename"}`, http.StatusBadRequest)
+		return
+	}
+	dir := filepath.Dir(found.ConfigPath)
+	backupPath := filepath.Join(dir, body.Filename)
+	if err := config.RestoreBackup(found.ConfigPath, backupPath); err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+// handleDashboardStats handles GET /internal/dashboard/stats.
+// Returns 7-day aggregates, provider distribution, and connected agent count.
+func (s *Server) handleDashboardStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	type providerDist struct {
+		Name     string  `json:"name"`
+		Requests int     `json:"requests"`
+		CostUSD  float64 `json:"cost_usd"`
+	}
+	type weeklyStats struct {
+		Requests   int     `json:"requests"`
+		CostUSD    float64 `json:"cost_usd"`
+		SavingsUSD float64 `json:"savings_usd"`
+	}
+	type response struct {
+		Weekly          weeklyStats    `json:"weekly"`
+		Providers       []providerDist `json:"providers"`
+		AgentsConnected int            `json:"agents_connected"`
+	}
+
+	var resp response
+	resp.Providers = []providerDist{}
+
+	if s.store != nil {
+		weekAgo := time.Now().UTC().Add(-7 * 24 * time.Hour)
+		recs, err := s.store.ListRequestsSince(r.Context(), weekAgo, 50000)
+		if err == nil {
+			byProvider := make(map[string]*providerDist)
+			for _, rec := range recs {
+				resp.Weekly.Requests++
+				cost := float64(rec.CostMicroUSD) / 1_000_000
+				resp.Weekly.CostUSD += cost
+				if s.pricing != nil {
+					baseline := s.pricing.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens)
+					if saved := baseline - rec.CostMicroUSD; saved > 0 {
+						resp.Weekly.SavingsUSD += float64(saved) / 1_000_000
+					}
+				}
+				pd, ok := byProvider[rec.Provider]
+				if !ok {
+					pd = &providerDist{Name: rec.Provider}
+					byProvider[rec.Provider] = pd
+				}
+				pd.Requests++
+				pd.CostUSD += cost
+			}
+			for _, pd := range byProvider {
+				resp.Providers = append(resp.Providers, *pd)
+			}
+			// Sort by request count descending.
+			sort.Slice(resp.Providers, func(i, j int) bool {
+				return resp.Providers[i].Requests > resp.Providers[j].Requests
+			})
+		}
+	}
+
+	// Count connected agents.
+	for _, a := range config.DetectAgentStatuses() {
+		if a.Connected {
+			resp.AgentsConnected++
+		}
+	}
+
+	writeJSON(w, resp)
+}
+
+// handleLogsExport handles GET /internal/logs/export?from=YYYY-MM-DD&to=YYYY-MM-DD.
+// Returns a CSV file attachment.
+func (s *Server) handleLogsExport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	fromStr := r.URL.Query().Get("from")
+	toStr := r.URL.Query().Get("to")
+	agentFilter := r.URL.Query().Get("agent")
+
+	if s.store == nil {
+		http.Error(w, `{"error":"storage unavailable"}`, http.StatusServiceUnavailable)
+		return
+	}
+
+	var records []storage.RequestRecord
+	var err error
+	if fromStr != "" && toStr != "" {
+		from, ferr := time.Parse("2006-01-02", fromStr)
+		to, terr := time.Parse("2006-01-02", toStr)
+		if ferr != nil || terr != nil {
+			http.Error(w, `{"error":"invalid date format, use YYYY-MM-DD"}`, http.StatusBadRequest)
+			return
+		}
+		to = to.Add(24*time.Hour - time.Second)
+		records, err = s.store.ListRequestsInRange(r.Context(), from, to, agentFilter, 100000)
+	} else {
+		records, err = s.store.ListRequestsSince(r.Context(), time.Now().UTC().Add(-30*24*time.Hour), 100000)
+	}
+	if err != nil {
+		http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
+		return
+	}
+
+	fname := "krouter-logs-" + time.Now().UTC().Format("2006-01-02") + ".csv"
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+fname+`"`)
+
+	cw := csv.NewWriter(w)
+	_ = cw.Write([]string{"id", "ts", "agent", "protocol", "requested_model", "provider", "model",
+		"input_tokens", "output_tokens", "cost_usd", "latency_ms", "status_code"})
+	for _, rec := range records {
+		_ = cw.Write([]string{
+			rec.ID,
+			rec.Timestamp.UTC().Format(time.RFC3339),
+			rec.Agent,
+			rec.Protocol,
+			rec.RequestedModel,
+			rec.Provider,
+			rec.Model,
+			strconv.Itoa(rec.InputTokens),
+			strconv.Itoa(rec.OutputTokens),
+			fmt.Sprintf("%.6f", float64(rec.CostMicroUSD)/1_000_000),
+			strconv.FormatInt(rec.LatencyMS, 10),
+			strconv.Itoa(rec.StatusCode),
+		})
+	}
+	cw.Flush()
+}
+
+// handleResetData handles POST /internal/settings/reset-data.
+func (s *Server) handleResetData(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.store == nil {
+		http.Error(w, `{"error":"storage unavailable"}`, http.StatusServiceUnavailable)
+		return
+	}
+	if err := s.store.DeleteAllRequests(r.Context()); err != nil {
+		http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+// handleUninstall handles POST /internal/settings/uninstall.
+// Disconnects all connected agents and returns ok.
+func (s *Server) handleUninstall(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	agents := config.DetectInstalledAgents()
+	rcPath := config.DetectShellRC()
+	for _, a := range agents {
+		switch a.Name {
+		case "openclaw":
+			_ = config.DisconnectOpenClaw(a.ConfigPath)
+		case "cursor":
+			_ = config.DisconnectCursor(a.ConfigPath)
+		case "hermes":
+			_ = config.DisconnectHermes(a.ConfigPath)
+		case "claude-code":
+			_ = config.DisconnectClaudeCode(rcPath)
+		}
+	}
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+// handleProviderAction handles /internal/providers/{name}/test.
+func (s *Server) handleProviderAction(w http.ResponseWriter, r *http.Request) {
+	tail := strings.TrimPrefix(r.URL.Path, "/internal/providers/")
+	slash := strings.LastIndex(tail, "/")
+	if slash < 0 {
+		http.NotFound(w, r)
+		return
+	}
+	name, action := tail[:slash], tail[slash+1:]
+	if action != "test" {
+		http.NotFound(w, r)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.registry == nil {
+		http.Error(w, `{"error":"registry unavailable"}`, http.StatusServiceUnavailable)
+		return
+	}
+	p, ok := s.registry.Get(name)
+	if !ok {
+		http.Error(w, `{"error":"provider not found"}`, http.StatusNotFound)
+		return
+	}
+	pinger, ok := p.(providers.Pinger)
+	if !ok {
+		http.Error(w, `{"error":"provider does not support ping"}`, http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	latency, code, err := pinger.Ping(ctx)
+	if err != nil {
+		writeJSON(w, map[string]any{
+			"latency_ms":  latency,
+			"status_code": 0,
+			"ok":          false,
+			"error":       err.Error(),
+		})
+		return
+	}
+	writeJSON(w, map[string]any{
+		"latency_ms":  latency,
+		"status_code": code,
+		"ok":          code >= 200 && code < 500, // 401 = reachable for Anthropic
+	})
 }
 
 // handleQuota handles GET /internal/quota.

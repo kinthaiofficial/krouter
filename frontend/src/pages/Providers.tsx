@@ -1,15 +1,7 @@
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import { CheckCircle, XCircle, AlertCircle } from 'lucide-react'
-
-interface ProviderInfo {
-  name: string
-  protocol: string
-  available: boolean
-  configured: boolean
-  consecutive_failures: number
-  success_rate: number
-  last_error_code?: number
-}
+import { api, type ProviderInfo } from '../api/client'
 
 // Known LLM providers with display labels and setup hints.
 const KNOWN_PROVIDERS: Record<string, { label: string; envKey: string; settingsKey: string }> = {
@@ -25,11 +17,7 @@ const KNOWN_PROVIDERS: Record<string, { label: string; envKey: string; settingsK
 export default function Providers() {
   const { data: providers = [], isLoading, isError } = useQuery<ProviderInfo[]>({
     queryKey: ['providers'],
-    queryFn: () =>
-      fetch('/internal/providers', { credentials: 'include' }).then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`)
-        return r.json() as Promise<ProviderInfo[]>
-      }),
+    queryFn: api.providers,
     refetchInterval: 15_000,
   })
 
@@ -73,6 +61,12 @@ function ProviderCard({ provider: p }: { provider: ProviderInfo }) {
   const pct = Math.round(p.success_rate * 100)
   const meta = KNOWN_PROVIDERS[p.name]
   const healthy = p.consecutive_failures === 0 && p.available
+  const [testResult, setTestResult] = useState<{ latency_ms: number; status_code: number; ok: boolean } | null>(null)
+
+  const test = useMutation({
+    mutationFn: () => api.testProvider(p.name),
+    onSuccess: (res) => setTestResult(res),
+  })
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
@@ -91,12 +85,38 @@ function ProviderCard({ provider: p }: { provider: ProviderInfo }) {
         <p className="text-sm font-mono">{pct}%</p>
         <p className="text-xs text-gray-400">success rate</p>
       </div>
+      {(p.requests_today > 0 || p.latency_p50_ms > 0) && (
+        <div className="text-right shrink-0">
+          <p className="text-sm font-mono">{p.requests_today}</p>
+          <p className="text-xs text-gray-400">today</p>
+        </div>
+      )}
+      {p.latency_p50_ms > 0 && (
+        <div className="text-right shrink-0">
+          <p className="text-sm font-mono">{p.latency_p50_ms}ms</p>
+          <p className="text-xs text-gray-400">p50 lat</p>
+        </div>
+      )}
       {p.consecutive_failures > 0 && (
         <div className="text-right shrink-0">
           <p className="text-sm text-red-500">{p.consecutive_failures}</p>
           <p className="text-xs text-gray-400">failures</p>
         </div>
       )}
+      <div className="shrink-0 flex flex-col items-end gap-1">
+        <button
+          onClick={() => test.mutate()}
+          disabled={test.isPending}
+          className="text-xs border border-gray-200 rounded-lg px-2.5 py-1 hover:border-blue-400 hover:text-blue-600 disabled:opacity-40"
+        >
+          {test.isPending ? 'Testing…' : 'Test'}
+        </button>
+        {testResult && (
+          <span className={`text-xs font-mono ${testResult.ok ? 'text-green-600' : 'text-red-500'}`}>
+            {testResult.latency_ms}ms · {testResult.status_code}
+          </span>
+        )}
+      </div>
     </div>
   )
 }

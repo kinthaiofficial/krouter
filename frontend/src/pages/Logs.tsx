@@ -21,6 +21,8 @@ export default function Logs() {
   const [search, setSearch] = useState('')
   const [agentFilter, setAgentFilter] = useState('')
   const [page, setPage] = useState(0)
+  const [fromDate, setFromDate] = useState('')
+  const [toDate, setToDate] = useState('')
   const agentFilterRef = useRef(agentFilter)
   useEffect(() => { agentFilterRef.current = agentFilter }, [agentFilter])
 
@@ -36,11 +38,16 @@ export default function Logs() {
     staleTime: 60_000,
   })
 
-  // Initial log fetch — keyed by agentFilter so it refetches on change.
+  // Initial log fetch — keyed by agentFilter and date range so it refetches on change.
   const { data: fetchedLogs = [], isLoading } = useQuery({
-    queryKey: ['logs', 'full', agentFilter],
-    queryFn: () => api.logs(500, agentFilter || undefined),
-    staleTime: Infinity, // SSE keeps it live; only refetch on filter change
+    queryKey: ['logs', 'full', agentFilter, fromDate, toDate],
+    queryFn: () => {
+      if (fromDate && toDate) {
+        return api.logsInRange(fromDate, toDate, agentFilter || undefined)
+      }
+      return api.logs(500, agentFilter || undefined)
+    },
+    staleTime: fromDate && toDate ? 30_000 : Infinity,
   })
 
   // Accumulator that starts from the fetched data and grows via SSE.
@@ -129,8 +136,21 @@ export default function Logs() {
           </select>
         )}
 
+        <input
+          type="date"
+          value={fromDate}
+          onChange={(e) => { setFromDate(e.target.value); setPage(0) }}
+          className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white"
+        />
+        <input
+          type="date"
+          value={toDate}
+          onChange={(e) => { setToDate(e.target.value); setPage(0) }}
+          className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white"
+        />
+
         <span className="text-xs text-gray-400 ml-auto">
-          {filtered.length} records · live
+          {filtered.length} records · {fromDate && toDate ? 'filtered' : 'live'}
         </span>
       </div>
 

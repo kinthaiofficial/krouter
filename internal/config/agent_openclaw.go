@@ -176,6 +176,39 @@ func UpdateOpenClawModels(configPath, providerName string, models []map[string]a
 	return writeJSON(configPath, root)
 }
 
+// PreviewOpenClawConnect returns the config JSON before and after a hypothetical
+// ConnectOpenClaw call, without modifying any files or creating backups.
+func PreviewOpenClawConnect(configPath string) (before, after []byte, err error) {
+	before, err = os.ReadFile(configPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("openclaw: read config: %w", err)
+	}
+
+	var root map[string]any
+	if err := json.Unmarshal(before, &root); err != nil {
+		return nil, nil, fmt.Errorf("openclaw: parse config: %w", err)
+	}
+
+	models := ensureMap(root, "models")
+	providers := ensureMap(models, "providers")
+	anthropic := ensureMap(providers, "anthropic")
+
+	anthropic["baseUrl"] = proxyBase
+	anthropic["api"] = "anthropic-messages"
+	if _, hasModels := anthropic["models"]; !hasModels {
+		anthropic["models"] = defaultOpenClawModels
+	}
+	if minimaxPortal := deepMap(providers, "minimax-portal"); minimaxPortal != nil {
+		minimaxPortal["baseUrl"] = proxyBase
+	}
+
+	after, err = json.MarshalIndent(root, "", "  ")
+	if err != nil {
+		return nil, nil, fmt.Errorf("openclaw: marshal preview: %w", err)
+	}
+	return before, after, nil
+}
+
 // DisconnectOpenClaw removes krouter's routing fields from the OpenClaw config.
 // Only removes baseUrl, api, and (if it's the broken placeholder) apiKey.
 // Real user-supplied apiKeys are never touched.

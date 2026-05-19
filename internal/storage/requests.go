@@ -135,3 +135,108 @@ func (s *Store) ListRequests(ctx context.Context, limit int) ([]RequestRecord, e
 	}
 	return out, rows.Err()
 }
+
+// ProviderStat aggregates request statistics for a provider.
+type ProviderStat struct {
+	RequestCount int
+	CostMicroUSD int64
+	P50MS        int64
+	P95MS        int64
+}
+
+// ProviderStatSince returns aggregated stats for a provider from sinceUTC onward.
+// Latencies are fetched sorted ascending; P50 and P95 are percentile indexes.
+func (s *Store) ProviderStatSince(ctx context.Context, provider string, sinceUTC time.Time) (ProviderStat, error) {
+	const q = `SELECT COALESCE(latency_ms,0), COALESCE(cost_micro_usd,0)
+		FROM requests WHERE actual_provider = ? AND ts_utc >= ? ORDER BY latency_ms ASC`
+	rows, err := s.db.QueryContext(ctx, q, provider, sinceUTC.UTC().Format(time.RFC3339))
+	if err != nil {
+		return ProviderStat{}, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var lats []int64
+	var stat ProviderStat
+	for rows.Next() {
+		var lat, cost int64
+		if err := rows.Scan(&lat, &cost); err != nil {
+			return ProviderStat{}, err
+		}
+		lats = append(lats, lat)
+		stat.CostMicroUSD += cost
+		stat.RequestCount++
+	}
+	if err := rows.Err(); err != nil {
+		return ProviderStat{}, err
+	}
+	n := len(lats)
+	if n > 0 {
+		stat.P50MS = lats[n*50/100]
+		stat.P95MS = lats[n*95/100]
+	}
+	return stat, nil
+}
+
+// ListRequestsInRange returns requests where from <= ts_utc <= to, newest first.
+// Optional agent filter. Limit defaults to 10000 if <= 0.
+func (s *Store) ListRequestsInRange(ctx context.Context, from, to time.Time, agent string, limit int) ([]RequestRecord, error) {
+	if limit <= 0 {
+		limit = 10000
+	}
+	fromStr := from.UTC().Format(time.RFC3339)
+	toStr := to.UTC().Format(time.RFC3339)
+
+	var q string
+	var args []any
+	if agent != "" {
+		q = `SELECT id, ts_utc,
+			COALESCE(agent,''), protocol,
+			COALESCE(requested_model,''), COALESCE(actual_provider,''), COALESCE(actual_model,''),
+			COALESCE(input_tokens,0), COALESCE(output_tokens,0), COALESCE(cached_tokens,0),
+			COALESCE(cost_micro_usd,0), COALESCE(latency_ms,0),
+			COALESCE(status_code,0), COALESCE(error_message,'')
+			FROM requests WHERE ts_utc >= ? AND ts_utc <= ? AND agent = ? ORDER BY ts_utc DESC LIMIT ?`
+		args = []any{fromStr, toStr, agent, limit}
+	} else {
+		q = `SELECT id, ts_utc,
+			COALESCE(agent,''), protocol,
+			COALESCE(requested_model,''), COALESCE(actual_provider,''), COALESCE(actual_model,''),
+			COALESCE(input_tokens,0), COALESCE(output_tokens,0), COALESCE(cached_tokens,0),
+			COALESCE(cost_micro_usd,0), COALESCE(latency_ms,0),
+			COALESCE(status_code,0), COALESCE(error_message,'')
+			FROM requests WHERE ts_utc >= ? AND ts_utc <= ? ORDER BY ts_utc DESC LIMIT ?`
+		args = []any{fromStr, toStr, limit}
+	}
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []RequestRecord
+	for rows.Next() {
+		var r RequestRecord
+		var tsStr string
+		if err := rows.Scan(
+			&r.ID, &tsStr, &r.Agent, &r.Protocol,
+			&r.RequestedModel, &r.Provider, &r.Model,
+			&r.InputTokens, &r.OutputTokens, &r.CachedTokens,
+			&r.CostMicroUSD, &r.LatencyMS,
+			&r.StatusCode, &r.ErrorMessage,
+		); err != nil {
+			return nil, err
+		}
+		if t, err := time.Parse(time.RFC3339, tsStr); err == nil {
+			r.Timestamp = t
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// DeleteAllRequests removes all request records from the database.
+func (s *Store) DeleteAllRequests(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM requests`)
+	return err
+}

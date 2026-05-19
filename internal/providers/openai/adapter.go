@@ -137,6 +137,27 @@ func (a *Adapter) DiscoverModels(ctx context.Context, keyFn func() string) ([]pr
 	return out, nil
 }
 
+// Ping sends a GET request to the models endpoint with the resolved API key.
+// Returns 200 if the key is valid, 401 if invalid, or an error on network failure.
+// Implements providers.Pinger.
+func (a *Adapter) Ping(ctx context.Context) (latencyMS int64, statusCode int, err error) {
+	start := time.Now()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.modelsEndpointURL(), nil)
+	if err != nil {
+		return 0, 0, err
+	}
+	if key := a.resolveKey(); key != "" {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
+	resp, err := a.httpClient.Do(req)
+	elapsed := time.Since(start).Milliseconds()
+	if err != nil {
+		return elapsed, 0, err
+	}
+	_ = resp.Body.Close()
+	return elapsed, resp.StatusCode, nil
+}
+
 // resolveKey returns the API key, preferring apiKeyFn over the env var.
 func (a *Adapter) resolveKey() string {
 	if a.apiKeyFn != nil {

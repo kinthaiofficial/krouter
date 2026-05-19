@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Link2, Link2Off, RefreshCw, ChevronDown, ChevronUp, TerminalSquare, RotateCcw } from 'lucide-react'
+import { Link2, Link2Off, RefreshCw, ChevronDown, ChevronUp, TerminalSquare, RotateCcw, History } from 'lucide-react'
+import { api, type BackupInfo, type AgentDiff } from '../api/client'
 
 interface AgentStats {
   requests_today: number
@@ -29,6 +30,90 @@ interface LogRow {
   cost_usd: number
   latency_ms: number
   status_code: number
+}
+
+function DiffModal({ diff, onConfirm, onCancel, loading }: {
+  diff: AgentDiff
+  onConfirm: () => void
+  onCancel: () => void
+  loading: boolean
+}) {
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+        <div className="p-5 border-b border-gray-100">
+          <h2 className="font-semibold text-sm">Preview Changes</h2>
+          <p className="text-xs text-gray-400 mt-0.5">Review the config changes before connecting.</p>
+        </div>
+        <div className="flex-1 overflow-auto p-5 grid grid-cols-2 gap-4 min-h-0">
+          <div>
+            <p className="text-xs text-gray-400 mb-1 font-medium">Before</p>
+            <pre className="text-xs bg-red-50 border border-red-100 rounded-lg p-3 overflow-auto max-h-64 whitespace-pre-wrap">{diff.before}</pre>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400 mb-1 font-medium">After</p>
+            <pre className="text-xs bg-green-50 border border-green-100 rounded-lg p-3 overflow-auto max-h-64 whitespace-pre-wrap">{diff.after}</pre>
+          </div>
+        </div>
+        <div className="p-5 border-t border-gray-100 flex justify-end gap-3">
+          <button onClick={onCancel} className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50">
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          >
+            {loading ? 'Connecting…' : 'Confirm Connect'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function BackupsPanel({ agentName }: { agentName: string }) {
+  const qc = useQueryClient()
+  const { data: backups = [], isLoading } = useQuery<BackupInfo[]>({
+    queryKey: ['agent-backups', agentName],
+    queryFn: () => api.agentBackups(agentName),
+  })
+
+  const restore = useMutation({
+    mutationFn: (filename: string) => api.agentRestore(agentName, filename),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['agents'] })
+      qc.invalidateQueries({ queryKey: ['agent-backups', agentName] })
+    },
+  })
+
+  if (isLoading) return <p className="text-xs text-gray-400 py-2">Loading backups…</p>
+  if (backups.length === 0) return <p className="text-xs text-gray-400 py-2">No backups found.</p>
+
+  return (
+    <div className="space-y-1">
+      {backups.map((b) => (
+        <div key={b.filename} className="flex items-center gap-3 py-1.5 text-xs border-b border-gray-50 last:border-0">
+          <span className="flex-1 font-mono text-gray-600 truncate" title={b.filename}>
+            {new Date(b.created_at).toLocaleString()}
+          </span>
+          <span className="text-gray-400">{b.size_kb > 0 ? `${b.size_kb} KB` : '< 1 KB'}</span>
+          <button
+            onClick={() => {
+              if (window.confirm(`Restore backup from ${new Date(b.created_at).toLocaleString()}?`)) {
+                restore.mutate(b.filename)
+              }
+            }}
+            disabled={restore.isPending}
+            className="text-blue-600 hover:text-blue-800 disabled:opacity-40 font-medium"
+          >
+            Restore
+          </button>
+        </div>
+      ))}
+      {restore.isError && <p className="text-xs text-red-500">Restore failed. Please try again.</p>}
+    </div>
+  )
 }
 
 const AGENT_LABELS: Record<string, string> = {
@@ -101,7 +186,9 @@ function AgentCard({
   onMutationSuccess: () => void
 }) {
   const label = AGENT_LABELS[a.name] ?? a.name
-
+  const [showDiff, setShowDiff] = useState(false)
+  const [pendingDiff, setPendingDiff] = useState<AgentDiff | null>(null)
+  const [showBackups, setShowBackups] = useState(false)
   const connectMutation = useMutation({
     mutationFn: () =>
       fetch(`/internal/agents/${a.name}/connect`, {
@@ -126,7 +213,15 @@ function AgentCard({
     onSuccess: onMutationSuccess,
   })
 
-  const isBusy = connectMutation.isPending || disconnectMutation.isPending
+  const getDiff = useMutation({
+    mutationFn: () => api.agentDiff(a.name),
+    onSuccess: (diff) => {
+      setPendingDiff(diff)
+      setShowDiff(true)
+    },
+  })
+
+  const isBusy = connectMutation.isPending || disconnectMutation.isPending || getDiff.isPending
 
   const { data: logs = [], isLoading: logsLoading } = useQuery<LogRow[]>({
     queryKey: ['agent-logs', a.name],
@@ -183,11 +278,17 @@ function AgentCard({
               </button>
             ) : (
               <button
-                onClick={() => connectMutation.mutate()}
+                onClick={() => {
+                  if (a.name === 'openclaw' && !a.connected) {
+                    getDiff.mutate()
+                  } else {
+                    connectMutation.mutate()
+                  }
+                }}
                 disabled={isBusy}
                 className="text-xs px-3 py-1.5 rounded-lg bg-brand-light text-brand hover:bg-green-100 disabled:opacity-50 transition-colors font-medium"
               >
-                {connectMutation.isPending ? 'Connecting…' : 'Connect'}
+                {getDiff.isPending ? 'Loading…' : connectMutation.isPending ? 'Connecting…' : 'Connect'}
               </button>
             )}
           </div>
@@ -281,6 +382,41 @@ function AgentCard({
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {showDiff && pendingDiff && (
+        <DiffModal
+          diff={pendingDiff}
+          loading={connectMutation.isPending}
+          onConfirm={() => {
+            setShowDiff(false)
+            connectMutation.mutate()
+          }}
+          onCancel={() => {
+            setShowDiff(false)
+            setPendingDiff(null)
+          }}
+        />
+      )}
+
+      {a.config_path && (
+        <div className="px-4 pb-4">
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            <button
+              onClick={() => setShowBackups(!showBackups)}
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700"
+            >
+              <History size={13} />
+              Backups
+              {showBackups ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            </button>
+            {showBackups && (
+              <div className="mt-2">
+                <BackupsPanel agentName={a.name} />
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

@@ -53,5 +53,13 @@ func (n *Notifier) HandleEvent(eventType string, data any) {
 		n.Notify(eventType, "krouter — New Announcement", "There is a new announcement from Kinthai.")
 	case "upgrade_available":
 		n.Notify(eventType, "krouter — Update Available", "A new version of krouter is available.")
+	case "free_credit":
+		n.Notify(eventType, "krouter — Free Credit", "You have received a free credit.")
+	case "provider_news":
+		n.Notify(eventType, "krouter — Provider News", "There is a provider update.")
+	case "tip":
+		n.Notify(eventType, "krouter — Tip", "Here is a tip to help you save more.")
+	case "critical_warning":
+		n.Notify(eventType, "krouter — Critical Warning", "A critical issue requires your attention.")
 	}
 }

@@ -41,6 +41,11 @@ type ModelSetter interface {
 	SetModels(models []string)
 }
 
+// Pinger is an optional interface for providers that support a lightweight connectivity test.
+type Pinger interface {
+	Ping(ctx context.Context) (latencyMS int64, statusCode int, err error)
+}
+
 // Provider is the interface all provider adapters implement.
 type Provider interface {
 	Name() string
