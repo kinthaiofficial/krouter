@@ -87,6 +87,13 @@ func NewWithManifestURLAndKey(currentVersion, manifestURL string, pubKeyPEM []by
 	}, nil
 }
 
+// WithHTTPClient replaces the default HTTP client. Useful for injecting a
+// proxy-aware client at daemon startup.
+func (s *Service) WithHTTPClient(c *http.Client) *Service {
+	s.httpClient = c
+	return s
+}
+
 // Start checks for updates every interval until ctx is cancelled.
 func (s *Service) Start(ctx context.Context, interval time.Duration) {
 	s.checkOnce(ctx)

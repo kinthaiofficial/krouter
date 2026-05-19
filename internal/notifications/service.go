@@ -55,6 +55,13 @@ func NewWithFeedURL(store *storage.Store, settings *config.Manager, registry *pr
 	}
 }
 
+// WithHTTPClient replaces the default HTTP client. Useful for injecting a
+// proxy-aware client at daemon startup.
+func (s *Service) WithHTTPClient(c *http.Client) *Service {
+	s.httpClient = c
+	return s
+}
+
 // Start polls the feed immediately, then every 6h until ctx is cancelled.
 func (s *Service) Start(ctx context.Context) error {
 	// Initial poll on startup.

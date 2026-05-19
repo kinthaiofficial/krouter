@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.38] - 2026-05-19
+
+### Fixed
+- **Bug H — 首次安装用户 `anthropic.models=[]`**：`RefreshModelsIfStale`（daemon 启动 +10s 执行）之前只处理 settings 里有 key 的 provider，跳过了 Anthropic（key 在 openclaw.json 里，不在 krouter settings 里）。修复：`RefreshModelsIfStale` 现在也会检查 OpenClaw 是否已连接，若 anthropic 缓存为空或超过 24h，则调用 `discoverOpenClawModels`，首次安装用户的模型选择器将在 daemon 启动约 10s 后自动填充。
+- **Bug I — `minimax-portal.models` 永远 `[]`**：`discoverOpenClawModels` 之前只处理 anthropic provider，从不更新 OpenClaw 的 minimax-portal 节点。修复：新增 `discoverOpenClawMiniMax`，若 OpenClaw 配置中存在 `minimax-portal` 节点则自动写入模型列表——优先通过 `minimax-portal.apiKey` 做实时探测，若 key 不存在则写入 adapter 的静态模型列表（`MiniMax-M2.7`、`MiniMax-M2.7-highspeed`），确保 model selector 始终非空。同时新增 `ReadOpenClawProviderAPIKey(configPath, providerName)` 通用函数（`ReadOpenClawAPIKey` 成为其包装）。
+- **Bug J — daemon 内部服务（announcements/upgrade）不走 OS 系统代理**：`notifications.Service` 和 `upgrade.Service` 各自创建了硬编码 `&http.Client{}`，不使用 `proxycfg.Manager` 探测的代理，导致国际网络受限环境下持续 timeout。修复：两个 service 新增 `WithHTTPClient(*http.Client) *Service` 方法，`serve.go` 在 daemon 启动时注入共享的代理感知 transport（`Proxy: proxymgr.ProxyFunc()`），upgrade 15s 超时、notifications 30s 超时，均通过 `proxymgr.ProxyFunc()` 闭包自动感知代理变更。
+
 ## [2.0.37] - 2026-05-19
 
 ### Fixed

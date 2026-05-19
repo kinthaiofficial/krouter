@@ -151,8 +151,17 @@ The daemon listens on two ports:
 			// Proxy refresh — re-detects OS proxy every 60s (handles VPN/network changes).
 			go proxymgr.RefreshLoop(ctx, transport, 60*time.Second)
 
+			// Proxy-aware HTTP client for background services (announcements, upgrade).
+			// Uses the same proxy detection as the provider transport so VPN/network
+			// changes are reflected without requiring a daemon restart.
+			bgTransport := &http.Transport{
+				Proxy:           proxymgr.ProxyFunc(),
+				IdleConnTimeout: 90 * time.Second,
+			}
+
 			// Notifications service — polls CDN feed every 6h.
 			notifSvc := notifications.New(store, settings, reg, Version)
+			notifSvc.WithHTTPClient(&http.Client{Timeout: 15 * time.Second, Transport: bgTransport})
 			go func() {
 				if err := notifSvc.Start(ctx); err != nil {
 					logger.Warn("notifications service stopped", "err", err)
@@ -164,6 +173,7 @@ The daemon listens on two ports:
 			if err != nil {
 				logger.Warn("upgrade service init failed", "err", err)
 			} else {
+				upgradeSvc.WithHTTPClient(&http.Client{Timeout: 30 * time.Second, Transport: bgTransport})
 				go upgradeSvc.Start(ctx, 24*time.Hour)
 			}
 

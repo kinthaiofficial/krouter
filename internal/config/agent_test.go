@@ -459,6 +459,37 @@ func TestReadOpenClawAPIKey_NoAnthropicSection(t *testing.T) {
 	assert.Equal(t, "", config.ReadOpenClawAPIKey(cfg))
 }
 
+// ── ReadOpenClawProviderAPIKey ────────────────────────────────────────────────
+
+func TestReadOpenClawProviderAPIKey_Present(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	require.NoError(t, os.WriteFile(cfg, []byte(`{"models":{"providers":{"minimax-portal":{"apiKey":"mm-real-key"}}}}`), 0644))
+	assert.Equal(t, "mm-real-key", config.ReadOpenClawProviderAPIKey(cfg, "minimax-portal"))
+}
+
+func TestReadOpenClawProviderAPIKey_Absent(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	require.NoError(t, os.WriteFile(cfg, []byte(`{"models":{"providers":{"minimax-portal":{}}}}`), 0644))
+	assert.Equal(t, "", config.ReadOpenClawProviderAPIKey(cfg, "minimax-portal"))
+}
+
+func TestReadOpenClawProviderAPIKey_SectionMissing(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	require.NoError(t, os.WriteFile(cfg, []byte(`{"models":{"providers":{"anthropic":{"apiKey":"sk-real"}}}}`), 0644))
+	assert.Equal(t, "", config.ReadOpenClawProviderAPIKey(cfg, "minimax-portal"))
+}
+
+// ReadOpenClawAPIKey is a thin wrapper — verify it delegates correctly.
+func TestReadOpenClawAPIKey_DelegatesGenericFn(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	require.NoError(t, os.WriteFile(cfg, []byte(`{"models":{"providers":{"anthropic":{"apiKey":"sk-ant-real"}}}}`), 0644))
+	assert.Equal(t, config.ReadOpenClawProviderAPIKey(cfg, "anthropic"), config.ReadOpenClawAPIKey(cfg))
+}
+
 // ── UpdateOpenClawModels ──────────────────────────────────────────────────────
 
 func TestUpdateOpenClawModels(t *testing.T) {

@@ -1295,14 +1295,22 @@ func (s *Server) handleModelsRefresh(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]bool{"ok": true})
 }
 
-// discoverOpenClawModels runs Anthropic model discovery using the API key
-// transiently read from the OpenClaw config. Saves to DB, updates the OpenClaw
-// models field, and broadcasts an SSE event. Called asynchronously; errors are
+// discoverOpenClawModels runs model discovery for all providers configured in
+// the OpenClaw config: Anthropic (live via apiKey) and MiniMax-portal (live if
+// apiKey present, otherwise static). Saves to DB, updates the OpenClaw models
+// field, and broadcasts an SSE event. Called asynchronously; errors are
 // silently ignored to avoid breaking the connect flow.
 func (s *Server) discoverOpenClawModels(configPath string) {
 	if s.store == nil || s.registry == nil {
 		return
 	}
+	s.discoverOpenClawAnthropic(configPath)
+	s.discoverOpenClawMiniMax(configPath)
+}
+
+// discoverOpenClawAnthropic runs Anthropic model discovery using the API key
+// transiently read from the OpenClaw config.
+func (s *Server) discoverOpenClawAnthropic(configPath string) {
 	key := config.ReadOpenClawAPIKey(configPath)
 	if key == "" {
 		return
@@ -1349,6 +1357,79 @@ func (s *Server) discoverOpenClawModels(configPath string) {
 	s.Broadcast("models_updated", map[string]any{"provider": "anthropic", "count": len(infos)})
 }
 
+// discoverOpenClawMiniMax updates the minimax-portal models in the OpenClaw
+// config. Tries live discovery if an apiKey is present in the minimax-portal
+// provider section; falls back to the adapter's static model list. Only runs
+// if minimax-portal is present in the OpenClaw config.
+func (s *Server) discoverOpenClawMiniMax(configPath string) {
+	// Only proceed if minimax-portal is configured in OpenClaw.
+	hasPortal := false
+	for _, n := range config.ReadOpenClawProviderNames(configPath) {
+		if n == "minimax-portal" {
+			hasPortal = true
+			break
+		}
+	}
+	if !hasPortal {
+		return
+	}
+
+	p, ok := s.registry.Get("minimax")
+	if !ok {
+		return
+	}
+
+	var infos []providers.ModelInfo
+
+	// Try live discovery when an API key is stored in the OpenClaw config.
+	if mmKey := config.ReadOpenClawProviderAPIKey(configPath, "minimax-portal"); mmKey != "" {
+		if disc, ok := p.(providers.ModelDiscoverer); ok {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if discovered, err := disc.DiscoverModels(ctx, func() string { return mmKey }); err == nil && len(discovered) > 0 {
+				infos = discovered
+			}
+		}
+	}
+
+	// Fall back to the adapter's static model list.
+	if len(infos) == 0 {
+		for _, id := range p.SupportedModels() {
+			infos = append(infos, providers.ModelInfo{ID: id, DisplayName: id})
+		}
+	}
+	if len(infos) == 0 {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	dbModels := make([]storage.DiscoveredModel, 0, len(infos))
+	for _, m := range infos {
+		dbModels = append(dbModels, storage.DiscoveredModel{
+			Provider:    "minimax",
+			ModelID:     m.ID,
+			DisplayName: m.DisplayName,
+		})
+	}
+	if err := s.store.SaveDiscoveredModels(ctx, "minimax", dbModels); err != nil {
+		return
+	}
+
+	oclawModels := make([]map[string]any, 0, len(infos))
+	for _, m := range infos {
+		name := m.DisplayName
+		if name == "" {
+			name = m.ID
+		}
+		oclawModels = append(oclawModels, map[string]any{"id": m.ID, "name": name})
+	}
+	if err := config.UpdateOpenClawModels(configPath, "minimax-portal", oclawModels); err != nil {
+		return
+	}
+	s.Broadcast("models_updated", map[string]any{"provider": "minimax-portal", "count": len(infos)})
+}
+
 // discoverProviderModels runs model discovery for an OpenAI-compatible provider
 // whose key is stored in krouter settings. Only the DB is updated; no agent
 // config is written. Called from the refresh flow. Errors are silently ignored.
@@ -1386,10 +1467,10 @@ func (s *Server) discoverProviderModels(ctx context.Context, providerName string
 	_ = s.store.SaveDiscoveredModels(ctx, providerName, dbModels)
 }
 
-// RefreshModelsIfStale re-discovers models for settings-keyed providers whose
-// cached model list is older than 24 h. Called once at daemon startup (after a
-// brief delay). Anthropic is intentionally skipped — its key lives in the
-// OpenClaw config, not in krouter settings.
+// RefreshModelsIfStale re-discovers models for providers whose cached model list
+// is empty or older than 24 h. Called once at daemon startup (after a brief
+// delay). Covers both settings-keyed providers (DeepSeek, Groq, …) and
+// OpenClaw-connected providers (Anthropic key read transiently from openclaw.json).
 func (s *Server) RefreshModelsIfStale(ctx context.Context) {
 	if s.store == nil || s.settings == nil || s.registry == nil {
 		return
@@ -1399,6 +1480,8 @@ func (s *Server) RefreshModelsIfStale(ctx context.Context) {
 		return
 	}
 	staleCutoff := time.Now().Add(-24 * time.Hour)
+
+	// Settings-keyed providers (DeepSeek, Groq, Moonshot, GLM, Qwen, …).
 	for providerName, key := range s.settings.Get().ProviderKeys {
 		if key == "" {
 			continue
@@ -1423,6 +1506,27 @@ func (s *Server) RefreshModelsIfStale(ctx context.Context) {
 		if needsRefresh {
 			s.discoverProviderModels(ctx, providerName)
 		}
+	}
+
+	// OpenClaw providers (Anthropic key lives in openclaw.json, not in settings).
+	for _, a := range config.DetectInstalledAgents() {
+		if a.Name != "openclaw" {
+			continue
+		}
+		cached := all["anthropic"]
+		needsRefresh := len(cached) == 0
+		if !needsRefresh {
+			for _, m := range cached {
+				if m.FetchedAt.Before(staleCutoff) {
+					needsRefresh = true
+					break
+				}
+			}
+		}
+		if needsRefresh {
+			s.discoverOpenClawModels(a.ConfigPath)
+		}
+		break
 	}
 }
 

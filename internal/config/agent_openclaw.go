@@ -120,10 +120,16 @@ func ReadOpenClawProviderNames(configPath string) []string {
 }
 
 // ReadOpenClawAPIKey transiently reads the Anthropic API key from the OpenClaw
-// config at configPath. The key is used only for model discovery and is never
+// config at configPath. Thin wrapper around ReadOpenClawProviderAPIKey.
+func ReadOpenClawAPIKey(configPath string) string {
+	return ReadOpenClawProviderAPIKey(configPath, "anthropic")
+}
+
+// ReadOpenClawProviderAPIKey transiently reads the apiKey for any provider from
+// the OpenClaw config. The key is used only for model discovery and is never
 // stored by krouter. Returns "" if the config cannot be read, if the key is
 // absent, or if the value is the broken placeholder sentinel.
-func ReadOpenClawAPIKey(configPath string) string {
+func ReadOpenClawProviderAPIKey(configPath, providerName string) string {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return ""
@@ -132,7 +138,7 @@ func ReadOpenClawAPIKey(configPath string) string {
 	if err := json.Unmarshal(data, &root); err != nil {
 		return ""
 	}
-	provider := deepMap(root, "models", "providers", "anthropic")
+	provider := deepMap(root, "models", "providers", providerName)
 	if provider == nil {
 		return ""
 	}
