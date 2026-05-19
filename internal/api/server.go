@@ -27,6 +27,8 @@
 //	GET  /internal/settings        → read all settings
 //	PATCH /internal/settings       → update settings fields
 //	GET  /internal/budget          → today's cost + savings breakdown
+//	GET  /internal/models          → all discovered model IDs grouped by provider
+//	POST /internal/models/refresh  → trigger model re-discovery for all configured providers
 //
 // See spec/01-proxy-layer.md §4 for the full endpoint list.
 package api
@@ -271,6 +273,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/internal/agents/", auth(http.HandlerFunc(s.handleAgentAction)))
 	mux.Handle("/internal/quota", auth(http.HandlerFunc(s.handleQuota)))
 	mux.Handle("/internal/update-apply", auth(http.HandlerFunc(s.handleUpdateApply)))
+	mux.Handle("/internal/models/refresh", auth(http.HandlerFunc(s.handleModelsRefresh)))
+	mux.Handle("/internal/models", auth(http.HandlerFunc(s.handleModels)))
 	return mux
 }
 
@@ -1127,6 +1131,9 @@ func (s *Server) doAgentConnect(w http.ResponseWriter, r *http.Request, name str
 	switch name {
 	case "openclaw":
 		err = config.ConnectOpenClaw(found.ConfigPath)
+		if err == nil {
+			go s.discoverOpenClawModels(found.ConfigPath)
+		}
 	case "cursor":
 		err = config.ConnectCursor(found.ConfigPath)
 	case "hermes":
@@ -1223,6 +1230,200 @@ func (s *Server) handleQuota(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, out)
+}
+
+// handleModels handles GET /internal/models.
+// Returns all discovered model IDs grouped by provider.
+func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.store == nil {
+		writeJSON(w, map[string]any{})
+		return
+	}
+	all, err := s.store.GetAllDiscoveredModels(r.Context())
+	if err != nil {
+		http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
+		return
+	}
+	type modelEntry struct {
+		ID          string `json:"id"`
+		DisplayName string `json:"display_name"`
+		FetchedAt   string `json:"fetched_at"`
+	}
+	result := make(map[string][]modelEntry, len(all))
+	for provider, models := range all {
+		entries := make([]modelEntry, 0, len(models))
+		for _, m := range models {
+			entries = append(entries, modelEntry{
+				ID:          m.ModelID,
+				DisplayName: m.DisplayName,
+				FetchedAt:   m.FetchedAt.UTC().Format(time.RFC3339),
+			})
+		}
+		result[provider] = entries
+	}
+	writeJSON(w, result)
+}
+
+// handleModelsRefresh handles POST /internal/models/refresh.
+// Triggers asynchronous re-discovery for all configured providers.
+func (s *Server) handleModelsRefresh(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		if s.settings != nil && s.store != nil && s.registry != nil {
+			for name, key := range s.settings.Get().ProviderKeys {
+				if key != "" {
+					s.discoverProviderModels(ctx, name)
+				}
+			}
+		}
+		for _, a := range config.DetectInstalledAgents() {
+			if a.Name == "openclaw" {
+				s.discoverOpenClawModels(a.ConfigPath)
+				break
+			}
+		}
+	}()
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+// discoverOpenClawModels runs Anthropic model discovery using the API key
+// transiently read from the OpenClaw config. Saves to DB, updates the OpenClaw
+// models field, and broadcasts an SSE event. Called asynchronously; errors are
+// silently ignored to avoid breaking the connect flow.
+func (s *Server) discoverOpenClawModels(configPath string) {
+	if s.store == nil || s.registry == nil {
+		return
+	}
+	key := config.ReadOpenClawAPIKey(configPath)
+	if key == "" {
+		return
+	}
+	p, ok := s.registry.Get("anthropic")
+	if !ok {
+		return
+	}
+	disc, ok := p.(providers.ModelDiscoverer)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	infos, err := disc.DiscoverModels(ctx, func() string { return key })
+	if err != nil {
+		return
+	}
+
+	dbModels := make([]storage.DiscoveredModel, 0, len(infos))
+	for _, m := range infos {
+		dbModels = append(dbModels, storage.DiscoveredModel{
+			Provider:    "anthropic",
+			ModelID:     m.ID,
+			DisplayName: m.DisplayName,
+		})
+	}
+	if err := s.store.SaveDiscoveredModels(ctx, "anthropic", dbModels); err != nil {
+		return
+	}
+
+	oclawModels := make([]map[string]any, 0, len(infos))
+	for _, m := range infos {
+		name := m.DisplayName
+		if name == "" {
+			name = m.ID
+		}
+		oclawModels = append(oclawModels, map[string]any{"id": m.ID, "name": name})
+	}
+	if err := config.UpdateOpenClawModels(configPath, "anthropic", oclawModels); err != nil {
+		return
+	}
+	s.Broadcast("models_updated", map[string]any{"provider": "anthropic", "count": len(infos)})
+}
+
+// discoverProviderModels runs model discovery for an OpenAI-compatible provider
+// whose key is stored in krouter settings. Only the DB is updated; no agent
+// config is written. Called from the refresh flow. Errors are silently ignored.
+func (s *Server) discoverProviderModels(ctx context.Context, providerName string) {
+	if s.store == nil || s.registry == nil || s.settings == nil {
+		return
+	}
+	p, ok := s.registry.Get(providerName)
+	if !ok {
+		return
+	}
+	disc, ok := p.(providers.ModelDiscoverer)
+	if !ok {
+		return
+	}
+	key := s.settings.Get().ProviderKeys[providerName]
+	if key == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	infos, err := disc.DiscoverModels(ctx, func() string { return key })
+	if err != nil {
+		return
+	}
+	dbModels := make([]storage.DiscoveredModel, 0, len(infos))
+	for _, m := range infos {
+		dbModels = append(dbModels, storage.DiscoveredModel{
+			Provider:    providerName,
+			ModelID:     m.ID,
+			DisplayName: m.DisplayName,
+		})
+	}
+	_ = s.store.SaveDiscoveredModels(ctx, providerName, dbModels)
+}
+
+// RefreshModelsIfStale re-discovers models for settings-keyed providers whose
+// cached model list is older than 24 h. Called once at daemon startup (after a
+// brief delay). Anthropic is intentionally skipped — its key lives in the
+// OpenClaw config, not in krouter settings.
+func (s *Server) RefreshModelsIfStale(ctx context.Context) {
+	if s.store == nil || s.settings == nil || s.registry == nil {
+		return
+	}
+	all, err := s.store.GetAllDiscoveredModels(ctx)
+	if err != nil {
+		return
+	}
+	staleCutoff := time.Now().Add(-24 * time.Hour)
+	for providerName, key := range s.settings.Get().ProviderKeys {
+		if key == "" {
+			continue
+		}
+		p, ok := s.registry.Get(providerName)
+		if !ok {
+			continue
+		}
+		if _, ok := p.(providers.ModelDiscoverer); !ok {
+			continue
+		}
+		cached := all[providerName]
+		needsRefresh := len(cached) == 0
+		if !needsRefresh {
+			for _, m := range cached {
+				if m.FetchedAt.Before(staleCutoff) {
+					needsRefresh = true
+					break
+				}
+			}
+		}
+		if needsRefresh {
+			s.discoverProviderModels(ctx, providerName)
+		}
+	}
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

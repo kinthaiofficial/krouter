@@ -9,7 +9,9 @@ package openai
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -85,6 +87,55 @@ func newWithPathReplaceAndKeyFn(name, baseURL, pathReplace string, keyFn func() 
 // HasKey reports whether a non-empty API key is currently available.
 // Satisfies the providers.Configurable optional interface.
 func (a *Adapter) HasKey() bool { return a.resolveKey() != "" }
+
+// modelsEndpointURL returns the full URL for the /v1/models (or equivalent) endpoint.
+func (a *Adapter) modelsEndpointURL() string {
+	prefix := a.pathReplace
+	if prefix == "" {
+		prefix = "/v1"
+	}
+	return a.baseURL + prefix + "/models"
+}
+
+// DiscoverModels queries the provider's models endpoint and returns the live list.
+// keyFn must return a valid Bearer token; an empty key results in an upstream 401.
+// Implements providers.ModelDiscoverer.
+func (a *Adapter) DiscoverModels(ctx context.Context, keyFn func() string) ([]providers.ModelInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.modelsEndpointURL(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("openai discover %s: build request: %w", a.name, err)
+	}
+	req.Header.Set("Authorization", "Bearer "+keyFn())
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("openai discover %s: %w", a.name, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, fmt.Errorf("openai discover %s: read body: %w", a.name, err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("openai discover %s: upstream %d: %s", a.name, resp.StatusCode, body)
+	}
+
+	var result struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("openai discover %s: parse response: %w", a.name, err)
+	}
+
+	out := make([]providers.ModelInfo, 0, len(result.Data))
+	for _, m := range result.Data {
+		out = append(out, providers.ModelInfo{ID: m.ID, DisplayName: m.ID})
+	}
+	return out, nil
+}
 
 // resolveKey returns the API key, preferring apiKeyFn over the env var.
 func (a *Adapter) resolveKey() string {

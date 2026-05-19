@@ -118,3 +118,66 @@ func TestAdapter_Forward_ContextCancellation(t *testing.T) {
 	_, err := a.Forward(ctx, req)
 	assert.Error(t, err)
 }
+
+func TestDiscoverModels_Success(t *testing.T) {
+	body := `{"data":[{"id":"claude-opus-4-7","display_name":"Claude Opus 4.7"},{"id":"claude-sonnet-4-6","display_name":"Claude Sonnet 4.6"}]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/v1/models", r.URL.Path)
+		assert.Equal(t, "sk-test-key", r.Header.Get("x-api-key"))
+		assert.Equal(t, "2023-06-01", r.Header.Get("anthropic-version"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	a := anthropicadapter.New(srv.URL, srv.Client())
+	models, err := a.DiscoverModels(context.Background(), func() string { return "sk-test-key" })
+	require.NoError(t, err)
+	require.Len(t, models, 2)
+	assert.Equal(t, "claude-opus-4-7", models[0].ID)
+	assert.Equal(t, "Claude Opus 4.7", models[0].DisplayName)
+	assert.Equal(t, "claude-sonnet-4-6", models[1].ID)
+	assert.Equal(t, "Claude Sonnet 4.6", models[1].DisplayName)
+}
+
+func TestDiscoverModels_Unauthorized(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"invalid key"}`))
+	}))
+	defer srv.Close()
+
+	a := anthropicadapter.New(srv.URL, srv.Client())
+	_, err := a.DiscoverModels(context.Background(), func() string { return "bad-key" })
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "401")
+}
+
+func TestDiscoverModels_EmptyList(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer srv.Close()
+
+	a := anthropicadapter.New(srv.URL, srv.Client())
+	models, err := a.DiscoverModels(context.Background(), func() string { return "sk-key" })
+	require.NoError(t, err)
+	assert.Empty(t, models)
+}
+
+func TestDiscoverModels_DisplayNameFallsBackToID(t *testing.T) {
+	body := `{"data":[{"id":"claude-haiku-4-5","display_name":""}]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	a := anthropicadapter.New(srv.URL, srv.Client())
+	models, err := a.DiscoverModels(context.Background(), func() string { return "sk-key" })
+	require.NoError(t, err)
+	require.Len(t, models, 1)
+	assert.Equal(t, "claude-haiku-4-5", models[0].DisplayName)
+}

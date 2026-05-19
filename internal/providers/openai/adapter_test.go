@@ -101,6 +101,68 @@ func TestAdapter_NewWithKeyFn_UsesKeyFnNotEnvVar(t *testing.T) {
 	assert.Equal(t, "Bearer sk-fn-key", capturedAuth, "keyFn must override env var")
 }
 
+func TestDiscoverModels_OpenAI(t *testing.T) {
+	body := `{"data":[{"id":"deepseek-chat"},{"id":"deepseek-coder"}]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/v1/models", r.URL.Path)
+		assert.Equal(t, "Bearer sk-ds-key", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	a := openaiAdapter.New("deepseek", srv.URL, "DEEPSEEK_API_KEY", []string{"deepseek-chat"}, srv.Client())
+	models, err := a.DiscoverModels(context.Background(), func() string { return "sk-ds-key" })
+	require.NoError(t, err)
+	require.Len(t, models, 2)
+	assert.Equal(t, "deepseek-chat", models[0].ID)
+	assert.Equal(t, "deepseek-chat", models[0].DisplayName) // DisplayName mirrors ID for OpenAI protocol
+}
+
+func TestDiscoverModels_PathReplace_GLM(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"glm-4"}]}`))
+	}))
+	defer srv.Close()
+
+	a := openaiAdapter.NewWithPathReplace("glm", srv.URL, "/v4", "ZHIPU_API_KEY", []string{"glm-4"}, srv.Client())
+	_, err := a.DiscoverModels(context.Background(), func() string { return "key" })
+	require.NoError(t, err)
+	assert.Equal(t, "/v4/models", gotPath)
+}
+
+func TestDiscoverModels_PathReplace_Qwen(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"qwen-turbo"}]}`))
+	}))
+	defer srv.Close()
+
+	a := openaiAdapter.NewWithPathReplace("qwen", srv.URL, "/compatible-mode/v1", "DASHSCOPE_API_KEY", []string{"qwen-turbo"}, srv.Client())
+	_, err := a.DiscoverModels(context.Background(), func() string { return "key" })
+	require.NoError(t, err)
+	assert.Equal(t, "/compatible-mode/v1/models", gotPath)
+}
+
+func TestDiscoverModels_Unauthorized(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"invalid key"}`))
+	}))
+	defer srv.Close()
+
+	a := openaiAdapter.New("deepseek", srv.URL, "DEEPSEEK_API_KEY", []string{"deepseek-chat"}, srv.Client())
+	_, err := a.DiscoverModels(context.Background(), func() string { return "bad" })
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "401")
+}
+
 func TestAdapter_Forward_StripsAnthropicHeaders(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "sk-openai-test")
 

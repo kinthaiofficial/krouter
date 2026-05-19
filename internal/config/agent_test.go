@@ -425,6 +425,103 @@ func TestReadOpenClawProviderNames_Empty(t *testing.T) {
 	assert.Nil(t, config.ReadOpenClawProviderNames(cfg))
 }
 
+// ── ReadOpenClawAPIKey ────────────────────────────────────────────────────────
+
+func TestReadOpenClawAPIKey_Present(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	require.NoError(t, os.WriteFile(cfg, []byte(`{"models":{"providers":{"anthropic":{"apiKey":"sk-ant-real"}}}}`), 0644))
+	assert.Equal(t, "sk-ant-real", config.ReadOpenClawAPIKey(cfg))
+}
+
+func TestReadOpenClawAPIKey_Absent(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	require.NoError(t, os.WriteFile(cfg, []byte(`{"models":{"providers":{"anthropic":{}}}}`), 0644))
+	assert.Equal(t, "", config.ReadOpenClawAPIKey(cfg))
+}
+
+func TestReadOpenClawAPIKey_Placeholder(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	require.NoError(t, os.WriteFile(cfg, []byte(`{"models":{"providers":{"anthropic":{"apiKey":"${ANTHROPIC_API_KEY}"}}}}`), 0644))
+	assert.Equal(t, "", config.ReadOpenClawAPIKey(cfg))
+}
+
+func TestReadOpenClawAPIKey_MissingFile(t *testing.T) {
+	assert.Equal(t, "", config.ReadOpenClawAPIKey("/nonexistent/path.json"))
+}
+
+func TestReadOpenClawAPIKey_NoAnthropicSection(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	require.NoError(t, os.WriteFile(cfg, []byte(`{"models":{"providers":{"minimax":{"apiKey":"mm-key"}}}}`), 0644))
+	assert.Equal(t, "", config.ReadOpenClawAPIKey(cfg))
+}
+
+// ── UpdateOpenClawModels ──────────────────────────────────────────────────────
+
+func TestUpdateOpenClawModels(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	initial := `{"models":{"providers":{"anthropic":{"baseUrl":"http://127.0.0.1:8402","api":"anthropic-messages","apiKey":"sk-real"}}}}`
+	require.NoError(t, os.WriteFile(cfg, []byte(initial), 0644))
+
+	models := []map[string]any{
+		{"id": "claude-opus-4-7", "name": "Claude Opus 4.7"},
+		{"id": "claude-sonnet-4-6", "name": "Claude Sonnet 4.6"},
+	}
+	require.NoError(t, config.UpdateOpenClawModels(cfg, "anthropic", models))
+
+	data, _ := os.ReadFile(cfg)
+	var root map[string]any
+	require.NoError(t, json.Unmarshal(data, &root))
+
+	provider := root["models"].(map[string]any)["providers"].(map[string]any)["anthropic"].(map[string]any)
+	// Other fields preserved.
+	assert.Equal(t, "http://127.0.0.1:8402", provider["baseUrl"])
+	assert.Equal(t, "anthropic-messages", provider["api"])
+	assert.Equal(t, "sk-real", provider["apiKey"])
+	// Models updated.
+	mlist, ok := provider["models"].([]any)
+	require.True(t, ok)
+	require.Len(t, mlist, 2)
+	m0 := mlist[0].(map[string]any)
+	assert.Equal(t, "claude-opus-4-7", m0["id"])
+	assert.Equal(t, "Claude Opus 4.7", m0["name"])
+}
+
+func TestUpdateOpenClawModels_Idempotent(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	require.NoError(t, os.WriteFile(cfg, []byte(`{"models":{"providers":{"anthropic":{"apiKey":"sk-real"}}}}`), 0644))
+
+	models := []map[string]any{{"id": "claude-opus-4-7", "name": "Claude Opus 4.7"}}
+	require.NoError(t, config.UpdateOpenClawModels(cfg, "anthropic", models))
+	require.NoError(t, config.UpdateOpenClawModels(cfg, "anthropic", models)) // second call overwrites cleanly
+
+	data, _ := os.ReadFile(cfg)
+	var root map[string]any
+	require.NoError(t, json.Unmarshal(data, &root))
+	provider := root["models"].(map[string]any)["providers"].(map[string]any)["anthropic"].(map[string]any)
+	mlist, _ := provider["models"].([]any)
+	require.Len(t, mlist, 1)
+}
+
+func TestUpdateOpenClawModels_CreatesProviderIfAbsent(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	require.NoError(t, os.WriteFile(cfg, []byte(`{}`), 0644))
+
+	require.NoError(t, config.UpdateOpenClawModels(cfg, "anthropic", []map[string]any{{"id": "m1", "name": "M1"}}))
+
+	data, _ := os.ReadFile(cfg)
+	var root map[string]any
+	require.NoError(t, json.Unmarshal(data, &root))
+	mlist := root["models"].(map[string]any)["providers"].(map[string]any)["anthropic"].(map[string]any)["models"].([]any)
+	require.Len(t, mlist, 1)
+}
+
 // ── IsClaudeCodeConnected ─────────────────────────────────────────────────────
 
 func TestIsClaudeCodeConnected_True(t *testing.T) {

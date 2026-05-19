@@ -182,6 +182,17 @@ The daemon listens on two ports:
 			apiSrv.SetSettings(settings)
 			apiSrv.SetProxyManager(proxymgr)
 
+			// Model discovery — re-syncs cached model lists on daemon start.
+			go func() {
+				timer := time.NewTimer(10 * time.Second)
+				defer timer.Stop()
+				select {
+				case <-timer.C:
+					apiSrv.RefreshModelsIfStale(ctx)
+				case <-ctx.Done():
+				}
+			}()
+
 			// Broadcast completed requests as SSE events so the Web UI updates live.
 			proxySrv.SetOnComplete(func(rec storage.RequestRecord) {
 				apiSrv.Broadcast("request_completed", map[string]any{

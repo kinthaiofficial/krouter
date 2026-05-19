@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.36] - 2026-05-19
+
+### Added
+- **Model Discovery**：krouter 现在会在用户连接 OpenClaw 后自动探测可用模型列表。连接时读取 OpenClaw 配置里的 Anthropic API key，调用 `/v1/models` 接口，将返回的模型列表写入 OpenClaw 的 `models.providers.anthropic.models` 字段，使 OpenClaw 的模型选择器立即呈现真实可用的模型。所有已发现模型同时缓存到本地 SQLite DB（`model_discovery` 表）。
+- **OpenAI-compatible provider 模型探测**：daemon 启动 10s 后自动检查 settings 里有 key 的 provider（DeepSeek、Groq 等），若缓存超过 24h 则重新探测并更新 DB。
+- **新端点 `GET /internal/models`**：返回 DB 中所有已发现模型，按 provider 分组。
+- **新端点 `POST /internal/models/refresh`**：手动触发全量刷新（settings-keyed providers + 已连接的 OpenClaw Anthropic key），异步执行，立即返回 `{"ok":true}`。
+- **`ModelDiscoverer` 可选接口**：Anthropic 和 OpenAI adapter 均已实现，支持通过 `keyFn` 透传 API key，不暴露给 krouter 存储层。OpenAI adapter 的 `modelsEndpointURL()` 正确处理 GLM（`/v4/models`）和 Qwen（`/compatible-mode/v1/models`）的 pathReplace。
+
 ## [2.0.35] - 2026-05-19
 
 ### Added

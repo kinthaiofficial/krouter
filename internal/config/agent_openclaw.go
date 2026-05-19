@@ -119,6 +119,57 @@ func ReadOpenClawProviderNames(configPath string) []string {
 	return names
 }
 
+// ReadOpenClawAPIKey transiently reads the Anthropic API key from the OpenClaw
+// config at configPath. The key is used only for model discovery and is never
+// stored by krouter. Returns "" if the config cannot be read, if the key is
+// absent, or if the value is the broken placeholder sentinel.
+func ReadOpenClawAPIKey(configPath string) string {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return ""
+	}
+	var root map[string]any
+	if err := json.Unmarshal(data, &root); err != nil {
+		return ""
+	}
+	provider := deepMap(root, "models", "providers", "anthropic")
+	if provider == nil {
+		return ""
+	}
+	key, _ := provider["apiKey"].(string)
+	if key == "" || key == placeholderAPIKey {
+		return ""
+	}
+	return key
+}
+
+// UpdateOpenClawModels overwrites the models field for providerName in the OpenClaw
+// config at configPath. Only the models array is updated; all other fields
+// (baseUrl, api, apiKey, etc.) are preserved. No backup is written — the initial
+// connect backup already covers the original state.
+func UpdateOpenClawModels(configPath, providerName string, models []map[string]any) error {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("openclaw: read config: %w", err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(data, &root); err != nil {
+		return fmt.Errorf("openclaw: parse config: %w", err)
+	}
+
+	modelsSection := ensureMap(root, "models")
+	provs := ensureMap(modelsSection, "providers")
+	provider := ensureMap(provs, providerName)
+
+	out := make([]any, len(models))
+	for i, m := range models {
+		out[i] = m
+	}
+	provider["models"] = out
+
+	return writeJSON(configPath, root)
+}
+
 // DisconnectOpenClaw removes krouter's routing fields from the OpenClaw config.
 // Only removes baseUrl, api, and (if it's the broken placeholder) apiKey.
 // Real user-supplied apiKeys are never touched.

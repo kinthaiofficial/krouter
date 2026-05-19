@@ -22,6 +22,19 @@ type Configurable interface {
 	HasKey() bool
 }
 
+// ModelInfo describes a single model returned by a provider's /v1/models endpoint.
+type ModelInfo struct {
+	ID          string
+	DisplayName string
+}
+
+// ModelDiscoverer is an optional interface for provider adapters that support
+// querying the live model list from the upstream API.
+// keyFn returns the API key for the call; it is invoked once per DiscoverModels call.
+type ModelDiscoverer interface {
+	DiscoverModels(ctx context.Context, keyFn func() string) ([]ModelInfo, error)
+}
+
 // Provider is the interface all provider adapters implement.
 type Provider interface {
 	Name() string

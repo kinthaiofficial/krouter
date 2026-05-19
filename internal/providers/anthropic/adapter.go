@@ -6,7 +6,9 @@ package anthropic
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -74,6 +76,53 @@ func (a *Adapter) SupportedModels() []string {
 		return a.models
 	}
 	return supportedModels
+}
+
+// DiscoverModels queries the Anthropic /v1/models endpoint and returns the live
+// model list. keyFn must return a valid x-api-key value; an empty key results in
+// an upstream 401 which is returned as an error.
+// Implements providers.ModelDiscoverer.
+func (a *Adapter) DiscoverModels(ctx context.Context, keyFn func() string) ([]providers.ModelInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.baseURL+"/v1/models", nil)
+	if err != nil {
+		return nil, fmt.Errorf("anthropic discover: build request: %w", err)
+	}
+	req.Header.Set("x-api-key", keyFn())
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("anthropic discover: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, fmt.Errorf("anthropic discover: read body: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("anthropic discover: upstream %d: %s", resp.StatusCode, body)
+	}
+
+	var result struct {
+		Data []struct {
+			ID          string `json:"id"`
+			DisplayName string `json:"display_name"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("anthropic discover: parse response: %w", err)
+	}
+
+	out := make([]providers.ModelInfo, 0, len(result.Data))
+	for _, m := range result.Data {
+		name := m.DisplayName
+		if name == "" {
+			name = m.ID
+		}
+		out = append(out, providers.ModelInfo{ID: m.ID, DisplayName: name})
+	}
+	return out, nil
 }
 
 // Forward rewrites the request URL to point at the upstream base URL, then
