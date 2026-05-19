@@ -1,8 +1,8 @@
-// Package moonshot implements the Moonshot CN provider adapter.
+// Package moonshot implements the Moonshot (Kimi) provider adapter.
 //
-// Moonshot CN uses the OpenAI Chat Completions wire format at
+// Moonshot uses the OpenAI Chat Completions wire format at
 // https://api.moonshot.cn, authenticated via MOONSHOT_API_KEY.
-// Primarily used by China-based users.
+// Provider name is "moonshot" to match LiteLLM and OpenClaw naming.
 //
 // See spec/03-providers.md §5.
 package moonshot
@@ -16,6 +16,12 @@ import (
 const baseURL = "https://api.moonshot.cn"
 
 var supportedModels = []string{
+	"kimi-k2.5",
+	"kimi-k2.6",
+	"kimi-latest",
+	"kimi-latest-128k",
+	"kimi-latest-32k",
+	"kimi-latest-8k",
 	"moonshot-v1-8k",
 	"moonshot-v1-32k",
 	"moonshot-v1-128k",
@@ -24,10 +30,10 @@ var supportedModels = []string{
 // New creates a Moonshot CN provider adapter that reads its key from MOONSHOT_API_KEY.
 // If client is nil, a default streaming-safe client is used.
 func New(client *http.Client) *openaiAdapter.Adapter {
-	return openaiAdapter.New("moonshot-cn", baseURL, "MOONSHOT_API_KEY", supportedModels, client)
+	return openaiAdapter.New("moonshot", baseURL, "MOONSHOT_API_KEY", supportedModels, client)
 }
 
 // NewWithKeyFn creates a Moonshot CN adapter whose API key is retrieved by keyFn at request time.
 func NewWithKeyFn(keyFn func() string, client *http.Client) *openaiAdapter.Adapter {
-	return openaiAdapter.NewWithKeyFn("moonshot-cn", baseURL, keyFn, supportedModels, client)
+	return openaiAdapter.NewWithKeyFn("moonshot", baseURL, keyFn, supportedModels, client)
 }

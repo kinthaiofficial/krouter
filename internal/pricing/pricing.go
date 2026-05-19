@@ -14,6 +14,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +22,15 @@ import (
 )
 
 const defaultLiteLLMURL = "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+
+// LiteLLMToKrouterProvider maps LiteLLM's litellm_provider value to krouter's
+// adapter name when the two names differ. Providers not listed here use the
+// litellm_provider value directly as the adapter name.
+var LiteLLMToKrouterProvider = map[string]string{
+	"dashscope": "qwen", // Aliyun DashScope → krouter qwen adapter
+	// "zai" → "zai" (Z.AI, same in both)
+	// "moonshot" → "moonshot" (same in both after rename)
+}
 
 // PriceEntry holds per-token costs for a model.
 type PriceEntry struct {
@@ -65,6 +75,7 @@ type Service struct {
 	httpClient *http.Client
 	logger     *slog.Logger
 	syncURL    string
+	onSync     func(catalog map[string][]string) // optional: called after each successful sync
 }
 
 // New creates a pricing service. store may be nil (disables SQLite caching).
@@ -92,6 +103,14 @@ func NewWithSyncURL(store *storage.Store, syncURL string) *Service {
 func (s *Service) WithHTTPClient(c *http.Client) *Service {
 	s.httpClient = c
 	return s
+}
+
+// OnSync registers a callback that is invoked after each successful LiteLLM
+// sync. The argument is a map of litellm_provider → []model_id derived from
+// the catalog (all models, not just priced ones). Used by serve.go to update
+// provider adapter model lists at runtime.
+func (s *Service) OnSync(fn func(catalog map[string][]string)) {
+	s.onSync = fn
 }
 
 // SyncOnceForTest triggers a single sync immediately (test helper).
@@ -240,7 +259,10 @@ func (s *Service) syncOnce(ctx context.Context) {
 
 	s.logger.Info("pricing: sync complete", "models", len(updated))
 
-	// Persist to SQLite and update sync meta.
+	// Build full model catalog from all entries (including cost=0).
+	catalog := parseCatalogEntries(body)
+
+	// Persist pricing + catalog to SQLite and update sync meta.
 	if s.store != nil {
 		now := time.Now().UTC()
 		for modelID, entry := range updated {
@@ -255,12 +277,24 @@ func (s *Service) syncOnce(ctx context.Context) {
 				UpdatedAt:               now,
 			})
 		}
+		if len(catalog) > 0 {
+			_ = s.store.UpsertModelCatalogBatch(ctx, catalog)
+		}
 		_ = s.store.SetSyncMeta(ctx, "last_sync_at", now.Format(time.RFC3339))
 		_ = s.store.SetSyncMeta(ctx, "last_sha256", hash)
 		_ = s.store.SetSyncMeta(ctx, "source_url", s.syncURL)
 		if etag := resp.Header.Get("ETag"); etag != "" {
 			_ = s.store.SetSyncMeta(ctx, "last_etag", etag)
 		}
+	}
+
+	// Notify listeners with the grouped catalog (litellm_provider → model IDs).
+	if s.onSync != nil {
+		grouped := make(map[string][]string)
+		for _, e := range catalog {
+			grouped[e.LiteLLMProvider] = append(grouped[e.LiteLLMProvider], e.ModelID)
+		}
+		s.onSync(grouped)
 	}
 }
 
@@ -309,6 +343,43 @@ func (s *Service) parseLiteLLM(data []byte) (map[string]parsedEntry, error) {
 		}
 	}
 	return out, nil
+}
+
+// parseCatalogEntries parses ALL model entries from the LiteLLM JSON into
+// ModelCatalogEntry records (including cost=0 entries skipped by parseLiteLLM).
+// The provider prefix is stripped from the JSON key:
+//
+//	"dashscope/qwen-max" → LiteLLMProvider="dashscope", ModelID="qwen-max"
+//	"kimi-latest" (litellm_provider="moonshot") → LiteLLMProvider="moonshot", ModelID="kimi-latest"
+func parseCatalogEntries(data []byte) []storage.ModelCatalogEntry {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil
+	}
+	out := make([]storage.ModelCatalogEntry, 0, len(raw))
+	for key, entryRaw := range raw {
+		var e liteLLMEntry
+		if err := json.Unmarshal(entryRaw, &e); err != nil {
+			continue
+		}
+		if e.Provider == "" {
+			continue // skip entries without a provider (top-level metadata keys)
+		}
+		// Derive model_id by stripping the provider prefix from the JSON key.
+		modelID := key
+		if idx := strings.IndexByte(key, '/'); idx >= 0 {
+			modelID = key[idx+1:]
+		}
+		out = append(out, storage.ModelCatalogEntry{
+			LiteLLMProvider:    e.Provider,
+			ModelID:            modelID,
+			RawKey:             key,
+			InputCostPerToken:  e.InputCostPerToken,
+			OutputCostPerToken: e.OutputCostPerToken,
+			MaxTokens:          e.MaxTokens,
+		})
+	}
+	return out
 }
 
 // InputCostPerToken returns the input cost per token in USD for the given model.

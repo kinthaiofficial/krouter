@@ -127,7 +127,7 @@ The daemon listens on two ports:
 			reg.Register(deepseekadapter.NewWithKeyFn(keyFn("DEEPSEEK_API_KEY", "deepseek"), sharedClient))
 			reg.Register(groqadapter.NewWithKeyFn(keyFn("GROQ_API_KEY", "groq"), sharedClient))
 			reg.Register(moonshotadapter.NewWithKeyFn(keyFn("MOONSHOT_API_KEY", "moonshot"), sharedClient))
-			reg.Register(glmadapter.NewWithKeyFn(keyFn("ZHIPU_API_KEY", "glm"), sharedClient))
+			reg.Register(glmadapter.NewWithKeyFn(keyFn("ZHIPU_API_KEY", "zai"), sharedClient))
 			reg.Register(qwenadapter.NewWithKeyFn(keyFn("DASHSCOPE_API_KEY", "qwen"), sharedClient))
 			reg.Register(minimaxadapter.New(sharedClient)) // transparent proxy — auth header comes from the agent (OpenClaw OAuth)
 
@@ -158,6 +158,21 @@ The daemon listens on two ports:
 				IdleConnTimeout: 90 * time.Second,
 			}
 			pricingSvc.WithHTTPClient(&http.Client{Timeout: 30 * time.Second, Transport: bgTransport})
+
+			// After each LiteLLM sync, update provider adapter model lists from catalog.
+			pricingSvc.OnSync(func(catalog map[string][]string) {
+				for litellmProvider, models := range catalog {
+					adapterName := litellmProvider
+					if mapped, ok := pricing.LiteLLMToKrouterProvider[litellmProvider]; ok {
+						adapterName = mapped
+					}
+					if p, ok := reg.Get(adapterName); ok {
+						if ms, ok := p.(providers.ModelSetter); ok {
+							ms.SetModels(models)
+						}
+					}
+				}
+			})
 			pricingSvc.StartSync(ctx, 24*time.Hour)
 
 			// Notifications service — polls CDN feed every 6h.

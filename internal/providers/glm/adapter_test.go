@@ -18,7 +18,7 @@ import (
 func TestGLM_Interface(t *testing.T) {
 	a := glm.New(nil)
 	var _ providers.Provider = a
-	assert.Equal(t, "glm", a.Name())
+	assert.Equal(t, "zai", a.Name())
 	assert.Equal(t, providers.ProtocolOpenAI, a.Protocol())
 	assert.Contains(t, a.SupportedModels(), "glm-4")
 	assert.Contains(t, a.SupportedModels(), "glm-4-flash")

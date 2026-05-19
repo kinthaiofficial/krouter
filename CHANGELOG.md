@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.42] - 2026-05-19
+
+### Added
+- **全量模型 Catalog（`model_catalog` 表）**：LiteLLM JSON 每 24h 同步时，将所有模型条目（含 cost=0 的）写入新的 `model_catalog` 表，字段包括 `litellm_provider`、`model_id`（去掉 provider 前缀）、`raw_key`、定价与 `max_tokens`。此表作为全平台大模型目录的权威来源。
+- **`pricing.LiteLLMToKrouterProvider` 映射表**：声明 LiteLLM provider 名称与 krouter adapter 名称不同的对应关系（目前仅 `dashscope → qwen`；其余在两侧名字一致后直接对应）。
+- **`providers.ModelSetter` 接口**：允许在运行时替换 adapter 的 `SupportedModels()` 列表。`anthropic` 和 `openai`（含所有 OpenAI-compatible 子适配器）均实现此接口。
+- **`pricing.Service.OnSync` 回调**：每次 LiteLLM 同步完成后调用，传入按 `litellm_provider` 分组的模型列表。`serve.go` 注册此回调，自动将 catalog 模型列表推送到对应 adapter，无需重启 daemon。
+- **新 DB migration `004_model_catalog.sql`**：创建 `model_catalog` 表及 `idx_model_catalog_provider` 索引。
+- **`storage.Store.UpsertModelCatalogBatch` / `GetModelsByLiteLLMProvider` / `GetAllModelCatalog`**：新增 catalog 相关 storage 方法。
+
+### Changed
+- **GLM adapter 改名 `glm` → `zai`**：跟进智谱品牌重命名（Z.AI），与 LiteLLM 和 OpenClaw 命名保持一致。settings key 同步改为 `zai`（旧配置需手动更新 `ZHIPU_API_KEY` 对应的 settings 键名）。静态模型列表补充新版 `glm-4.5` 系列。
+- **Moonshot adapter 改名 `moonshot-cn` → `moonshot`**：与 LiteLLM 和 OpenClaw 命名保持一致。静态模型列表补充新版 Kimi 系列（`kimi-k2.5`、`kimi-k2.6`、`kimi-latest` 等），保留旧版 `moonshot-v1-*` 作为 fallback。
+
 ## [2.0.41] - 2026-05-19
 
 ### Added

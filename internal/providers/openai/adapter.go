@@ -149,6 +149,9 @@ func (a *Adapter) Name() string                { return a.name }
 func (a *Adapter) Protocol() providers.Protocol { return providers.ProtocolOpenAI }
 func (a *Adapter) SupportedModels() []string   { return a.models }
 
+// SetModels replaces the adapter's model list (called after catalog sync).
+func (a *Adapter) SetModels(models []string) { a.models = models }
+
 // Forward rewrites the request URL to the upstream endpoint, injects the
 // provider API key, and executes the HTTP call.
 //

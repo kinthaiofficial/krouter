@@ -35,6 +35,12 @@ type ModelDiscoverer interface {
 	DiscoverModels(ctx context.Context, keyFn func() string) ([]ModelInfo, error)
 }
 
+// ModelSetter is an optional interface for provider adapters whose model list
+// can be updated at runtime (e.g. after a catalog sync from LiteLLM).
+type ModelSetter interface {
+	SetModels(models []string)
+}
+
 // Provider is the interface all provider adapters implement.
 type Provider interface {
 	Name() string

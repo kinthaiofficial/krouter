@@ -78,6 +78,9 @@ func (a *Adapter) SupportedModels() []string {
 	return supportedModels
 }
 
+// SetModels replaces the adapter's model list (called after catalog sync).
+func (a *Adapter) SetModels(models []string) { a.models = models }
+
 // DiscoverModels queries the Anthropic /v1/models endpoint and returns the live
 // model list. keyFn must return a valid x-api-key value; an empty key results in
 // an upstream 401 which is returned as an error.
