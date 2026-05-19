@@ -25,6 +25,7 @@ import (
 	groqadapter "github.com/kinthaiofficial/krouter/internal/providers/groq"
 	minimaxadapter "github.com/kinthaiofficial/krouter/internal/providers/minimax"
 	moonshotadapter "github.com/kinthaiofficial/krouter/internal/providers/moonshot"
+	openaiadapter "github.com/kinthaiofficial/krouter/internal/providers/openai"
 	qwenadapter "github.com/kinthaiofficial/krouter/internal/providers/qwen"
 	"github.com/kinthaiofficial/krouter/internal/remote"
 	"github.com/kinthaiofficial/krouter/internal/routing"
@@ -96,6 +97,7 @@ The daemon listens on two ports:
 			// providers can read keys from settings at request time.
 			configPath, _ := cmd.Flags().GetString("config")
 			settings := config.New(configPath)
+			settings.MigrateKeys()
 
 			// Proxy-aware transport — auto-detects OS system proxy (macOS scutil,
 			// Windows registry, Linux gsettings) and bypasses domestic China hosts.
@@ -129,6 +131,7 @@ The daemon listens on two ports:
 			reg.Register(moonshotadapter.NewWithKeyFn(keyFn("MOONSHOT_API_KEY", "moonshot"), sharedClient))
 			reg.Register(glmadapter.NewWithKeyFn(keyFn("ZHIPU_API_KEY", "zai"), sharedClient))
 			reg.Register(qwenadapter.NewWithKeyFn(keyFn("DASHSCOPE_API_KEY", "qwen"), sharedClient))
+			reg.Register(openaiadapter.NewDirectWithKeyFn(keyFn("OPENAI_API_KEY", "openai"), sharedClient))
 			reg.Register(minimaxadapter.New(sharedClient)) // transparent proxy — auth header comes from the agent (OpenClaw OAuth)
 
 			// Routing engine.

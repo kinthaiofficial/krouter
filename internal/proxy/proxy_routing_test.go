@@ -116,8 +116,9 @@ func TestRouting_NonStreaming_UnknownModelFallback(t *testing.T) {
 
 func TestRouting_Streaming(t *testing.T) {
 	sseChunks := []string{
+		"data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":8,\"output_tokens\":0}}}\n\n",
 		"data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"Hi\"}}\n\n",
-		"data: {\"type\":\"message_delta\",\"usage\":{\"input_tokens\":8,\"output_tokens\":3}}\n\n",
+		"data: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":3}}\n\n",
 		"data: [DONE]\n\n",
 	}
 

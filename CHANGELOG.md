@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.43] - 2026-05-19
+
+### Fixed
+- **Bug F（Anthropic streaming token 为 0）**：`parseAnthropicSSEUsage` 和 `parseAnthropicJSONUsage` 改用 JSON 解析替代正则表达式，累加 `input_tokens + cache_creation_input_tokens + cache_read_input_tokens` 作为总 input token 数，修复了 prompt caching 激活时 `input_tokens` 字段为 0 导致统计清零的问题。`cache_read_input_tokens` 作为 `cachedTokens` 传入定价函数，享受折扣费率。
+- **Bug O（glm→zai 重命名遗漏）**：新增 DB migration `005_rename_glm_to_zai.sql`，将 `model_discovery` 表中旧的 `provider='glm'` 行批量改为 `'zai'`；新增 `config.Manager.MigrateKeys()` 在 daemon 启动时自动将 `settings.json` 中的 `provider_keys.glm` 迁移为 `provider_keys.zai`，避免老版本升级后 API key 失效。
+- **Bug L（settings 接受未知 vendor）**：`PATCH /internal/settings` 的 `provider_keys` 字段现在校验 key 是否合法（`deepseek / groq / moonshot / zai / qwen / openai / minimax`），传入未知 key 时返回 400 Bad Request，附带可接受 key 列表。
+
+### Added
+- **Bug K（OpenAI 直连 provider）**：注册 `openai` provider（`https://api.openai.com`，`OPENAI_API_KEY`），支持 `gpt-4o`、`gpt-4o-mini`、`gpt-4-turbo`、`gpt-4`、`o1`、`o1-mini`、`o3-mini`。兑现 README 承诺。
+
 ## [2.0.42] - 2026-05-19
 
 ### Added

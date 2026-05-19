@@ -68,6 +68,18 @@ var validPresets = map[string]bool{
 	"quality":  true,
 }
 
+// validProviderKeys is the set of accepted provider_keys keys in settings.
+// Unknown keys are rejected at PATCH time to surface configuration mistakes early.
+var validProviderKeys = map[string]bool{
+	"deepseek": true,
+	"groq":     true,
+	"moonshot": true,
+	"zai":      true,
+	"qwen":     true,
+	"openai":   true,
+	"minimax":  true,
+}
+
 // sseEvent is a single Server-Sent Event.
 type sseEvent struct {
 	Type string
@@ -339,6 +351,10 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 				current.ProviderKeys = make(map[string]string)
 			}
 			for k, v := range patch.ProviderKeys {
+				if !validProviderKeys[k] {
+					http.Error(w, fmt.Sprintf(`{"error":"unknown provider key %q; valid keys: deepseek, groq, moonshot, zai, qwen, openai, minimax"}`, k), http.StatusBadRequest)
+					return
+				}
 				if v == "" {
 					delete(current.ProviderKeys, k) // empty string = remove key
 				} else {

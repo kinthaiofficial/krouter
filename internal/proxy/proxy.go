@@ -47,11 +47,6 @@ var hopByHopHeaders = map[string]bool{
 	"upgrade":             true,
 }
 
-// usageRE extracts the last occurrence of input_tokens / output_tokens from Anthropic SSE data.
-var (
-	inputTokensRE  = regexp.MustCompile(`"input_tokens"\s*:\s*(\d+)`)
-	outputTokensRE = regexp.MustCompile(`"output_tokens"\s*:\s*(\d+)`)
-)
 
 // openAIUsageRE extracts prompt_tokens / completion_tokens from OpenAI SSE data.
 var (
@@ -291,8 +286,8 @@ func (s *Server) handleAnthropicWithRouting(
 
 	if stream && statusCode == http.StatusOK {
 		s.streamSSEWithCapture(w, r, upstreamResp.Body, func(captured []byte) {
-			in, out := parseAnthropicSSEUsage(captured)
-			cost := s.computeCost(dec.Provider, dec.Model, in, out, 0)
+			in, out, cached := parseAnthropicSSEUsage(captured)
+			cost := s.computeCost(dec.Provider, dec.Model, in, out, cached)
 			s.logRequest(r.Context(), storage.RequestRecord{
 				ID:             s.storeNewULID(),
 				Timestamp:      start,
@@ -314,11 +309,11 @@ func (s *Server) handleAnthropicWithRouting(
 		w.WriteHeader(statusCode)
 		_, _ = w.Write(respData)
 		latencyMS := time.Since(start).Milliseconds()
-		var in, out int
+		var in, out, cached int
 		if statusCode == http.StatusOK {
-			in, out = parseAnthropicJSONUsage(respData)
+			in, out, cached = parseAnthropicJSONUsage(respData)
 		}
-		cost := s.computeCost(dec.Provider, dec.Model, in, out, 0)
+		cost := s.computeCost(dec.Provider, dec.Model, in, out, cached)
 		s.logRequest(r.Context(), storage.RequestRecord{
 			ID:             s.storeNewULID(),
 			Timestamp:      start,
@@ -775,26 +770,68 @@ func parseOpenAISSEUsage(data []byte) (inputTokens, outputTokens int) {
 }
 
 // parseAnthropicJSONUsage extracts token counts from a non-streaming Anthropic response.
-func parseAnthropicJSONUsage(data []byte) (inputTokens, outputTokens int) {
+// It sums input_tokens + cache_creation_input_tokens + cache_read_input_tokens for
+// inputTokens so that prompt-caching responses (where input_tokens may be 0) are counted.
+// cachedTokens = cache_read_input_tokens, used by CostFor for discounted pricing.
+func parseAnthropicJSONUsage(data []byte) (inputTokens, outputTokens, cachedTokens int) {
 	var resp struct {
 		Usage struct {
-			InputTokens  int `json:"input_tokens"`
-			OutputTokens int `json:"output_tokens"`
+			InputTokens              int `json:"input_tokens"`
+			CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+			CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+			OutputTokens             int `json:"output_tokens"`
 		} `json:"usage"`
 	}
 	_ = json.Unmarshal(data, &resp)
-	return resp.Usage.InputTokens, resp.Usage.OutputTokens
+	u := resp.Usage
+	inputTokens = u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens
+	outputTokens = u.OutputTokens
+	cachedTokens = u.CacheReadInputTokens
+	return
 }
 
-// parseAnthropicSSEUsage extracts the last token counts from SSE stream bytes.
-func parseAnthropicSSEUsage(data []byte) (inputTokens, outputTokens int) {
-	if m := inputTokensRE.FindAllSubmatch(data, -1); len(m) > 0 {
-		last := m[len(m)-1]
-		_, _ = fmt.Sscanf(string(last[1]), "%d", &inputTokens)
+// parseAnthropicSSEUsage extracts token counts from Anthropic SSE stream bytes.
+// It parses each data: JSON line and accumulates:
+//   - inputTokens  = input_tokens + cache_creation_input_tokens + cache_read_input_tokens
+//   - outputTokens = output_tokens from message_delta events
+//   - cachedTokens = cache_read_input_tokens (for discounted cost calculation)
+func parseAnthropicSSEUsage(data []byte) (inputTokens, outputTokens, cachedTokens int) {
+	type usageFields struct {
+		InputTokens              int `json:"input_tokens"`
+		CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+		CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+		OutputTokens             int `json:"output_tokens"`
 	}
-	if m := outputTokensRE.FindAllSubmatch(data, -1); len(m) > 0 {
-		last := m[len(m)-1]
-		_, _ = fmt.Sscanf(string(last[1]), "%d", &outputTokens)
+	type msgStart struct {
+		Usage usageFields `json:"usage"`
+	}
+	type sseEvent struct {
+		Type    string      `json:"type"`
+		Message msgStart    `json:"message"` // message_start
+		Usage   usageFields `json:"usage"`   // message_delta
+	}
+
+	for _, line := range bytes.Split(data, []byte("\n")) {
+		line = bytes.TrimSpace(line)
+		if !bytes.HasPrefix(line, []byte("data: ")) {
+			continue
+		}
+		payload := line[6:]
+		if bytes.Equal(payload, []byte("[DONE]")) {
+			continue
+		}
+		var ev sseEvent
+		if err := json.Unmarshal(payload, &ev); err != nil {
+			continue
+		}
+		switch ev.Type {
+		case "message_start":
+			u := ev.Message.Usage
+			inputTokens += u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens
+			cachedTokens += u.CacheReadInputTokens
+		case "message_delta":
+			outputTokens += ev.Usage.OutputTokens
+		}
 	}
 	return
 }

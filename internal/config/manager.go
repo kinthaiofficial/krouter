@@ -82,6 +82,27 @@ func (m *Manager) Get() Settings {
 	return applyDefaults(s)
 }
 
+// MigrateKeys rewrites any legacy provider key names to their current names.
+// Call once at daemon startup, after New but before serving requests.
+// Currently handles: "glm" → "zai" (renamed in v2.0.42).
+func (m *Manager) MigrateKeys() {
+	s := m.Get()
+	changed := false
+	if v, ok := s.ProviderKeys["glm"]; ok {
+		if s.ProviderKeys == nil {
+			s.ProviderKeys = make(map[string]string)
+		}
+		if _, exists := s.ProviderKeys["zai"]; !exists {
+			s.ProviderKeys["zai"] = v
+		}
+		delete(s.ProviderKeys, "glm")
+		changed = true
+	}
+	if changed {
+		_ = m.Set(s)
+	}
+}
+
 // Set writes settings atomically via temp file + rename (0600 perms).
 func (m *Manager) Set(s Settings) error {
 	m.mu.Lock()
