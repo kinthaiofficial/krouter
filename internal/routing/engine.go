@@ -8,7 +8,6 @@ package routing
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/kinthaiofficial/krouter/internal/providers"
 )
@@ -180,7 +179,10 @@ func (e *Engine) decideSaver(req Request) Decision {
 
 	switch proto {
 	case providers.ProtocolAnthropic:
-		provider := e.pickHealthyProvider(proto)
+		// Pick the first healthy provider that explicitly lists the saver model.
+		// This prevents routing to Anthropic-protocol providers (e.g. MiniMax) that
+		// do not recognise Claude model IDs.
+		provider := e.pickProviderForModel(proto, saverAnthropicModel)
 		if provider == nil {
 			return Decision{
 				Provider: req.Protocol,
@@ -188,17 +190,22 @@ func (e *Engine) decideSaver(req Request) Decision {
 				Reason:   fmt.Sprintf("Saver: no provider for protocol %q", req.Protocol),
 			}
 		}
+		// Guard against pickProviderForModel falling back to a provider that does
+		// not support the saver model (e.g. MiniMax as last-resort fallback).
+		model := saverAnthropicModel
+		if !modelSupported(provider.SupportedModels(), model) {
+			model = req.RequestedModel
+		}
 		return Decision{
 			Provider: provider.Name(),
-			Model:    saverAnthropicModel,
+			Model:    model,
 			Reason:   fmt.Sprintf("Saver: routing to %s (cheapest Anthropic model)", saverAnthropicModel),
 		}
 
 	case providers.ProtocolOpenAI:
-		// Prefer DeepSeek if healthy and available (env key present and registered).
-		if isProviderAvailable("deepseek") && e.isHealthy("deepseek") {
-			if dp, ok := e.registry.Get("deepseek"); ok {
-				_ = dp
+		// Prefer DeepSeek if healthy and its key is configured (settings or env).
+		if e.providerHasKey("deepseek") && e.isHealthy("deepseek") {
+			if _, ok := e.registry.Get("deepseek"); ok {
 				return Decision{
 					Provider: "deepseek",
 					Model:    saverOpenAIModel,
@@ -255,20 +262,18 @@ func (e *Engine) decideQuality(req Request) Decision {
 	return Decision{Provider: provider.Name(), Model: model, Reason: reason}
 }
 
-// isProviderAvailable returns true if the provider's API key env var is set.
-func isProviderAvailable(providerName string) bool {
-	envVars := map[string]string{
-		"anthropic": "ANTHROPIC_API_KEY",
-		"deepseek":  "DEEPSEEK_API_KEY",
-		"openai":    "OPENAI_API_KEY",
-		"groq":      "GROQ_API_KEY",
-		"moonshot":  "MOONSHOT_API_KEY",
-	}
-	env, ok := envVars[providerName]
+// providerHasKey reports whether the named provider currently has an API key
+// available (via settings or environment variable). Providers that implement
+// providers.Configurable are queried directly; others are assumed to have a key.
+func (e *Engine) providerHasKey(name string) bool {
+	p, ok := e.registry.Get(name)
 	if !ok {
 		return false
 	}
-	return os.Getenv(env) != ""
+	if c, ok := p.(providers.Configurable); ok {
+		return c.HasKey()
+	}
+	return true
 }
 
 func modelSupported(supported []string, model string) bool {

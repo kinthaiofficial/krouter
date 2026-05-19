@@ -217,3 +217,33 @@ func TestEngine_DefaultPresetIsBalanced(t *testing.T) {
 	assert.Equal(t, "claude-sonnet-4-5", dec.Model)
 	assert.Contains(t, dec.Reason, "Balanced")
 }
+
+// mixedAnthropicRegistry registers a real Anthropic provider plus a MiniMax-like provider
+// that speaks the Anthropic protocol but does NOT list claude-haiku-4-5-20251001.
+func mixedAnthropicRegistry() *providers.Registry {
+	reg := providers.New()
+	reg.Register(&fakeProvider{
+		name:     "anthropic",
+		protocol: providers.ProtocolAnthropic,
+		models:   []string{"claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-4-5-20251001"},
+	})
+	reg.Register(&fakeProvider{
+		name:     "minimax",
+		protocol: providers.ProtocolAnthropic,
+		models:   []string{"MiniMax-Text-01", "abab6.5s-chat"},
+	})
+	return reg
+}
+
+func TestEngine_Saver_AnthropicDoesNotRouteToMiniMax(t *testing.T) {
+	engine := routing.New(mixedAnthropicRegistry())
+
+	dec := engine.Decide(routing.Request{
+		Protocol:       "anthropic",
+		RequestedModel: "claude-sonnet-4-5",
+	}, routing.PresetSaver)
+
+	// Must route to anthropic, not minimax.
+	assert.Equal(t, "anthropic", dec.Provider)
+	assert.Equal(t, "claude-haiku-4-5-20251001", dec.Model)
+}

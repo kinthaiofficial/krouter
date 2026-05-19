@@ -290,7 +290,7 @@ func (s *Server) handleAnthropicWithRouting(
 	w.Header().Set("X-Krouter-Model", dec.Model)
 
 	if stream && statusCode == http.StatusOK {
-		s.streamSSEWithCapture(w, r, upstreamResp.Body, func(captured []byte, latencyMS int64) {
+		s.streamSSEWithCapture(w, r, upstreamResp.Body, func(captured []byte) {
 			in, out := parseAnthropicSSEUsage(captured)
 			cost := s.computeCost(dec.Provider, dec.Model, in, out, 0)
 			s.logRequest(r.Context(), storage.RequestRecord{
@@ -304,7 +304,7 @@ func (s *Server) handleAnthropicWithRouting(
 				InputTokens:    in,
 				OutputTokens:   out,
 				CostMicroUSD:   cost,
-				LatencyMS:      latencyMS,
+				LatencyMS:      time.Since(start).Milliseconds(),
 				StatusCode:     statusCode,
 			})
 		})
@@ -418,12 +418,17 @@ func (s *Server) streamSSE(w http.ResponseWriter, r *http.Request, resp *http.Re
 	}
 }
 
-// streamSSEWithCapture streams SSE while tee-ing up to 256KB into a buffer
-// for usage extraction. Calls done(captured, latencyMS) after stream ends.
+// streamSSEWithCapture streams SSE to the client while tee-ing into two buffers
+// for usage extraction:
+//   - head: first 64 KB (contains message_start with input_tokens)
+//   - tail: last 4 KB  (contains message_delta with final output_tokens)
+//
+// Using both ensures usage is captured even for responses > 64 KB.
+// Calls done(combined) after the stream ends or the client disconnects.
 func (s *Server) streamSSEWithCapture(
 	w http.ResponseWriter, r *http.Request,
 	body io.Reader,
-	done func(captured []byte, latencyMS int64),
+	done func(captured []byte),
 ) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -437,25 +442,49 @@ func (s *Server) streamSSEWithCapture(
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 
-	const maxCapture = 256 * 1024
-	var captureBuf bytes.Buffer
-	streamStart := time.Now()
+	const maxHead = 64 * 1024
+	const maxTail = 4 * 1024
+	var headBuf bytes.Buffer
+	tailBuf := make([]byte, 0, maxTail)
+
+	flush := func() {
+		// Concatenate head + tail, dropping the overlapping region when the stream
+		// is short enough to fit entirely in head.
+		if headBuf.Len() < maxHead {
+			done(headBuf.Bytes())
+			return
+		}
+		done(append(headBuf.Bytes(), tailBuf...))
+	}
 
 	buf := make([]byte, 4096)
 	for {
 		n, err := body.Read(buf)
 		if n > 0 {
-			if captureBuf.Len() < maxCapture {
-				remaining := maxCapture - captureBuf.Len()
-				if n < remaining {
-					captureBuf.Write(buf[:n])
+			chunk := buf[:n]
+			// Capture head (first maxHead bytes).
+			if headBuf.Len() < maxHead {
+				remaining := maxHead - headBuf.Len()
+				if n <= remaining {
+					headBuf.Write(chunk)
 				} else {
-					captureBuf.Write(buf[:remaining])
+					headBuf.Write(chunk[:remaining])
 				}
 			}
-			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+			// Always keep last maxTail bytes in tailBuf.
+			if len(tailBuf)+n <= maxTail {
+				tailBuf = append(tailBuf, chunk...)
+			} else if n >= maxTail {
+				tailBuf = append(tailBuf[:0], chunk[n-maxTail:]...)
+			} else {
+				keep := maxTail - n
+				tailBuf = append(tailBuf[:0], tailBuf[len(tailBuf)-keep:]...)
+				tailBuf = append(tailBuf, chunk...)
+			}
+
+			if _, writeErr := w.Write(chunk); writeErr != nil {
 				s.logger.Debug("client disconnected during stream", "err", writeErr)
-				done(captureBuf.Bytes(), time.Since(streamStart).Milliseconds())
+				flush()
 				return
 			}
 			flusher.Flush()
@@ -469,11 +498,11 @@ func (s *Server) streamSSEWithCapture(
 			} else {
 				s.logger.Error("upstream read error during stream", "err", err)
 			}
-			done(captureBuf.Bytes(), time.Since(streamStart).Milliseconds())
+			flush()
 			return
 		}
 	}
-	done(captureBuf.Bytes(), time.Since(streamStart).Milliseconds())
+	flush()
 }
 
 // handleModels handles GET /v1/models by forwarding to the upstream provider.
@@ -599,7 +628,7 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 	}
 
 	if parsed.Stream && statusCode == http.StatusOK {
-		s.streamSSEWithCapture(w, r, upstreamResp.Body, func(captured []byte, latencyMS int64) {
+		s.streamSSEWithCapture(w, r, upstreamResp.Body, func(captured []byte) {
 			in, out := parseOpenAISSEUsage(captured)
 			cost := s.computeCost(dec.Provider, dec.Model, in, out, 0)
 			s.logRequest(r.Context(), storage.RequestRecord{
@@ -613,7 +642,7 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 				InputTokens:    in,
 				OutputTokens:   out,
 				CostMicroUSD:   cost,
-				LatencyMS:      latencyMS,
+				LatencyMS:      time.Since(start).Milliseconds(),
 				StatusCode:     statusCode,
 			})
 		})

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.37] - 2026-05-19
+
+### Fixed
+- **Bug G — Saver preset 在多 provider 环境下误路由到 MiniMax**：当同时注册了 Anthropic 和 MiniMax（均使用 Anthropic 协议）时，`decideSaver` 之前调用 `pickHealthyProvider` 可能返回 MiniMax，再把 `claude-haiku-4-5-20251001` 这个 Claude model ID 发给它——MiniMax 不识别该 ID，请求静默失败。修复：改用 `pickProviderForModel(proto, saverAnthropicModel)`，优先选择在 `SupportedModels()` 中明确列出该 haiku 型号的 provider；若回退 provider 不支持该型号，保持原始请求 model 不变。
+- **Bug F — Anthropic streaming 请求 latency 统计错误（总是显示 6ms）**：`streamSSEWithCapture` 的 `done` 回调之前会传入自身内部计时的 `latencyMS`，该计时在首字节已到达后才开始，导致记录的永远是流写入耗时（≈6ms）而非真实端到端延迟（如 7000ms）。修复：移除 `done` 回调中的 `latencyMS` 参数，两处调用处改为 `time.Since(start)` 计算从请求到达时刻起的完整延迟。
+- **Bug F — Anthropic streaming token 捕获失败（长响应丢失 `message_delta`）**：之前只保留头部 256KB，对于超过此大小的长响应，末尾的 `message_delta`（含 `output_tokens`）会被丢弃，导致 token 统计 output=0、cost=0。修复：改为 64KB 头部缓冲区 + 4KB 尾部滑动窗口，始终保留响应末尾内容，确保 `message_delta` 不丢失，同时大幅降低内存占用。
+
 ## [2.0.36] - 2026-05-19
 
 ### Added
