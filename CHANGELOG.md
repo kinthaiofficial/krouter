@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.49] - 2026-05-19
+
+### Fixed
+- **Bug F（P1）— Claude streaming token 永远 0 — 根因修复**：Anthropic API 对发送了 `Accept-Encoding: gzip` 的请求返回 gzip 压缩响应；krouter 直接把压缩字节写入 SSE capture buffer，`parseAnthropicSSEUsage` 永远解析失败。修复：在 Anthropic 适配器的 `Forward` 方法里删除上游请求的 `Accept-Encoding` 头，强制返回未压缩文本。代价：每次响应多几 KB 流量，换取 token 统计可靠性。
+- **Bug Q — installer 端口 8404 静默切换**：`stopRunningDaemon()` 只停 daemon service，不杀残留的老 installer 进程；老 installer 占用 8404 时新 installer 静默切到 8405，用户/脚本基于固定端口假设的操作全部 noop。修复：启动前新增 `stopRunningInstaller(8404)` — 先 TCP 探测端口是否占用，若占用则用系统命令（macOS: `lsof -ti | xargs kill -9`，Linux: `fuser -k`，Windows: `netstat + taskkill`）强制杀掉。
+
 ## [2.0.48] - 2026-05-19
 
 ### Fixed

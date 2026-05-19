@@ -7,10 +7,12 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io/fs"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"github.com/kinthaiofficial/krouter/internal/config"
 	"github.com/kinthaiofficial/krouter/internal/install"
@@ -23,6 +25,11 @@ func main() {
 	// so killing it manually just causes launchd to restart it. bootout removes it
 	// from launchd supervision entirely, so the new binary can start cleanly.
 	stopRunningDaemon()
+
+	// Kill any previous installer process still occupying :8404. Without this,
+	// a stale installer causes install.Listen to silently pick :8405, breaking
+	// scripts and users that assume a fixed installer port.
+	stopRunningInstaller(8404)
 
 	token, err := randomToken()
 	if err != nil {
@@ -88,6 +95,39 @@ func daemonBinary() string {
 		}
 	}
 	return ""
+}
+
+// stopRunningInstaller kills any process listening on installerPort (default 8404).
+// If nothing is listening the function is a no-op.
+// Uses OS-specific commands (lsof/fuser/netstat) because net.Listener doesn't
+// expose a cross-platform "who owns this port?" API.
+func stopRunningInstaller(installerPort int) {
+	addr := fmt.Sprintf("127.0.0.1:%d", installerPort)
+	conn, err := net.DialTimeout("tcp", addr, 300*time.Millisecond)
+	if err != nil {
+		return // nothing listening — nothing to kill
+	}
+	_ = conn.Close()
+
+	// Something is on the port. Try to kill it.
+	portStr := fmt.Sprintf("%d", installerPort)
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		// lsof prints the PID of every process bound to the port; xargs kill -9.
+		cmd = exec.Command("sh", "-c",
+			"lsof -ti tcp:"+portStr+" | xargs kill -9 2>/dev/null")
+	case "linux":
+		cmd = exec.Command("fuser", "-k", portStr+"/tcp")
+	case "windows":
+		// Find PID(s) using the port, then kill them.
+		cmd = exec.Command("cmd", "/C",
+			`for /f "tokens=5" %a in ('netstat -aon ^| findstr :` + portStr + `') do taskkill /PID %a /F 2>nul`)
+	default:
+		return
+	}
+	_ = cmd.Run()
+	time.Sleep(200 * time.Millisecond) // brief grace period for port release
 }
 
 // stopRunningDaemon stops the currently running krouter daemon (if any).
