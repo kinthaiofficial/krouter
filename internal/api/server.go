@@ -52,6 +52,7 @@ import (
 	"github.com/kinthaiofficial/krouter/internal/notify"
 	"github.com/kinthaiofficial/krouter/internal/pricing"
 	"github.com/kinthaiofficial/krouter/internal/providers"
+	"github.com/kinthaiofficial/krouter/internal/proxycfg"
 	"github.com/kinthaiofficial/krouter/internal/remote"
 	"github.com/kinthaiofficial/krouter/internal/storage"
 	"github.com/kinthaiofficial/krouter/internal/upgrade"
@@ -80,6 +81,7 @@ type Server struct {
 	remote    *remote.Service
 	registry  *providers.Registry
 	settings  *config.Manager
+	proxyMgr  interface{ Status() proxycfg.ProxyStatus }
 	startAt   time.Time
 	version   string
 	buildTime string
@@ -140,6 +142,11 @@ func (s *Server) SetRemote(r *remote.Service) { s.remote = r }
 
 // SetRegistry wires in the provider registry for the /internal/providers endpoint.
 func (s *Server) SetRegistry(r *providers.Registry) { s.registry = r }
+
+// SetProxyManager wires in the proxy manager so /internal/status includes proxy info.
+func (s *Server) SetProxyManager(pm interface{ Status() proxycfg.ProxyStatus }) {
+	s.proxyMgr = pm
+}
 
 // Token returns the internal auth token (available after Serve is called).
 func (s *Server) Token() string { return s.token }
@@ -466,6 +473,9 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.buildTime != "" {
 		resp["build_time"] = s.buildTime
+	}
+	if s.proxyMgr != nil {
+		resp["proxy"] = s.proxyMgr.Status()
 	}
 	writeJSON(w, resp)
 }

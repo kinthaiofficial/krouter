@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.35] - 2026-05-19
+
+### Added
+- **HTTP proxy 支持（OS 系统代理 + per-provider bypass）**：daemon 现在像 Chrome 一样自动读取 OS 系统代理设置（macOS `scutil --proxy`、Windows 注册表 `HKCU\Internet Settings`、Linux GNOME `gsettings`），无需用户在 krouter 里单独配置代理。国内直连 provider（MiniMax、Moonshot、DeepSeek、GLM/Zhipu、Qwen）通过内置 no-proxy 后缀列表绕过代理，Anthropic/Groq 等国际 provider 走代理。代理检测每 60s 刷新一次，VPN 接入/断开后自动生效。
+- **新端点字段**：`GET /internal/status` 响应新增 `proxy` 字段（`{"url":"","source":"none","active":false}`），未来 Web UI 可在 Providers 页面展示当前代理状态。
+
 ## [2.0.34] - 2026-05-18
 
 ### Changed

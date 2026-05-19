@@ -18,6 +18,7 @@ import (
 	"github.com/kinthaiofficial/krouter/internal/pricing"
 	"github.com/kinthaiofficial/krouter/internal/proxy"
 	"github.com/kinthaiofficial/krouter/internal/providers"
+	"github.com/kinthaiofficial/krouter/internal/proxycfg"
 	anthropicadapter "github.com/kinthaiofficial/krouter/internal/providers/anthropic"
 	deepseekadapter "github.com/kinthaiofficial/krouter/internal/providers/deepseek"
 	glmadapter "github.com/kinthaiofficial/krouter/internal/providers/glm"
@@ -91,19 +92,21 @@ The daemon listens on two ports:
 			}
 			logger.Info("storage ready", "path", dbPath)
 
-			// Shared HTTP client for provider adapters (no timeout — streaming).
-			sharedClient := &http.Client{
-				Transport: &http.Transport{
-					MaxIdleConns:        100,
-					MaxIdleConnsPerHost: 10,
-					IdleConnTimeout:     90 * time.Second,
-				},
-			}
-
 			// Settings manager — must be created before the provider registry so
 			// providers can read keys from settings at request time.
 			configPath, _ := cmd.Flags().GetString("config")
 			settings := config.New(configPath)
+
+			// Proxy-aware transport — auto-detects OS system proxy (macOS scutil,
+			// Windows registry, Linux gsettings) and bypasses domestic China hosts.
+			proxymgr := proxycfg.New()
+			transport := &http.Transport{
+				MaxIdleConns:        100,
+				MaxIdleConnsPerHost: 10,
+				IdleConnTimeout:     90 * time.Second,
+				Proxy:               proxymgr.ProxyFunc(),
+			}
+			sharedClient := &http.Client{Transport: transport}
 
 			// keyFn returns a key-getter that checks settings first, then the env var.
 			// Called per-request so keys added to settings after daemon start take effect.
@@ -145,6 +148,9 @@ The daemon listens on two ports:
 				proxy.WithPricing(pricingSvc),
 			)
 
+			// Proxy refresh — re-detects OS proxy every 60s (handles VPN/network changes).
+			go proxymgr.RefreshLoop(ctx, transport, 60*time.Second)
+
 			// Notifications service — polls CDN feed every 6h.
 			notifSvc := notifications.New(store, settings, reg, Version)
 			go func() {
@@ -174,6 +180,7 @@ The daemon listens on two ports:
 			apiSrv.SetRemote(remoteSvc)
 			apiSrv.SetRegistry(reg)
 			apiSrv.SetSettings(settings)
+			apiSrv.SetProxyManager(proxymgr)
 
 			// Broadcast completed requests as SSE events so the Web UI updates live.
 			proxySrv.SetOnComplete(func(rec storage.RequestRecord) {
