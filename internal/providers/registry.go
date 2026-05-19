@@ -91,6 +91,13 @@ func (r *Registry) Get(name string) (Provider, bool) {
 	return p, ok
 }
 
+// Unregister removes a provider from the registry. No-op if not registered.
+func (r *Registry) Unregister(name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.providers, name)
+}
+
 // All returns all registered providers.
 func (r *Registry) All() []Provider {
 	r.mu.RLock()

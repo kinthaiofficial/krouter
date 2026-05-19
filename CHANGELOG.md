@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.50] - 2026-05-19
+
+### Added
+- **数据驱动 Provider 架构**：新增 `provider_config` DB 表（migration 007），预置 15 个 provider 的元数据（name、display_name、base_url、path_prefix、protocol、is_builtin）。daemon 启动时从 DB 加载所有 OpenAI 兼容 provider，不再需要修改代码才能支持新 provider。
+- **新增 7 个内置 provider**：Google Gemini（`/v1beta/openai` 兼容端点）、xAI Grok、Mistral AI、Together AI、Fireworks AI、Perplexity、Ollama（本地）。加上现有 8 个，总计 15 个内置 provider，均通过 API key 配置即可激活。
+- **自定义 provider CRUD**：`POST /internal/providers`（创建自定义 provider）、`DELETE /internal/providers/:name`（删除自定义 provider）。支持热添加/删除，无需重启 daemon。
+- **Providers 页面 UI 升级**：显示 display_name 和 base_url（来自 DB），"Add Provider"对话框支持填写 name/base_url/api_key/path_prefix/protocol 添加任意 OpenAI 兼容端点；每个未配置 provider 卡片内联"Set Key"输入框，可直接在 Providers 页设置 API key；自定义 provider 显示删除按钮。
+- **provider_keys 校验放开**：`PATCH /internal/settings` 的 provider_keys 从静态白名单改为格式校验（小写字母开头 + 字母数字 + `-_`），允许为任意 provider 设置 key。
+- **LiteLLM 映射扩展**：`LiteLLMToKrouterProvider` 新增 `together_ai→together`、`fireworks_ai→fireworks`，LiteLLM 同步的模型定价可自动关联到对应 provider。
+
+### Changed
+- `serve.go` 移除了 deepseek、groq、moonshot、glm、qwen、openai 六个硬编码适配器注册，改为 `loadProvidersFromDB()` 统一加载。现有 per-provider 包（用于测试和文档）保持不变。
+- `GET /internal/providers` 响应新增 `display_name`、`base_url`、`is_builtin` 字段。
+
 ## [2.0.49] - 2026-05-19
 
 ### Fixed

@@ -20,6 +20,12 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
   return resp.json() as Promise<T>
 }
 
+async function deleteReq(path: string): Promise<void> {
+  const resp = await fetch(BASE + path, { method: 'DELETE', credentials: 'include' })
+  if (resp.status === 401) throw new Error('unauthorized')
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+}
+
 async function patchReq<T>(path: string, body: unknown): Promise<T> {
   const resp = await fetch(BASE + path, {
     method: 'PATCH',
@@ -114,7 +120,10 @@ export interface DashboardStats {
 
 export interface ProviderInfo {
   name: string
+  display_name: string
   protocol: string
+  base_url: string
+  is_builtin: boolean
   available: boolean
   configured: boolean
   consecutive_failures: number
@@ -124,6 +133,15 @@ export interface ProviderInfo {
   cost_today_usd: number
   latency_p50_ms: number
   latency_p95_ms: number
+}
+
+export interface AddProviderBody {
+  name: string
+  display_name: string
+  base_url: string
+  path_prefix?: string
+  protocol?: string
+  api_key?: string
 }
 
 export interface ProviderTestResult {
@@ -168,4 +186,8 @@ export const api = {
     `/internal/logs/export?from=${from}&to=${to}${agent ? `&agent=${encodeURIComponent(agent)}` : ''}`,
   resetData: () => post<{ ok: boolean }>('/internal/settings/reset-data'),
   uninstall: () => post<{ ok: boolean }>('/internal/settings/uninstall'),
+  addProvider: (body: AddProviderBody) => post<ProviderInfo>('/internal/providers', body),
+  removeProvider: (name: string) => deleteReq(`/internal/providers/${encodeURIComponent(name)}`),
+  setProviderKey: (name: string, key: string) =>
+    patchReq<Settings>('/internal/settings', { provider_keys: { [name]: key } }),
 }

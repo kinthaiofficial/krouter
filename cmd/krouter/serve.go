@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"strings"
+
 	"github.com/kinthaiofficial/krouter/internal/api"
 	"github.com/kinthaiofficial/krouter/internal/config"
 	"github.com/kinthaiofficial/krouter/internal/logging"
@@ -20,13 +22,8 @@ import (
 	"github.com/kinthaiofficial/krouter/internal/providers"
 	"github.com/kinthaiofficial/krouter/internal/proxycfg"
 	anthropicadapter "github.com/kinthaiofficial/krouter/internal/providers/anthropic"
-	deepseekadapter "github.com/kinthaiofficial/krouter/internal/providers/deepseek"
-	glmadapter "github.com/kinthaiofficial/krouter/internal/providers/glm"
-	groqadapter "github.com/kinthaiofficial/krouter/internal/providers/groq"
 	minimaxadapter "github.com/kinthaiofficial/krouter/internal/providers/minimax"
-	moonshotadapter "github.com/kinthaiofficial/krouter/internal/providers/moonshot"
 	openaiadapter "github.com/kinthaiofficial/krouter/internal/providers/openai"
-	qwenadapter "github.com/kinthaiofficial/krouter/internal/providers/qwen"
 	"github.com/kinthaiofficial/krouter/internal/remote"
 	"github.com/kinthaiofficial/krouter/internal/routing"
 	"github.com/kinthaiofficial/krouter/internal/storage"
@@ -110,29 +107,12 @@ The daemon listens on two ports:
 			}
 			sharedClient := &http.Client{Transport: transport}
 
-			// keyFn returns a key-getter that checks settings first, then the env var.
-			// Called per-request so keys added to settings after daemon start take effect.
-			keyFn := func(envVar, settingsKey string) func() string {
-				return func() string {
-					if k := settings.Get().ProviderKeys[settingsKey]; k != "" {
-						return k
-					}
-					return os.Getenv(envVar)
-				}
-			}
-
-			// Provider registry — all providers are always registered.
-			// Providers without a configured key will report HasKey()=false and be
-			// skipped by the routing engine until a key is configured.
+			// Provider registry — loaded from provider_config DB table plus two
+			// hardcoded entries that require special protocol handling.
 			reg := providers.New()
 			reg.Register(anthropicadapter.New("https://api.anthropic.com", sharedClient))
-			reg.Register(deepseekadapter.NewWithKeyFn(keyFn("DEEPSEEK_API_KEY", "deepseek"), sharedClient))
-			reg.Register(groqadapter.NewWithKeyFn(keyFn("GROQ_API_KEY", "groq"), sharedClient))
-			reg.Register(moonshotadapter.NewWithKeyFn(keyFn("MOONSHOT_API_KEY", "moonshot"), sharedClient))
-			reg.Register(glmadapter.NewWithKeyFn(keyFn("ZHIPU_API_KEY", "zai"), sharedClient))
-			reg.Register(qwenadapter.NewWithKeyFn(keyFn("DASHSCOPE_API_KEY", "qwen"), sharedClient))
-			reg.Register(openaiadapter.NewDirectWithKeyFn(keyFn("OPENAI_API_KEY", "openai"), sharedClient))
 			reg.Register(minimaxadapter.New(sharedClient)) // transparent proxy — auth header comes from the agent (OpenClaw OAuth)
+			loadProvidersFromDB(ctx, store, reg, settings, sharedClient)
 
 			// Routing engine.
 			engine := routing.New(reg)
@@ -226,6 +206,9 @@ The daemon listens on two ports:
 			apiSrv.SetSettings(settings)
 			apiSrv.SetProxyManager(proxymgr)
 			apiSrv.SetSSEDebug(proxySrv.GetLastSSECapture)
+			apiSrv.SetProviderCreator(func(cfg storage.ProviderConfig, keyFn func() string) providers.Provider {
+				return openaiadapter.NewWithPathReplaceAndKeyFn(cfg.Name, cfg.BaseURL, cfg.PathPrefix, keyFn, nil, sharedClient)
+			})
 
 			// Model discovery — re-syncs cached model lists on daemon start.
 			go func() {
@@ -444,6 +427,32 @@ func (s *subscriptionSource) GetSubscriptionInfo(ctx context.Context, provider s
 		}
 	}
 	return routing.SubscriptionInfo{}
+}
+
+// loadProvidersFromDB reads provider_config rows and registers an OpenAI adapter for
+// each openai-protocol entry. Anthropic and MiniMax are skipped — they are always
+// registered separately with custom protocol logic above.
+// Called once at startup; custom providers added at runtime are also registered
+// immediately by the API server's doAddProvider handler.
+func loadProvidersFromDB(ctx context.Context, store *storage.Store, reg *providers.Registry, settings *config.Manager, sharedClient *http.Client) {
+	cfgs, err := store.GetProviderConfigs(ctx)
+	if err != nil {
+		return
+	}
+	for _, cfg := range cfgs {
+		cfg := cfg // capture loop variable for closure
+		if cfg.Protocol != "openai" {
+			continue // anthropic-protocol providers are registered separately
+		}
+		name := cfg.Name
+		keyFn := func() string {
+			if k := settings.Get().ProviderKeys[name]; k != "" {
+				return k
+			}
+			return os.Getenv(strings.ToUpper(name) + "_API_KEY")
+		}
+		reg.Register(openaiadapter.NewWithPathReplaceAndKeyFn(name, cfg.BaseURL, cfg.PathPrefix, keyFn, nil, sharedClient))
+	}
 }
 
 // defaultDBPath returns the default SQLite database path (~/.kinthai/data.db).

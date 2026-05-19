@@ -27,9 +27,11 @@ const defaultLiteLLMURL = "https://raw.githubusercontent.com/BerriAI/litellm/mai
 // adapter name when the two names differ. Providers not listed here use the
 // litellm_provider value directly as the adapter name.
 var LiteLLMToKrouterProvider = map[string]string{
-	"dashscope": "qwen", // Aliyun DashScope → krouter qwen adapter
-	// "zai" → "zai" (Z.AI, same in both)
-	// "moonshot" → "moonshot" (same in both after rename)
+	"dashscope":   "qwen",      // Aliyun DashScope → krouter qwen adapter
+	"together_ai": "together",  // Together AI
+	"fireworks_ai": "fireworks", // Fireworks AI
+	// All other new providers use the same name in both LiteLLM and krouter:
+	// gemini, xai, mistral, perplexity, groq, moonshot, zai, openai, deepseek, anthropic
 }
 
 // PriceEntry holds per-token costs for a model.
