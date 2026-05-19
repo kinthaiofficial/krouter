@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.48] - 2026-05-19
+
+### Fixed
+- **Bug P（P0）— migration 005 UNIQUE 冲突致 daemon 启动失败**：`005_rename_glm_to_zai.sql` 在 glm 和 zai 行并存时触发 `UNIQUE constraint failed`，daemon 无法启动。修复：先删除与已有 zai 行冲突的 glm 行，再执行 UPDATE；对已完成 migration 的 DB 无影响（`schema_migrations` 版本记录存在则跳过）。
+
+### Added
+- **Bug F 诊断工具**：proxy 层在每次 Anthropic 流式响应结束后，将 SSE raw buffer（最多 4 KB）存入 `Server.lastSSECapture`；当 `parseAnthropicSSEUsage` 返回 0/0 token 时，debug 日志打印前 512 字节供排查。新增 `GET /internal/debug/last-sse-capture`（需 Bearer auth）端点，返回上次捕获的原始 SSE bytes，方便研发判断流内容是否包含 `message_start` / `message_delta` 事件。
+
 ## [2.0.47] - 2026-05-19
 
 ### Added

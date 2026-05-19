@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kinthaiofficial/krouter/internal/logging"
@@ -66,6 +67,20 @@ type Server struct {
 	store      *storage.Store
 	pricing    *pricing.Service
 	onComplete func(storage.RequestRecord) // optional; called after every logged request
+
+	// lastSSECaptureMu guards lastSSECapture for the debug endpoint.
+	lastSSECaptureMu sync.RWMutex
+	lastSSECapture   []byte
+}
+
+// GetLastSSECapture returns a copy of the most recently captured Anthropic SSE
+// buffer (up to 4 KB). Used by the /internal/debug/last-sse-capture endpoint.
+func (s *Server) GetLastSSECapture() []byte {
+	s.lastSSECaptureMu.RLock()
+	defer s.lastSSECaptureMu.RUnlock()
+	out := make([]byte, len(s.lastSSECapture))
+	copy(out, s.lastSSECapture)
+	return out
 }
 
 // Option configures a Server.
@@ -270,7 +285,25 @@ func (s *Server) handleAnthropicWithRouting(
 
 	if stream && statusCode == http.StatusOK {
 		s.streamSSEWithCapture(w, r, upstreamResp.Body, func(captured []byte) {
+			// Store raw capture for /internal/debug/last-sse-capture diagnosis.
+			s.lastSSECaptureMu.Lock()
+			s.lastSSECapture = make([]byte, len(captured))
+			copy(s.lastSSECapture, captured)
+			s.lastSSECaptureMu.Unlock()
+
 			in, out, cached := parseAnthropicSSEUsage(captured)
+			if in == 0 && out == 0 {
+				// Log the first 512 bytes of the captured buffer at debug level
+				// so operators can diagnose SSE parsing failures.
+				preview := captured
+				if len(preview) > 512 {
+					preview = preview[:512]
+				}
+				s.logger.Debug("anthropic SSE token parse returned 0/0 — captured buffer preview",
+					"bytes_total", len(captured),
+					"preview", string(preview),
+				)
+			}
 			cost := s.computeCost(dec.Provider, dec.Model, in, out, cached)
 			s.logRequest(r.Context(), storage.RequestRecord{
 				ID:             s.storeNewULID(),

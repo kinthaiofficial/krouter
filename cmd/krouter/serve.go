@@ -225,6 +225,7 @@ The daemon listens on two ports:
 			apiSrv.SetRegistry(reg)
 			apiSrv.SetSettings(settings)
 			apiSrv.SetProxyManager(proxymgr)
+			apiSrv.SetSSEDebug(proxySrv.GetLastSSECapture)
 
 			// Model discovery — re-syncs cached model lists on daemon start.
 			go func() {

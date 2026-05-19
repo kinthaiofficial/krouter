@@ -107,6 +107,10 @@ type Server struct {
 	subsMu   sync.Mutex
 	subs     []chan sseEvent
 	notifier *notify.Notifier
+
+	// sseDebugFn, when set, returns the raw bytes of the last Anthropic SSE
+	// capture for the /internal/debug/last-sse-capture diagnostic endpoint.
+	sseDebugFn func() []byte
 }
 
 // New creates a management API server.
@@ -163,6 +167,10 @@ func (s *Server) SetRegistry(r *providers.Registry) { s.registry = r }
 func (s *Server) SetProxyManager(pm interface{ Status() proxycfg.ProxyStatus }) {
 	s.proxyMgr = pm
 }
+
+// SetSSEDebug wires in a function that returns the last captured Anthropic SSE
+// buffer for the /internal/debug/last-sse-capture diagnostic endpoint.
+func (s *Server) SetSSEDebug(fn func() []byte) { s.sseDebugFn = fn }
 
 // Token returns the internal auth token (available after Serve is called).
 func (s *Server) Token() string { return s.token }
@@ -295,6 +303,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/internal/logs/export", auth(http.HandlerFunc(s.handleLogsExport)))
 	mux.Handle("/internal/settings/reset-data", auth(http.HandlerFunc(s.handleResetData)))
 	mux.Handle("/internal/settings/uninstall", auth(http.HandlerFunc(s.handleUninstall)))
+	mux.Handle("/internal/debug/last-sse-capture", auth(http.HandlerFunc(s.handleDebugSSECapture)))
 	return mux
 }
 
@@ -2032,4 +2041,27 @@ func writeInternalToken(token string) error {
 	}
 	path := filepath.Join(dir, "internal-token")
 	return os.WriteFile(path, []byte(strings.TrimSpace(token)), 0600)
+}
+
+// handleDebugSSECapture handles GET /internal/debug/last-sse-capture.
+// Returns the raw bytes of the most recently captured Anthropic SSE response
+// as plain text. Used to diagnose token-parsing issues (Bug F).
+func (s *Server) handleDebugSSECapture(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.sseDebugFn == nil {
+		http.Error(w, "SSE debug not available (proxy not wired)", http.StatusServiceUnavailable)
+		return
+	}
+	data := s.sseDebugFn()
+	if len(data) == 0 {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = fmt.Fprintln(w, "(no SSE capture yet — send a streaming request first)")
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-SSE-Capture-Bytes", strconv.Itoa(len(data)))
+	_, _ = w.Write(data)
 }
