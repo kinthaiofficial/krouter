@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.45] - 2026-05-19
+
+### Added
+- **请求元数据提取（HasImages / SystemPrompt）**：proxy 层在构建 `routing.Request` 前调用 `extractAnthropicMeta` / `extractOpenAIMeta`，解析请求体中的 `system` 字段和图片内容块，填充 `HasImages`、`SystemPrompt` 字段。路由引擎可据此在订阅优先路由时跳过含图片请求（MiniMax 不支持）。
+- **Anthropic 预算限制自动降级**：routing engine 新增 `QuotaSource` 接口和 `applyQuotaDowngrade` 逻辑；当每日/每周花费占比 ≥ 95% 时强制切换 Saver preset，≥ 80% 时将 Quality→Balanced、Balanced→Saver；`OpusPercent`（基于 500K token 软上限的窗口消耗比）≥ 80% 时屏蔽 Opus 系列，降级使用 Sonnet。
+- **`QuotaSource` / `SubscriptionSource` 接口**：routing engine 通过 `WithQuota(QuotaSource)` 和 `WithSubscription(SubscriptionSource)` 注入依赖，保持路由层与存储层解耦，便于测试替换。
+
+## [2.0.44] - 2026-05-19
+
+### Added
+- **MiniMax 订阅 provider 优先路由**：routing engine 新增 `SubscriptionSource` 接口，当 MiniMax 订阅配额有剩余且请求不含图片时，三个 preset（Saver / Balanced / Quality 非复杂）均优先路由到 MiniMax，利用"月费÷月总次数"极低的有效成本（≈$0.000031/次）覆盖大多数请求。
+- **MiniMax 配额轮询（`QuotaPoller`）**：每 30 分钟调用 `https://api.minimaxi.com/v1/token_plan/remains`，当前窗口剩余 < 30 分钟时缩短为 5 分钟；结果存入新 DB 表 `subscription_quota_cache`；daemon 启动后 20 秒触发首次拉取。
+- **OAuth token 缓存**：proxy 在每次 MiniMax 请求中提取 `Authorization: Bearer` 头并存入内存（`minimax.CacheOAuthToken`），供 QuotaPoller 调用配额 API 时使用；token 不写磁盘、不打印日志。
+- **`SubscriptionQuota` 存储层**：新增 `internal/storage/subscription_quota.go`，包含 `UpsertSubscriptionQuota`、`GetSubscriptionQuota`、`GetAllSubscriptionQuotas`、`IsSubscriptionAvailable` 方法；`EffectiveCostUSD()` 按订阅套餐价格表计算每次调用等效美元成本。
+- **DB migration `006_subscription_quota.sql`**：创建 `subscription_quota_cache` 表。
+
 ## [2.0.43] - 2026-05-19
 
 ### Fixed

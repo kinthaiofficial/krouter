@@ -221,11 +221,14 @@ func (s *Server) handleAnthropicWithRouting(
 	body []byte, requestedModel string, stream bool, hasTools bool,
 	start time.Time, preset string,
 ) {
+	hasImages, systemPrompt := extractAnthropicMeta(body)
 	req := routing.Request{
 		Protocol:       "anthropic",
 		RequestedModel: requestedModel,
 		InputTokenEst:  len(body) / 4,
+		HasImages:      hasImages,
 		HasTools:       hasTools,
+		SystemPrompt:   systemPrompt,
 		AgentName:      agentName(r),
 	}
 
@@ -572,11 +575,14 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 	start := time.Now()
 	preset := s.currentPreset(r.Context())
 
+	hasImages, systemPrompt := extractOpenAIMeta(body)
 	req := routing.Request{
 		Protocol:       "openai",
 		RequestedModel: parsed.Model,
 		InputTokenEst:  len(body) / 4,
+		HasImages:      hasImages,
 		HasTools:       len(parsed.Tools) > 0,
+		SystemPrompt:   systemPrompt,
 		AgentName:      agentName(r),
 	}
 	dec := s.engine.Decide(req, preset)
@@ -727,6 +733,111 @@ func rewriteModel(body []byte, newModel string) []byte {
 	return out
 }
 
+// extractAnthropicMeta extracts HasImages and SystemPrompt from an Anthropic
+// Messages API request body. Both values are used for routing decisions.
+//
+// system field: may be a string or []{"type":"text","text":"..."}
+// messages[i].content: may be a string or []{"type":"image"|"text"|...}
+func extractAnthropicMeta(body []byte) (hasImages bool, systemPrompt string) {
+	var req struct {
+		System   json.RawMessage `json:"system"`
+		Messages []struct {
+			Content json.RawMessage `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		return
+	}
+
+	// Parse system prompt (string or content-block array).
+	if len(req.System) > 0 {
+		var s string
+		if err := json.Unmarshal(req.System, &s); err == nil {
+			systemPrompt = truncate(s, 300)
+		} else {
+			var blocks []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			}
+			if err := json.Unmarshal(req.System, &blocks); err == nil {
+				for _, b := range blocks {
+					if b.Type == "text" {
+						systemPrompt = truncate(b.Text, 300)
+						break
+					}
+				}
+			}
+		}
+	}
+
+	// Detect image content blocks in messages.
+	for _, msg := range req.Messages {
+		if len(msg.Content) == 0 {
+			continue
+		}
+		var blocks []struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(msg.Content, &blocks); err != nil {
+			continue
+		}
+		for _, b := range blocks {
+			if b.Type == "image" {
+				hasImages = true
+				return
+			}
+		}
+	}
+	return
+}
+
+// extractOpenAIMeta extracts HasImages and SystemPrompt from an OpenAI Chat
+// Completions request body.
+//
+// role=="system" message → systemPrompt
+// content[].type=="image_url" → hasImages
+func extractOpenAIMeta(body []byte) (hasImages bool, systemPrompt string) {
+	var req struct {
+		Messages []struct {
+			Role    string          `json:"role"`
+			Content json.RawMessage `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		return
+	}
+	for _, msg := range req.Messages {
+		if msg.Role == "system" && systemPrompt == "" {
+			var s string
+			if err := json.Unmarshal(msg.Content, &s); err == nil {
+				systemPrompt = truncate(s, 300)
+			}
+			continue
+		}
+		var blocks []struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(msg.Content, &blocks); err != nil {
+			continue
+		}
+		for _, b := range blocks {
+			if b.Type == "image_url" {
+				hasImages = true
+			}
+		}
+	}
+	return
+}
+
+// truncate returns at most n runes from s.
+func truncate(s string, n int) string {
+	runes := []rune(s)
+	if len(runes) <= n {
+		return s
+	}
+	return string(runes[:n])
+}
+
 // agentName extracts a best-effort agent identifier from the request.
 //
 // OpenClaw uses the Anthropic TypeScript SDK which sends "Anthropic/JS X.Y.Z" as
@@ -870,6 +981,9 @@ func (s *Server) logRequest(ctx context.Context, rec storage.RequestRecord) {
 					if total > 0 {
 						_ = s.store.IncrementQuota(bg, "5h", int64(total))
 						_ = s.store.IncrementQuota(bg, "weekly", int64(total))
+					}
+					if strings.HasPrefix(rec.Model, "claude-opus") && total > 0 {
+						_ = s.store.IncrementQuota(bg, "opus", int64(total))
 					}
 				}
 			} else if rec.StatusCode > 0 {

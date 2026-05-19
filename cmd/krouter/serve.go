@@ -145,6 +145,9 @@ The daemon listens on two ports:
 			// Subscription quota source — wraps store for the routing engine.
 			engine.WithSubscription(newSubscriptionSource(store))
 
+			// Anthropic quota source — budget-based downgrade logic.
+			engine.WithQuota(newQuotaSource(store, settings))
+
 			// Proxy server.
 			proxySrv := proxy.New(
 				proxy.WithLogger(logger),
@@ -353,6 +356,54 @@ func waitPortFree(addr string, timeout, interval time.Duration) bool {
 		time.Sleep(interval)
 	}
 	return false
+}
+
+// quotaSource implements routing.QuotaSource by reading quota_state from DB
+// and comparing against budget limits in settings.
+type quotaSource struct {
+	store    *storage.Store
+	settings *config.Manager
+}
+
+func newQuotaSource(store *storage.Store, settings *config.Manager) *quotaSource {
+	return &quotaSource{store: store, settings: settings}
+}
+
+func (q *quotaSource) CurrentQuota(ctx context.Context) routing.QuotaState {
+	s := q.settings.Get()
+
+	dailyLimitUSD := s.BudgetWarnings["daily"]
+	weeklyLimitUSD := s.BudgetWarnings["weekly"]
+	const opusTokenSoftCap = 500_000
+
+	var state routing.QuotaState
+
+	if dailyLimitUSD > 0 {
+		todayStart := time.Now().UTC().Truncate(24 * time.Hour)
+		if cost, err := q.store.SumCostMicroUSD(ctx, todayStart); err == nil {
+			state.DailyPercent = float64(cost) / 1_000_000 / dailyLimitUSD
+		}
+	}
+	if weeklyLimitUSD > 0 {
+		weekStart := weekStartUTC()
+		if cost, err := q.store.SumCostMicroUSD(ctx, weekStart); err == nil {
+			state.WeeklyPercent = float64(cost) / 1_000_000 / weeklyLimitUSD
+		}
+	}
+	if qw, err := q.store.GetQuota(ctx, "opus"); err == nil && qw != nil {
+		state.OpusPercent = float64(qw.TokensUsed) / opusTokenSoftCap
+	}
+	return state
+}
+
+// weekStartUTC returns the start of the current ISO week (Monday 00:00 UTC).
+func weekStartUTC() time.Time {
+	now := time.Now().UTC()
+	weekday := int(now.Weekday())
+	if weekday == 0 {
+		weekday = 7 // Sunday → 7
+	}
+	return now.Truncate(24 * time.Hour).AddDate(0, 0, -(weekday - 1))
 }
 
 // subscriptionSource implements routing.SubscriptionSource via the storage layer.

@@ -36,6 +36,7 @@ type Request struct {
 	InputTokenEst  int    // rough estimate: body bytes / 4
 	HasImages      bool
 	HasTools       bool
+	SystemPrompt   string // first 300 chars of system prompt, for complexity classification
 	AgentName      string // "claude-code" | "openclaw" | "cursor" | "unknown"
 	UserAPIKey     string // forwarded at request time — DO NOT LOG
 }
@@ -62,6 +63,20 @@ type PricingSource interface {
 	InputCostPerToken(model string) float64
 }
 
+// QuotaState describes current budget consumption percentages (0.0–1.0).
+// A value of 0 means "no budget configured" — no downgrade is triggered.
+type QuotaState struct {
+	DailyPercent  float64 // today's cost / daily budget limit
+	WeeklyPercent float64 // this week's cost / weekly budget limit
+	OpusPercent   float64 // 24h Opus tokens / soft cap (500K tokens)
+}
+
+// QuotaSource provides the current quota consumption percentages.
+// Implementations must be safe for concurrent use.
+type QuotaSource interface {
+	CurrentQuota(ctx context.Context) QuotaState
+}
+
 // SubscriptionInfo carries quota state for a subscription-based provider.
 type SubscriptionInfo struct {
 	Available        bool
@@ -84,6 +99,7 @@ type Engine struct {
 	health       HealthChecker      // optional; nil means no health-based routing
 	pricing      PricingSource      // optional; nil falls back to hardcoded model names
 	subscription SubscriptionSource // optional; nil means no subscription-aware routing
+	quota        QuotaSource        // optional; nil means no quota-based downgrade
 }
 
 // New creates a routing engine backed by the given provider registry.
@@ -107,6 +123,11 @@ func (e *Engine) WithPricing(p PricingSource) {
 // their effective per-call cost (~$0.000031) is lower than any per-token provider.
 func (e *Engine) WithSubscription(s SubscriptionSource) {
 	e.subscription = s
+}
+
+// WithQuota attaches a quota source for Anthropic token budget downgrade logic.
+func (e *Engine) WithQuota(q QuotaSource) {
+	e.quota = q
 }
 
 // subscriptionInfo returns quota info for a provider, or zero value if not available.
@@ -177,6 +198,7 @@ func (e *Engine) pickProviderForModel(proto providers.Protocol, model string) pr
 // preset must be one of "saver", "balanced", "quality" (case-sensitive).
 // An empty or unrecognised preset is treated as "balanced".
 func (e *Engine) Decide(req Request, preset string) Decision {
+	preset = e.applyQuotaDowngrade(preset)
 	switch preset {
 	case PresetSaver:
 		return e.decideSaver(req)
@@ -185,6 +207,40 @@ func (e *Engine) Decide(req Request, preset string) Decision {
 	default:
 		return e.decideBalanced(req)
 	}
+}
+
+// applyQuotaDowngrade returns a (potentially downgraded) preset based on current
+// Anthropic quota consumption. Rules (spec/02-routing-engine.md §3 Step 2):
+//
+//	DailyPercent or WeeklyPercent >= 0.95 → force "saver" (cheapest model)
+//	DailyPercent or WeeklyPercent >= 0.80 → downgrade balanced/quality by one tier
+//	OpusPercent >= 0.90                   → block Opus (handled in decideQuality)
+func (e *Engine) applyQuotaDowngrade(preset string) string {
+	if e.quota == nil {
+		return preset
+	}
+	qs := e.quota.CurrentQuota(context.Background())
+
+	if qs.DailyPercent >= 0.95 || qs.WeeklyPercent >= 0.95 {
+		return PresetSaver
+	}
+	if qs.DailyPercent >= 0.80 || qs.WeeklyPercent >= 0.80 {
+		if preset == PresetQuality {
+			return PresetBalanced
+		}
+		if preset == PresetBalanced {
+			return PresetSaver
+		}
+	}
+	return preset
+}
+
+// isOpusBlocked returns true when the Opus 24h token cap (90%) has been reached.
+func (e *Engine) isOpusBlocked() bool {
+	if e.quota == nil {
+		return false
+	}
+	return e.quota.CurrentQuota(context.Background()).OpusPercent >= 0.90
 }
 
 // decideBalanced honours the requested model; prefers the provider that explicitly
@@ -356,9 +412,11 @@ func (e *Engine) decideQuality(req Request) Decision {
 	model := req.RequestedModel
 	reason := fmt.Sprintf("Quality: honoring requested model %s via %s", model, provider.Name())
 
-	// Upgrade complex tasks to the highest-capability (most expensive) model.
+	// Upgrade complex tasks to the highest-capability (most expensive) model,
+	// unless the Opus 24h cap has been reached.
 	isComplex = req.HasImages || (req.HasTools && req.InputTokenEst > 4000)
-	if isComplex && proto == providers.ProtocolAnthropic {
+	opusBlocked := e.isOpusBlocked()
+	if isComplex && proto == providers.ProtocolAnthropic && !opusBlocked {
 		// With live pricing: pick the most expensive available model.
 		if expProv, expModel := e.mostExpensiveProviderModel(proto); expProv != nil {
 			return Decision{
@@ -370,6 +428,9 @@ func (e *Engine) decideQuality(req Request) Decision {
 		// Without pricing: fall back to hardcoded Opus.
 		model = "claude-opus-4-5"
 		reason = "Quality: upgrading complex request to claude-opus-4-5"
+	} else if isComplex && opusBlocked {
+		model = "claude-sonnet-4-6"
+		reason = "Quality: Opus 24h 用量已达上限，降级到 sonnet"
 	} else if !modelSupported(provider.SupportedModels(), model) {
 		model = fallbackModel
 		reason = fmt.Sprintf("Quality: requested model %q not recognised, using %s", req.RequestedModel, model)
