@@ -311,6 +311,19 @@ func (s *Service) parseLiteLLM(data []byte) (map[string]parsedEntry, error) {
 	return out, nil
 }
 
+// InputCostPerToken returns the input cost per token in USD for the given model.
+// Returns 0 if the model is not in the pricing table. Used by the routing engine
+// to rank models by cost without constructing a full request record.
+func (s *Service) InputCostPerToken(model string) float64 {
+	s.mu.RLock()
+	e, ok := s.prices[model]
+	s.mu.RUnlock()
+	if !ok {
+		return 0
+	}
+	return e.InputCostPerToken
+}
+
 // BaselineCostFor computes the cost of a request using the "balanced" baseline
 // (i.e., as if the user's requested model had been used at Anthropic pricing).
 // Used for savings computation in the usage API.

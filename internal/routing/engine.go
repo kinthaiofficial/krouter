@@ -53,10 +53,19 @@ type HealthChecker interface {
 	ConsecutiveFailures(provider string) int
 }
 
+// PricingSource returns per-model cost data used for tier-aware routing.
+// Implementations must be safe for concurrent use.
+type PricingSource interface {
+	// InputCostPerToken returns the input cost in USD per single token.
+	// Returns 0 for unknown models; callers treat 0 as "price unknown".
+	InputCostPerToken(model string) float64
+}
+
 // Engine makes routing decisions.
 type Engine struct {
 	registry *providers.Registry
 	health   HealthChecker // optional; nil means no health-based routing
+	pricing  PricingSource // optional; nil falls back to hardcoded model names
 }
 
 // New creates a routing engine backed by the given provider registry.
@@ -67,6 +76,12 @@ func New(registry *providers.Registry) *Engine {
 // WithHealth attaches a health checker to bias routing away from unhealthy providers.
 func (e *Engine) WithHealth(h HealthChecker) {
 	e.health = h
+}
+
+// WithPricing attaches a live pricing source so the engine can select the
+// cheapest/most-capable model dynamically instead of using hardcoded names.
+func (e *Engine) WithPricing(p PricingSource) {
+	e.pricing = p
 }
 
 // isHealthy returns false if the provider has ≥3 consecutive failures.
@@ -179,9 +194,16 @@ func (e *Engine) decideSaver(req Request) Decision {
 
 	switch proto {
 	case providers.ProtocolAnthropic:
-		// Pick the first healthy provider that explicitly lists the saver model.
-		// This prevents routing to Anthropic-protocol providers (e.g. MiniMax) that
-		// do not recognise Claude model IDs.
+		// With live pricing: pick the cheapest available (provider, model) pair.
+		if prov, model := e.cheapestProviderModel(proto); prov != nil {
+			return Decision{
+				Provider: prov.Name(),
+				Model:    model,
+				Reason:   fmt.Sprintf("Saver: routing to %s via %s (live pricing)", model, prov.Name()),
+			}
+		}
+		// Without pricing: pick the first healthy provider that explicitly lists
+		// the hardcoded saver model, guarding against MiniMax contamination.
 		provider := e.pickProviderForModel(proto, saverAnthropicModel)
 		if provider == nil {
 			return Decision{
@@ -190,8 +212,6 @@ func (e *Engine) decideSaver(req Request) Decision {
 				Reason:   fmt.Sprintf("Saver: no provider for protocol %q", req.Protocol),
 			}
 		}
-		// Guard against pickProviderForModel falling back to a provider that does
-		// not support the saver model (e.g. MiniMax as last-resort fallback).
 		model := saverAnthropicModel
 		if !modelSupported(provider.SupportedModels(), model) {
 			model = req.RequestedModel
@@ -203,7 +223,15 @@ func (e *Engine) decideSaver(req Request) Decision {
 		}
 
 	case providers.ProtocolOpenAI:
-		// Prefer DeepSeek if healthy and its key is configured (settings or env).
+		// With live pricing: pick the cheapest available (provider, model) pair.
+		if prov, model := e.cheapestProviderModel(proto); prov != nil {
+			return Decision{
+				Provider: prov.Name(),
+				Model:    model,
+				Reason:   fmt.Sprintf("Saver: routing to %s via %s (live pricing)", model, prov.Name()),
+			}
+		}
+		// Without pricing: prefer DeepSeek if healthy and configured.
 		if e.providerHasKey("deepseek") && e.isHealthy("deepseek") {
 			if _, ok := e.registry.Get("deepseek"); ok {
 				return Decision{
@@ -249,9 +277,18 @@ func (e *Engine) decideQuality(req Request) Decision {
 	model := req.RequestedModel
 	reason := fmt.Sprintf("Quality: honoring requested model %s via %s", model, provider.Name())
 
-	// Upgrade to Opus for complex tasks (images, many tools, large input).
+	// Upgrade complex tasks to the highest-capability (most expensive) model.
 	isComplex := req.HasImages || (req.HasTools && req.InputTokenEst > 4000)
 	if isComplex && proto == providers.ProtocolAnthropic {
+		// With live pricing: pick the most expensive available model.
+		if expProv, expModel := e.mostExpensiveProviderModel(proto); expProv != nil {
+			return Decision{
+				Provider: expProv.Name(),
+				Model:    expModel,
+				Reason:   fmt.Sprintf("Quality: upgrading complex request to %s via %s (live pricing)", expModel, expProv.Name()),
+			}
+		}
+		// Without pricing: fall back to hardcoded Opus.
 		model = "claude-opus-4-5"
 		reason = "Quality: upgrading complex request to claude-opus-4-5"
 	} else if !modelSupported(provider.SupportedModels(), model) {
@@ -260,6 +297,60 @@ func (e *Engine) decideQuality(req Request) Decision {
 	}
 
 	return Decision{Provider: provider.Name(), Model: model, Reason: reason}
+}
+
+// cheapestProviderModel returns the (provider, model) pair with the lowest
+// InputCostPerToken for the given protocol. Only healthy providers with a
+// configured key are considered. Returns nil, "" if pricing is unavailable
+// or no priced model is found.
+func (e *Engine) cheapestProviderModel(proto providers.Protocol) (providers.Provider, string) {
+	if e.pricing == nil {
+		return nil, ""
+	}
+	var bestProv providers.Provider
+	var bestModel string
+	var bestCost float64 = -1
+	for _, p := range e.registry.All() {
+		if p.Protocol() != proto || !e.isHealthy(p.Name()) || !e.providerHasKey(p.Name()) {
+			continue
+		}
+		for _, m := range p.SupportedModels() {
+			c := e.pricing.InputCostPerToken(m)
+			if c > 0 && (bestCost < 0 || c < bestCost) {
+				bestCost = c
+				bestProv = p
+				bestModel = m
+			}
+		}
+	}
+	return bestProv, bestModel
+}
+
+// mostExpensiveProviderModel returns the (provider, model) pair with the highest
+// InputCostPerToken for the given protocol. Only healthy providers with a
+// configured key are considered. Returns nil, "" if pricing is unavailable
+// or no priced model is found.
+func (e *Engine) mostExpensiveProviderModel(proto providers.Protocol) (providers.Provider, string) {
+	if e.pricing == nil {
+		return nil, ""
+	}
+	var bestProv providers.Provider
+	var bestModel string
+	var bestCost float64
+	for _, p := range e.registry.All() {
+		if p.Protocol() != proto || !e.isHealthy(p.Name()) || !e.providerHasKey(p.Name()) {
+			continue
+		}
+		for _, m := range p.SupportedModels() {
+			c := e.pricing.InputCostPerToken(m)
+			if c > bestCost {
+				bestCost = c
+				bestProv = p
+				bestModel = m
+			}
+		}
+	}
+	return bestProv, bestModel
 }
 
 // providerHasKey reports whether the named provider currently has an API key

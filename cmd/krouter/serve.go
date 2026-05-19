@@ -135,8 +135,9 @@ The daemon listens on two ports:
 			engine := routing.New(reg)
 			engine.WithHealth(store)
 
-			// Pricing service.
+			// Pricing service — must be created before engine.WithPricing.
 			pricingSvc := pricing.New(store)
+			engine.WithPricing(pricingSvc)
 
 			// Proxy server.
 			proxySrv := proxy.New(

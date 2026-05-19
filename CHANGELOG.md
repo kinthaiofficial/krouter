@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.40] - 2026-05-19
+
+### Added
+- **价格 tier 驱动路由（spec/04-pricing.md §5）**：routing engine 现在通过 `WithPricing(PricingSource)` 接收 live 价格数据，在 Saver / Quality preset 下动态选择最便宜/最贵的 (provider, model) 对，不再依赖硬编码模型名。
+  - **Saver preset**：`cheapestProviderModel` 遍历所有健康且有 key 的同协议 provider，按 `InputCostPerToken` 选最低价模型。若 DeepSeek 比当前注册的 OpenAI gpt-4o-mini 更便宜，saver 自动选 DeepSeek。
+  - **Quality preset（复杂请求）**：`mostExpensiveProviderModel` 选最贵模型作为能力最强的升级目标，代替硬编码 `claude-opus-4-5`。
+  - **向下兼容**：pricing 未注入（`nil`）或模型不在价格表时，自动回退到原有硬编码逻辑，现有行为不变。
+- **`pricing.Service.InputCostPerToken(model string) float64`**：新增公开方法，供 routing engine 按模型查询价格，无需构造完整 token 计数。
+- **`routing.PricingSource` 接口**：仅暴露 `InputCostPerToken`，最小化 routing → pricing 的依赖，便于测试时替换。
+
 ## [2.0.39] - 2026-05-19
 
 ### Fixed
