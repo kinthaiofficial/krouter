@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **`GET /internal/agents` is now a unified inheritance + legacy view (spec/04 §8.6)**: the existing JSON shape (`name`, `connected`, `providers`, `stats`) is preserved, but the response is now unioned with the Scanner registry plus `agent_settings` / `inherited_endpoints` so a dashboard refresh sees everything in one round-trip. New optional fields (all `omitempty`, so older clients ignore them): `supported` (Scanner compiled in for this agent), `enabled` (agent_settings.enabled), `inherited_count`, `last_scanned_at`, `last_error`. Scanner-registered agents that aren't yet installed on disk still appear (so the dashboard can show "OpenClaw (not installed)" rows); v2.0.47-style detection-only agents (Cursor / Hermes) still appear with `supported=false` until their Scanner ships.
+
+
 ### Added
 - **Agent inheritance flow (spec/04)**: krouter now auto-extracts vendor endpoints, API keys, and OAuth tokens from the user's already-configured AI agents (OpenClaw, Claude Code) and persists them to a new `inherited_endpoints` table. Wizard gains an "Agent Paths" step; Dashboard gains an inheritance section. See `spec/04-agent-inheritance.md`.
 - **Subscription quota dashboard (spec/05)**: new `/internal/subscription/status` and `/internal/subscription/refresh` endpoints; Dashboard gains a MiniMax subscription card showing effective cost, monthly price, and per-tier window-reset countdown. See `spec/05-subscription-quota.md`.
