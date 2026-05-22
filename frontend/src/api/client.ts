@@ -200,7 +200,8 @@ export interface SubscriptionTier {
   window_end: string           // RFC3339
   seconds_to_reset: number
   effective_cost_per_call_usd: number
-  monthly_price_usd: number
+  monthly_price_cny: number    // original sticker price on minimaxi.com
+  monthly_price_usd: number    // CNY × fixed FX rate, for cross-vendor comparison
 }
 
 export interface SubscriptionProvider {
