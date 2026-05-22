@@ -103,7 +103,10 @@ func TestSubscriptionStatus_AggregatesTiersAndEffectiveCost(t *testing.T) {
 	wantEffective := 49.0 * 0.138 / (1500.0 * 144.0)
 	assert.InDelta(t, wantEffective, mTier.EffectiveCostPerCallUSD, 1e-9)
 
-	// MonthlyPriceUSD is the CNY sticker price normalised at cny_to_usd: ¥49 × 0.138 ≈ $6.762.
+	// MonthlyPriceCNY is the original sticker price; MonthlyPriceUSD is
+	// the same number normalised at the fixed CNY→USD rate (see
+	// storage.subCNYToUSD): ¥49 × 0.138 ≈ $6.762.
+	assert.InDelta(t, 49.0, mTier.MonthlyPriceCNY, 1e-9)
 	assert.InDelta(t, 49.0*0.138, mTier.MonthlyPriceUSD, 1e-9)
 
 	// speech-hd has no token_price_sub row → effective cost 0, monthly price 0.

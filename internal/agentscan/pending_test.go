@@ -35,6 +35,56 @@ func pinPendingDir(t *testing.T) string {
 	return dir
 }
 
+// TestPendingFileDir_StableAcrossEnvVarChanges proves the daemon vs
+// installer alignment story: regardless of what shell env the installer
+// process inherits, both binaries resolve to the same path when only HOME
+// is held constant. This is the property the macOS LaunchAgent depends on
+// (its plist injects HOME but not XDG_CONFIG_HOME / KROUTER_CONFIG_DIR /
+// shell-specific vars), so divergence here would silently lose wizard
+// selections.
+func TestPendingFileDir_StableAcrossEnvVarChanges(t *testing.T) {
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	t.Setenv("KROUTER_CONFIG_DIR", "")
+
+	// Baseline (no extra env).
+	t.Setenv("XDG_CONFIG_HOME", "")
+	baseline := agentscan.PendingFileDir()
+
+	// Installer running in a shell with XDG_CONFIG_HOME exported: must
+	// resolve to the same path the daemon (no XDG_CONFIG_HOME in launchd)
+	// would see. This is the regression test for the pre-fix bug where
+	// XDG_CONFIG_HOME was honoured here.
+	t.Setenv("XDG_CONFIG_HOME", "/tmp/some-dotfiles")
+	withXDG := agentscan.PendingFileDir()
+	if withXDG != baseline {
+		t.Fatalf("PendingFileDir() varies with XDG_CONFIG_HOME: baseline=%q with-XDG=%q "+
+			"— launchd doesn't propagate XDG, so this would split daemon vs installer paths",
+			baseline, withXDG)
+	}
+
+	// User_PROFILE / other random vars that some shells set must not
+	// affect resolution either.
+	t.Setenv("USER_PROFILE", "/somewhere/else")
+	assert.Equal(t, baseline, agentscan.PendingFileDir())
+
+	// And the resolved path must sit under the daemon's data directory so
+	// it shares fate with data.db / internal-token / logs/.
+	if filepath.Dir(filepath.Join(baseline, agentscan.PendingFileName)) != filepath.Join(fakeHome, ".kinthai") {
+		t.Errorf("expected pending file under %s/.kinthai, got %s",
+			fakeHome, baseline)
+	}
+}
+
+func TestPendingFileDir_ExplicitOverrideTakesPrecedence(t *testing.T) {
+	t.Setenv("HOME", "/tmp/fake-home")
+	t.Setenv("KROUTER_CONFIG_DIR", "/explicit/path")
+	t.Setenv("XDG_CONFIG_HOME", "/should/be/ignored")
+
+	assert.Equal(t, "/explicit/path", agentscan.PendingFileDir(),
+		"KROUTER_CONFIG_DIR must win — tests and site-specific deployments rely on this")
+}
+
 func TestWritePending_RoundTrips(t *testing.T) {
 	dir := pinPendingDir(t)
 
