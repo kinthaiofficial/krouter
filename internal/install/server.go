@@ -67,6 +67,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/install/finalize", s.withAuth(s.handleFinalize))
 	mux.HandleFunc("/api/install/daemon-ready", s.withAuth(s.handleDaemonReady))
 
+	// Agent inheritance endpoints — feed the wizard's "Agent Paths" step
+	// (spec/04 §4). Selections land in pending-agents.json; the daemon
+	// imports them at startup.
+	mux.HandleFunc("/api/install/agents/supported", s.withAuth(s.handleAgentsSupported))
+	mux.HandleFunc("/api/install/agents/preview", s.withAuth(s.handleAgentsPreview))
+	mux.HandleFunc("/api/install/agents/select", s.withAuth(s.handleAgentsSelect))
+
 	// Health — no auth needed.
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
