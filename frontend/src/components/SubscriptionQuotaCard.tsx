@@ -126,8 +126,10 @@ function TierRow({ tier }: { tier: SubscriptionTier }) {
         </p>
         {tier.monthly_price_usd > 0 && (
           <p className="text-[11px] text-gray-400">
-            ≈ ${tier.effective_cost_per_call_usd.toFixed(4)} / call ·
-            ${tier.monthly_price_usd}/mo plan
+            ≈ ${tier.effective_cost_per_call_usd.toFixed(6)} / call ·
+            {tier.monthly_price_cny > 0
+              ? ` ¥${tier.monthly_price_cny}/mo (≈ $${tier.monthly_price_usd.toFixed(2)})`
+              : ` $${tier.monthly_price_usd.toFixed(2)}/mo`}
           </p>
         )}
       </div>

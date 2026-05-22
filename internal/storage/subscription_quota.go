@@ -74,9 +74,21 @@ func (q *SubscriptionQuota) EffectiveCostUSD() float64 {
 	return priceCNY * subCNYToUSD / (float64(q.TotalCount) * subWindowsPerMonth)
 }
 
+// MonthlyPriceCNY returns the SKU's monthly sticker price in CNY (the
+// currency users actually paid in on minimaxi.com), or 0 when the SKU
+// is not in our catalogue.
+//
+// Exposed alongside MonthlyPriceUSD so the dashboard can show the original
+// "¥49/月" the user is familiar with, with the USD value as a parenthetical.
+func (q *SubscriptionQuota) MonthlyPriceCNY() float64 {
+	if q == nil {
+		return 0
+	}
+	return minimaxPlanPriceCNY(q.TotalCount, q.Highspeed)
+}
+
 // MonthlyPriceUSD returns the SKU's monthly sticker price converted to USD,
-// or 0 when the SKU is not in our catalogue. Exposed for the dashboard so
-// users see e.g. "$6.76/月 plan" alongside the remaining-quota bar.
+// or 0 when the SKU is not in our catalogue.
 //
 // The underlying price is stored in CNY (per minimaxi.com tariff); this
 // method returns the float USD value at a fixed conversion rate. We

@@ -51,6 +51,7 @@ describe('<SubscriptionQuotaCard>', () => {
           // The exact numbers used here just need to round-trip through
           // the UI — display formatting is what's under test.
           effective_cost_per_call_usd: 0.0000313,
+          monthly_price_cny: 49,
           monthly_price_usd: 6.76,
         },
       ],
@@ -65,7 +66,7 @@ describe('<SubscriptionQuotaCard>', () => {
     expect(screen.getByText(/via openclaw/)).toBeInTheDocument()
     expect(screen.getByText('MiniMax-M*')).toBeInTheDocument()
     expect(screen.getByText(/1,479 \/ 1,500 left/)).toBeInTheDocument()
-    expect(screen.getByText(/\$6\.76\/mo plan/)).toBeInTheDocument()
+    expect(screen.getByText(/¥49\/mo \(≈ \$6\.76\)/)).toBeInTheDocument()
   })
 
   it('shows static-key warning when oauth_present is false', async () => {
