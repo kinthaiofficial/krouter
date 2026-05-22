@@ -5,7 +5,7 @@ All notable changes to krouter will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.1.0] - 2026-05-22
 
 ### Fixed
 - **Subscription routing could pick the wrong tier when minimax has multiple plans (spec/05 §8)**: `subscriptionSource.GetSubscriptionInfo` iterated `GetAllSubscriptionQuotas` and returned the first `IsAvailable()` row, then hardcoded the rewrite-target model as `MiniMax-M2.7` regardless of which tier had matched. If a user's `MiniMax-M*` (LLM) tier was exhausted but `speech-hd` (TTS) still had quota, routing thought minimax was available, sent an LLM request as `MiniMax-M2.7`, and minimax replied 4xx because the M* tier was empty. Fixed by explicitly looking for the tier whose `model_pattern` wildcard-matches the rewrite target (`storage.SubscriptionQuota.MatchesModel` using `path.Match`). Standard tier preferred over highspeed; highspeed used only as fallback. New tests cover the speech-hd masking scenario, standard-vs-highspeed precedence, the highspeed fallback path, and the non-minimax provider case.
