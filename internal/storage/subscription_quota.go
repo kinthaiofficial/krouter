@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"path"
 	"time"
 )
 
@@ -29,6 +30,28 @@ func (q *SubscriptionQuota) IsAvailable() bool {
 		return false // window has expired; wait for next poll
 	}
 	return q.UsedCount < q.TotalCount
+}
+
+// MatchesModel reports whether the given model id falls under this quota's
+// ModelPattern. Patterns follow glob semantics via `path.Match`, which matches
+// the spec/05 §8 wildcard convention:
+//
+//	"MiniMax-M*"        → "MiniMax-M2.7", "MiniMax-M2.5-highspeed", "MiniMax-M2"
+//	"speech-hd"         → "speech-hd"        (exact match)
+//	"MiniMax-Hailuo-2*" → "MiniMax-Hailuo-2.3-Fast-6s-768p"
+//
+// This is used by routing so that when multiple tiers exist for a provider
+// (e.g. MiniMax-M* for LLM + speech-hd for TTS + Hailuo for video), the
+// routing engine consults the correct tier for the model it intends to
+// rewrite the request to — instead of "first available", which was the
+// pre-fix bug where speech-hd's leftover quota could mask MiniMax-M*
+// exhaustion and break LLM requests.
+func (q *SubscriptionQuota) MatchesModel(modelID string) bool {
+	if q == nil || q.ModelPattern == "" || modelID == "" {
+		return false
+	}
+	ok, err := path.Match(q.ModelPattern, modelID)
+	return err == nil && ok
 }
 
 // Subscription pricing constants. Single source of truth — both routing

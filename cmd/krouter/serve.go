@@ -431,28 +431,62 @@ func newSubscriptionSource(store *storage.Store) *subscriptionSource {
 	return &subscriptionSource{store: store}
 }
 
+// GetSubscriptionInfo answers routing's "does this provider have quota I can
+// route an anthropic-protocol text request to?" question. The fix here over
+// the pre-A3 implementation: we look up the tier whose ModelPattern actually
+// covers the model we'd rewrite the request to ("MiniMax-M2.7" or its
+// highspeed variant), rather than returning whichever tier happened to come
+// out of GetAllSubscriptionQuotas first. The old behaviour could mask
+// MiniMax-M* exhaustion when speech-hd or another auxiliary tier still had
+// leftover quota — routing would think minimax was available, send a
+// MiniMax-M2.7 request, and the upstream would 4xx because the M* tier was
+// actually empty.
+//
+// We prefer the standard (non-highspeed) tier when the user has bought both,
+// since the highspeed plans cost ~2× as much per call. Fall back to highspeed
+// when only that tier has remaining quota.
+//
+// Spec/05 §8 + §9. Phase 1 still hardcodes the rewrite target to MiniMax-M2.7
+// (the only minimax LLM family krouter routes to today); per-feature quota
+// matching for coding-plan-search etc. is Phase 3.
 func (s *subscriptionSource) GetSubscriptionInfo(ctx context.Context, provider string) routing.SubscriptionInfo {
+	if provider != "minimax" {
+		// No other vendor has a subscription model wired up yet.
+		return routing.SubscriptionInfo{}
+	}
 	quotas, err := s.store.GetAllSubscriptionQuotas(ctx)
 	if err != nil {
 		return routing.SubscriptionInfo{}
 	}
-	for _, q := range quotas {
-		if q.Provider != provider {
-			continue
+
+	// Try standard then highspeed. Each iteration picks the tier whose
+	// ModelPattern wildcard-matches the target model id we'd rewrite to.
+	for _, highspeed := range []bool{false, true} {
+		targetModel := "MiniMax-M2.7"
+		if highspeed {
+			targetModel = "MiniMax-M2.7-highspeed"
 		}
-		if !q.IsAvailable() {
-			continue
-		}
-		model := "MiniMax-M2.7"
-		if q.Highspeed {
-			model = "MiniMax-M2.7-highspeed"
-		}
-		return routing.SubscriptionInfo{
-			Available:        true,
-			Model:            model,
-			Remaining:        q.TotalCount - q.UsedCount,
-			Total:            q.TotalCount,
-			EffectiveCostUSD: q.EffectiveCostUSD(),
+		for i := range quotas {
+			q := &quotas[i]
+			if q.Provider != provider {
+				continue
+			}
+			if q.Highspeed != highspeed {
+				continue
+			}
+			if !q.MatchesModel(targetModel) {
+				continue
+			}
+			if !q.IsAvailable() {
+				continue
+			}
+			return routing.SubscriptionInfo{
+				Available:        true,
+				Model:            targetModel,
+				Remaining:        q.TotalCount - q.UsedCount,
+				Total:            q.TotalCount,
+				EffectiveCostUSD: q.EffectiveCostUSD(),
+			}
 		}
 	}
 	return routing.SubscriptionInfo{}
