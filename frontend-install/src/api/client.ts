@@ -25,6 +25,31 @@ export interface AgentInfo {
   cli_path?: string
 }
 
+export interface SupportedAgent {
+  agent_id: string
+  display_name: string
+  default_path: string
+}
+
+export interface PreviewEndpoint {
+  provider: string
+  endpoint_url: string
+  protocol_hint?: string
+  has_api_key: boolean
+  has_oauth_token: boolean
+}
+
+export interface PreviewResult {
+  endpoints: PreviewEndpoint[]
+  error?: string
+}
+
+export interface PendingAgentSelection {
+  agent_id: string
+  enabled: boolean
+  config_path: string
+}
+
 export const api = {
   detectAgents: () => call<AgentInfo[]>('GET', '/api/install/detect-agents'),
   copyBinary: () => call<{ ok: boolean }>('POST', '/api/install/copy-binary'),
@@ -38,4 +63,11 @@ export const api = {
   finalize: () => call<{ status: string }>('POST', '/api/install/finalize'),
   daemonReady: () =>
     call<{ ready: boolean; redirect_url?: string }>('GET', '/api/install/daemon-ready'),
+
+  // Agent inheritance (spec/04) — feed the "Agent Paths" step.
+  agentsSupported: () => call<SupportedAgent[]>('GET', '/api/install/agents/supported'),
+  agentsPreview: (agentID: string, path: string) =>
+    call<PreviewResult>('POST', '/api/install/agents/preview', { agent_id: agentID, path }),
+  agentsSelect: (agents: PendingAgentSelection[]) =>
+    call<{ ok: boolean; count: number }>('POST', '/api/install/agents/select', { agents }),
 }

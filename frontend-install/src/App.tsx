@@ -1,14 +1,15 @@
 import { useState } from 'react'
 import WelcomeStep from './pages/WelcomeStep'
 import DetectStep from './pages/DetectStep'
+import AgentPathsStep from './pages/AgentPathsStep'
 import ServiceStep from './pages/ServiceStep'
 import ShellStep from './pages/ShellStep'
 import DoneStep from './pages/DoneStep'
 
-export type Step = 'welcome' | 'detect' | 'service' | 'shell' | 'done'
+export type Step = 'welcome' | 'detect' | 'agents' | 'service' | 'shell' | 'done'
 
-const STEPS: Step[] = ['welcome', 'detect', 'service', 'shell', 'done']
-const LABELS = ['Welcome', 'Detect agents', 'Install service', 'Shell setup', 'Done']
+const STEPS: Step[] = ['welcome', 'detect', 'agents', 'service', 'shell', 'done']
+const LABELS = ['Welcome', 'Detect agents', 'Agent paths', 'Install service', 'Shell setup', 'Done']
 
 export default function App() {
   const [step, setStep] = useState<Step>('welcome')
@@ -29,10 +30,11 @@ export default function App() {
       {/* Card */}
       <main className="flex-1 flex flex-col items-center px-4 pt-4 pb-10">
         <div className="w-full max-w-md bg-white rounded-2xl border border-border shadow-sm p-8">
-          {step === 'welcome' && <WelcomeStep onNext={() => setStep('detect')} />}
-          {step === 'detect'  && <DetectStep  onNext={() => setStep('service')} />}
-          {step === 'service' && <ServiceStep onNext={() => setStep('shell')} />}
-          {step === 'shell'   && <ShellStep   onNext={() => setStep('done')} />}
+          {step === 'welcome' && <WelcomeStep    onNext={() => setStep('detect')}  />}
+          {step === 'detect'  && <DetectStep     onNext={() => setStep('agents')}  />}
+          {step === 'agents'  && <AgentPathsStep onNext={() => setStep('service')} />}
+          {step === 'service' && <ServiceStep    onNext={() => setStep('shell')}   />}
+          {step === 'shell'   && <ShellStep      onNext={() => setStep('done')}    />}
           {step === 'done'    && <DoneStep />}
         </div>
 
