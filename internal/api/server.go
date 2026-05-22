@@ -101,9 +101,10 @@ type Server struct {
 	pricing   *pricing.Service
 	upgrade   *upgrade.Service
 	remote    *remote.Service
-	registry  *providers.Registry
-	settings  *config.Manager
-	proxyMgr  interface{ Status() proxycfg.ProxyStatus }
+	registry      *providers.Registry
+	settings      *config.Manager
+	proxyMgr      interface{ Status() proxycfg.ProxyStatus }
+	minimaxPoller subscriptionPoller
 	startAt   time.Time
 	version   string
 	buildTime string
@@ -176,6 +177,19 @@ func (s *Server) SetRegistry(r *providers.Registry) { s.registry = r }
 // SetProxyManager wires in the proxy manager so /internal/status includes proxy info.
 func (s *Server) SetProxyManager(pm interface{ Status() proxycfg.ProxyStatus }) {
 	s.proxyMgr = pm
+}
+
+// SetMinimaxPoller wires in the MiniMax quota poller so the user can trigger
+// an immediate refresh from the dashboard via POST /internal/subscription/refresh.
+func (s *Server) SetMinimaxPoller(p subscriptionPoller) {
+	s.minimaxPoller = p
+}
+
+// subscriptionPoller is the minimal interface the API layer needs from
+// internal/providers/minimax.QuotaPoller. Defined here to keep the api
+// package's tests free of network dependencies.
+type subscriptionPoller interface {
+	PollOnce(ctx context.Context) error
 }
 
 // SetSSEDebug wires in a function that returns the last captured Anthropic SSE
@@ -309,7 +323,12 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/internal/providers", auth(http.HandlerFunc(s.handleProviders)))
 	mux.Handle("/internal/providers/", auth(http.HandlerFunc(s.handleProviderAction)))
 	mux.Handle("/internal/agents", auth(http.HandlerFunc(s.handleAgents)))
+	// Exact-path routes override the catch-all prefix below.
+	mux.Handle("/internal/agents/supported", auth(http.HandlerFunc(s.handleAgentsSupported)))
+	mux.Handle("/internal/agents/configured", auth(http.HandlerFunc(s.handleAgentsConfigured)))
 	mux.Handle("/internal/agents/", auth(http.HandlerFunc(s.handleAgentAction)))
+	mux.Handle("/internal/subscription/status", auth(http.HandlerFunc(s.handleSubscriptionStatus)))
+	mux.Handle("/internal/subscription/refresh", auth(http.HandlerFunc(s.handleSubscriptionRefresh)))
 	mux.Handle("/internal/quota", auth(http.HandlerFunc(s.handleQuota)))
 	mux.Handle("/internal/update-apply", auth(http.HandlerFunc(s.handleUpdateApply)))
 	mux.Handle("/internal/models/refresh", auth(http.HandlerFunc(s.handleModelsRefresh)))
@@ -1202,10 +1221,10 @@ func (s *Server) doAddProvider(w http.ResponseWriter, r *http.Request) {
 	if s.providerCreator != nil && s.registry != nil {
 		name := cfg.Name
 		keyFn := func() string {
-			if s.settings != nil {
-				if k := s.settings.Get().ProviderKeys[name]; k != "" {
-					return k
-				}
+			// Same precedence as Server.resolveProviderKey: inherited first,
+			// settings second, env-var last (spec/04 §9).
+			if k := s.resolveProviderKey(context.Background(), name); k != "" {
+				return k
 			}
 			return os.Getenv(strings.ToUpper(name) + "_API_KEY")
 		}
@@ -1304,8 +1323,15 @@ func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, out)
 }
 
-// handleAgentAction handles POST /internal/agents/{name}/connect and .../disconnect.
+// handleAgentAction handles requests to /internal/agents/{name}/{action} and
+// /internal/agents/{name} (no trailing action, currently only DELETE).
 func (s *Server) handleAgentAction(w http.ResponseWriter, r *http.Request) {
+	// Bare /internal/agents/{name} (e.g. DELETE) is handled by a helper that
+	// inspects the path shape itself.
+	if s.agentRootDispatch(w, r) {
+		return
+	}
+
 	tail := strings.TrimPrefix(r.URL.Path, "/internal/agents/")
 	slash := strings.LastIndex(tail, "/")
 	if slash < 0 {
@@ -1326,6 +1352,11 @@ func (s *Server) handleAgentAction(w http.ResponseWriter, r *http.Request) {
 	case "restore":
 		s.doAgentRestore(w, r, name)
 	default:
+		// Inheritance verbs (rescan / enable / disable) are dispatched from a
+		// neighbouring file so this switch stays focused on the v2.0.47 verbs.
+		if s.inheritanceActionDispatch(w, r, name, action) {
+			return
+		}
 		http.NotFound(w, r)
 	}
 }
@@ -2080,11 +2111,13 @@ func (s *Server) discoverOpenClawMiniMax(configPath string) {
 	s.Broadcast("models_updated", map[string]any{"provider": "minimax-portal", "count": len(infos)})
 }
 
-// discoverProviderModels runs model discovery for an OpenAI-compatible provider
-// whose key is stored in krouter settings. Only the DB is updated; no agent
-// config is written. Called from the refresh flow. Errors are silently ignored.
+// discoverProviderModels runs model discovery for an OpenAI-compatible provider.
+// The API key is resolved from inherited_endpoints (preferred, populated by
+// agentscan from the user's AI agent config) or, failing that, from
+// settings.ProviderKeys (dashboard override). Only the DB is updated; no
+// agent config is written. Errors are silently ignored.
 func (s *Server) discoverProviderModels(ctx context.Context, providerName string) {
-	if s.store == nil || s.registry == nil || s.settings == nil {
+	if s.store == nil || s.registry == nil {
 		return
 	}
 	p, ok := s.registry.Get(providerName)
@@ -2095,7 +2128,7 @@ func (s *Server) discoverProviderModels(ctx context.Context, providerName string
 	if !ok {
 		return
 	}
-	key := s.settings.Get().ProviderKeys[providerName]
+	key := s.resolveProviderKey(ctx, providerName)
 	if key == "" {
 		return
 	}
@@ -2117,12 +2150,12 @@ func (s *Server) discoverProviderModels(ctx context.Context, providerName string
 	_ = s.store.SaveDiscoveredModels(ctx, providerName, dbModels)
 }
 
-// RefreshModelsIfStale re-discovers models for providers whose cached model list
-// is empty or older than 24 h. Called once at daemon startup (after a brief
-// delay). Covers both settings-keyed providers (DeepSeek, Groq, …) and
-// OpenClaw-connected providers (Anthropic key read transiently from openclaw.json).
+// RefreshModelsIfStale re-discovers models for any provider with a credential
+// (inherited from an enabled agent, or set manually in the dashboard) when
+// its cached model list is empty or older than 24 h. Called once at daemon
+// startup, after a brief delay.
 func (s *Server) RefreshModelsIfStale(ctx context.Context) {
-	if s.store == nil || s.settings == nil || s.registry == nil {
+	if s.store == nil || s.registry == nil {
 		return
 	}
 	all, err := s.store.GetAllDiscoveredModels(ctx)
@@ -2131,11 +2164,7 @@ func (s *Server) RefreshModelsIfStale(ctx context.Context) {
 	}
 	staleCutoff := time.Now().Add(-24 * time.Hour)
 
-	// Settings-keyed providers (DeepSeek, Groq, Moonshot, GLM, Qwen, …).
-	for providerName, key := range s.settings.Get().ProviderKeys {
-		if key == "" {
-			continue
-		}
+	for _, providerName := range s.providersWithCredentials(ctx) {
 		p, ok := s.registry.Get(providerName)
 		if !ok {
 			continue
@@ -2158,25 +2187,19 @@ func (s *Server) RefreshModelsIfStale(ctx context.Context) {
 		}
 	}
 
-	// OpenClaw providers (Anthropic key lives in openclaw.json, not in settings).
-	for _, a := range config.DetectInstalledAgents() {
-		if a.Name != "openclaw" {
-			continue
-		}
-		cached := all["anthropic"]
-		needsRefresh := len(cached) == 0
-		if !needsRefresh {
-			for _, m := range cached {
-				if m.FetchedAt.Before(staleCutoff) {
-					needsRefresh = true
-					break
-				}
+	// OpenClaw legacy path: when the user is on an old binary that hasn't run
+	// the inheritance flow yet, fall back to scanning openclaw.json directly
+	// for the anthropic key. Once Step 3a/3b are deployed and the user has
+	// re-enabled OpenClaw in the wizard, anthropic will appear in
+	// inherited_endpoints and the loop above handles it.
+	if _, found := all["anthropic"]; !found {
+		for _, a := range config.DetectInstalledAgents() {
+			if a.Name != "openclaw" {
+				continue
 			}
-		}
-		if needsRefresh {
 			s.discoverOpenClawModels(a.ConfigPath)
+			break
 		}
-		break
 	}
 }
 
