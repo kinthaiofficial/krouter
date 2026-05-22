@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/kinthaiofficial/krouter/internal/agentscan"
 	"github.com/kinthaiofficial/krouter/internal/logging"
@@ -188,4 +189,112 @@ func TestRunAll_OneFailureDoesNotAbortOthers(t *testing.T) {
 
 func TestRunAll_NilStoreIsNoOp(t *testing.T) {
 	agentscan.RunAll(context.Background(), nil, logging.New("error"))
+}
+
+func TestStartPeriodicRescan_TicksAndStopsOnCtxCancel(t *testing.T) {
+	s := newRunnerStore(t)
+
+	// Pre-seed: one enabled agent with a fake scanner that records each
+	// invocation. ScanOne is invoked once per RunAll, so a tick count is
+	// directly observable via len(scanner.calls).
+	calls := 0
+	scanner := callCountingScanner{id: "openclaw", incr: func() { calls++ }}
+	setScannersFor(t, scanner)
+	require.NoError(t, s.UpsertAgentSetting(context.Background(), storage.AgentSetting{
+		AgentID: "openclaw", Enabled: true, ConfigPath: "/x",
+	}))
+
+	// Fast ticker so the test finishes quickly. onTick increments a separate
+	// counter — must run after every RunAll, exactly once per tick.
+	ticks := 0
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		agentscan.StartPeriodicRescan(ctx, s, logging.New("error"), 20*time.Millisecond, func() {
+			ticks++
+		})
+		close(done)
+	}()
+
+	// Allow ~3-5 ticks.
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+	<-done // ensure the loop exited before we read the counters
+
+	assert.GreaterOrEqual(t, calls, 2, "scanner should have been invoked at least 2 times across ticks")
+	assert.GreaterOrEqual(t, ticks, 2, "onTick should have fired at least 2 times")
+	// Allow at most one tick where RunAll returned early because ctx was
+	// cancelled mid-call (after the ticker fired but before
+	// store.ListAgentSettings completed). In that race, onTick still fires
+	// but ScanOne is skipped — harmless and unobservable to callers.
+	assert.LessOrEqual(t, ticks-calls, 1,
+		"ticks and scanner calls should agree, allowing at most one cancel-race delta")
+}
+
+func TestStartPeriodicRescan_ZeroIntervalReturnsImmediately(t *testing.T) {
+	done := make(chan struct{})
+	go func() {
+		agentscan.StartPeriodicRescan(
+			context.Background(), newRunnerStore(t), logging.New("error"),
+			0, func() {})
+		close(done)
+	}()
+	select {
+	case <-done:
+		// good — function returned without entering the loop
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("StartPeriodicRescan with interval=0 did not return immediately")
+	}
+}
+
+func TestStartPeriodicRescan_NilStoreReturnsImmediately(t *testing.T) {
+	done := make(chan struct{})
+	go func() {
+		agentscan.StartPeriodicRescan(
+			context.Background(), nil, logging.New("error"),
+			10*time.Millisecond, func() {})
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("StartPeriodicRescan with nil store did not return immediately")
+	}
+}
+
+func TestStartPeriodicRescan_NilOnTickDoesNotPanic(t *testing.T) {
+	// onTick=nil is valid; the loop should just skip the callback.
+	s := newRunnerStore(t)
+	setScannersFor(t, callCountingScanner{id: "openclaw"})
+	require.NoError(t, s.UpsertAgentSetting(context.Background(), storage.AgentSetting{
+		AgentID: "openclaw", Enabled: true, ConfigPath: "/x",
+	}))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		agentscan.StartPeriodicRescan(ctx, s, logging.New("error"), 20*time.Millisecond, nil)
+		close(done)
+	}()
+	time.Sleep(60 * time.Millisecond)
+	cancel()
+	<-done
+}
+
+// callCountingScanner is a Scanner stub that runs an incrementer in Scan().
+// Lives in this test file rather than runner_test.go's fakeScanner because we
+// need to side-effect from inside Scan to count loop iterations.
+type callCountingScanner struct {
+	id   string
+	incr func()
+}
+
+func (s callCountingScanner) AgentID() string           { return s.id }
+func (s callCountingScanner) DisplayName() string       { return s.id }
+func (s callCountingScanner) DefaultConfigPath() string { return "/d" }
+func (s callCountingScanner) Scan(_ context.Context, _ string) ([]agentscan.InheritedEndpoint, error) {
+	if s.incr != nil {
+		s.incr()
+	}
+	return nil, nil
 }
