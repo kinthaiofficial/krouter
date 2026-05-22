@@ -56,36 +56,3 @@ func (s *Store) GetProviderConfig(ctx context.Context, name string) (*ProviderCo
 	return &c, nil
 }
 
-// SaveProviderConfig upserts a custom (non-builtin) provider config.
-// Built-in providers are seeded via migration and cannot be replaced by this method.
-func (s *Store) SaveProviderConfig(ctx context.Context, cfg ProviderConfig) error {
-	const q = `INSERT INTO provider_config (name, display_name, protocol, base_url, path_prefix, is_builtin, sort_order)
-	           VALUES (?, ?, ?, ?, ?, ?, ?)
-	           ON CONFLICT(name) DO UPDATE SET
-	               display_name = excluded.display_name,
-	               protocol     = excluded.protocol,
-	               base_url     = excluded.base_url,
-	               path_prefix  = excluded.path_prefix,
-	               sort_order   = excluded.sort_order`
-	isBuiltin := 0
-	if cfg.IsBuiltin {
-		isBuiltin = 1
-	}
-	_, err := s.db.ExecContext(ctx, q, cfg.Name, cfg.DisplayName, cfg.Protocol, cfg.BaseURL, cfg.PathPrefix, isBuiltin, cfg.SortOrder)
-	return err
-}
-
-// DeleteProviderConfig removes a custom (non-builtin) provider by name.
-// Returns an error if the provider is built-in or does not exist.
-func (s *Store) DeleteProviderConfig(ctx context.Context, name string) error {
-	const q = `DELETE FROM provider_config WHERE name = ? AND is_builtin = 0`
-	res, err := s.db.ExecContext(ctx, q, name)
-	if err != nil {
-		return err
-	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		return errors.New("provider not found or is a built-in provider")
-	}
-	return nil
-}

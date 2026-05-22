@@ -70,24 +70,6 @@ var validPresets = map[string]bool{
 	"quality":  true,
 }
 
-// isValidProviderKeyName reports whether k is a valid provider name:
-// lowercase ASCII letter followed by zero or more lowercase letters, digits, hyphens, or underscores.
-func isValidProviderKeyName(k string) bool {
-	if k == "" || len(k) > 64 {
-		return false
-	}
-	for i, c := range k {
-		if i == 0 {
-			if !('a' <= c && c <= 'z') {
-				return false
-			}
-		} else if !('a' <= c && c <= 'z') && !('0' <= c && c <= '9') && c != '_' && c != '-' {
-			return false
-		}
-	}
-	return true
-}
-
 // sseEvent is a single Server-Sent Event.
 type sseEvent struct {
 	Type string
@@ -119,9 +101,6 @@ type Server struct {
 	// capture for the /internal/debug/last-sse-capture diagnostic endpoint.
 	sseDebugFn func() []byte
 
-	// providerCreator, when set, creates a new provider adapter for custom providers.
-	// Injected from serve.go so api package does not import specific adapter packages.
-	providerCreator func(cfg storage.ProviderConfig, keyFn func() string) providers.Provider
 }
 
 // New creates a management API server.
@@ -195,12 +174,6 @@ type subscriptionPoller interface {
 // SetSSEDebug wires in a function that returns the last captured Anthropic SSE
 // buffer for the /internal/debug/last-sse-capture diagnostic endpoint.
 func (s *Server) SetSSEDebug(fn func() []byte) { s.sseDebugFn = fn }
-
-// SetProviderCreator injects a factory function that creates a new provider adapter
-// from a ProviderConfig. Required for POST /internal/providers to work at runtime.
-func (s *Server) SetProviderCreator(fn func(cfg storage.ProviderConfig, keyFn func() string) providers.Provider) {
-	s.providerCreator = fn
-}
 
 // Token returns the internal auth token (available after Serve is called).
 func (s *Server) Token() string { return s.token }
@@ -365,7 +338,6 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			Language               *string            `json:"language"`
 			NotificationCategories map[string]bool    `json:"notification_categories"`
 			BudgetWarnings         map[string]float64 `json:"budget_warnings"`
-			ProviderKeys           map[string]string  `json:"provider_keys"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
 			http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
@@ -395,22 +367,6 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			}
 			for k, v := range patch.BudgetWarnings {
 				current.BudgetWarnings[k] = v
-			}
-		}
-		if patch.ProviderKeys != nil {
-			if current.ProviderKeys == nil {
-				current.ProviderKeys = make(map[string]string)
-			}
-			for k, v := range patch.ProviderKeys {
-				if !isValidProviderKeyName(k) {
-					http.Error(w, fmt.Sprintf(`{"error":"invalid provider key name %q; must be lowercase alphanumeric with optional - or _"}`, k), http.StatusBadRequest)
-					return
-				}
-				if v == "" {
-					delete(current.ProviderKeys, k) // empty string = remove key
-				} else {
-					current.ProviderKeys[k] = v
-				}
 			}
 		}
 		if err := mgr.Set(current); err != nil {
@@ -1070,8 +1026,7 @@ func (s *Server) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"status": "applying"})
 }
 
-// providerInfoJSON is the JSON shape returned by GET /internal/providers and
-// POST /internal/providers (on creation).
+// providerInfoJSON is the JSON shape returned by GET /internal/providers.
 type providerInfoJSON struct {
 	Name                string  `json:"name"`
 	DisplayName         string  `json:"display_name"`
@@ -1089,16 +1044,13 @@ type providerInfoJSON struct {
 	LatencyP95MS        int64   `json:"latency_p95_ms"`
 }
 
-// handleProviders handles GET and POST /internal/providers.
+// handleProviders handles GET /internal/providers.
 func (s *Server) handleProviders(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		s.doListProviders(w, r)
-	case http.MethodPost:
-		s.doAddProvider(w, r)
-	default:
+	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
 	}
+	s.doListProviders(w, r)
 }
 
 // doListProviders returns all registered providers enriched with DB metadata.
@@ -1156,124 +1108,6 @@ func (s *Server) doListProviders(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, out)
 }
 
-// doAddProvider creates a custom (non-builtin) provider from a POST body.
-func (s *Server) doAddProvider(w http.ResponseWriter, r *http.Request) {
-	if s.store == nil {
-		http.Error(w, `{"error":"store unavailable"}`, http.StatusServiceUnavailable)
-		return
-	}
-	var body struct {
-		Name        string `json:"name"`
-		DisplayName string `json:"display_name"`
-		BaseURL     string `json:"base_url"`
-		PathPrefix  string `json:"path_prefix"`
-		Protocol    string `json:"protocol"`
-		APIKey      string `json:"api_key"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
-		return
-	}
-	if !isValidProviderKeyName(body.Name) {
-		http.Error(w, `{"error":"name must be lowercase alphanumeric starting with a letter, with optional - or _"}`, http.StatusBadRequest)
-		return
-	}
-	if body.DisplayName == "" {
-		body.DisplayName = body.Name
-	}
-	if body.Protocol == "" {
-		body.Protocol = "openai"
-	}
-	if body.Protocol != "openai" && body.Protocol != "anthropic" {
-		http.Error(w, `{"error":"protocol must be openai or anthropic"}`, http.StatusBadRequest)
-		return
-	}
-	if !strings.HasPrefix(body.BaseURL, "http://") && !strings.HasPrefix(body.BaseURL, "https://") {
-		http.Error(w, `{"error":"base_url must start with http:// or https://"}`, http.StatusBadRequest)
-		return
-	}
-	existing, err := s.store.GetProviderConfig(r.Context(), body.Name)
-	if err == nil && existing != nil {
-		http.Error(w, `{"error":"provider already exists"}`, http.StatusConflict)
-		return
-	}
-	cfg := storage.ProviderConfig{
-		Name:        body.Name,
-		DisplayName: body.DisplayName,
-		Protocol:    body.Protocol,
-		BaseURL:     body.BaseURL,
-		PathPrefix:  body.PathPrefix,
-		IsBuiltin:   false,
-		SortOrder:   200,
-	}
-	if err := s.store.SaveProviderConfig(r.Context(), cfg); err != nil {
-		http.Error(w, `{"error":"failed to save provider"}`, http.StatusInternalServerError)
-		return
-	}
-	if body.APIKey != "" && s.settings != nil {
-		cur := s.settings.Get()
-		if cur.ProviderKeys == nil {
-			cur.ProviderKeys = make(map[string]string)
-		}
-		cur.ProviderKeys[body.Name] = body.APIKey
-		_ = s.settings.Set(cur)
-	}
-	if s.providerCreator != nil && s.registry != nil {
-		name := cfg.Name
-		keyFn := func() string {
-			// Same precedence as Server.resolveProviderKey: inherited first,
-			// settings second, env-var last (spec/04 §9).
-			if k := s.resolveProviderKey(context.Background(), name); k != "" {
-				return k
-			}
-			return os.Getenv(strings.ToUpper(name) + "_API_KEY")
-		}
-		s.registry.Register(s.providerCreator(cfg, keyFn))
-	}
-	w.WriteHeader(http.StatusCreated)
-	writeJSON(w, providerInfoJSON{
-		Name:        cfg.Name,
-		DisplayName: cfg.DisplayName,
-		Protocol:    cfg.Protocol,
-		BaseURL:     cfg.BaseURL,
-		IsBuiltin:   false,
-		Configured:  body.APIKey != "",
-		Available:   body.APIKey != "",
-		SuccessRate: 1.0,
-	})
-}
-
-// doDeleteProvider removes a custom provider by name.
-func (s *Server) doDeleteProvider(w http.ResponseWriter, r *http.Request, name string) {
-	if s.store == nil {
-		http.Error(w, `{"error":"store unavailable"}`, http.StatusServiceUnavailable)
-		return
-	}
-	cfg, err := s.store.GetProviderConfig(r.Context(), name)
-	if err != nil || cfg == nil {
-		http.Error(w, `{"error":"provider not found"}`, http.StatusNotFound)
-		return
-	}
-	if cfg.IsBuiltin {
-		http.Error(w, `{"error":"cannot delete a built-in provider"}`, http.StatusBadRequest)
-		return
-	}
-	if err := s.store.DeleteProviderConfig(r.Context(), name); err != nil {
-		http.Error(w, `{"error":"failed to delete provider"}`, http.StatusInternalServerError)
-		return
-	}
-	if s.settings != nil {
-		cur := s.settings.Get()
-		if cur.ProviderKeys != nil {
-			delete(cur.ProviderKeys, name)
-			_ = s.settings.Set(cur)
-		}
-	}
-	if s.registry != nil {
-		s.registry.Unregister(name)
-	}
-	writeJSON(w, map[string]bool{"ok": true})
-}
 
 type agentStats struct {
 	RequestsToday   int     `json:"requests_today"`
@@ -1717,16 +1551,12 @@ func (s *Server) handleUninstall(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]bool{"ok": true})
 }
 
-// handleProviderAction handles /internal/providers/{name}/{action} and DELETE /internal/providers/{name}.
+// handleProviderAction handles /internal/providers/{name}/{action}.
+// Currently only "test" is supported.
 func (s *Server) handleProviderAction(w http.ResponseWriter, r *http.Request) {
 	tail := strings.TrimPrefix(r.URL.Path, "/internal/providers/")
 	slash := strings.LastIndex(tail, "/")
 	if slash < 0 {
-		// No action — only DELETE /internal/providers/:name is handled here.
-		if r.Method == http.MethodDelete {
-			s.doDeleteProvider(w, r, tail)
-			return
-		}
 		http.NotFound(w, r)
 		return
 	}
@@ -1858,15 +1688,6 @@ func (s *Server) handleModelsRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
-		if s.settings != nil && s.store != nil && s.registry != nil {
-			for name, key := range s.settings.Get().ProviderKeys {
-				if key != "" {
-					s.discoverProviderModels(ctx, name)
-				}
-			}
-		}
 		for _, a := range config.DetectInstalledAgents() {
 			if a.Name == "openclaw" {
 				s.discoverOpenClawModels(a.ConfigPath)
