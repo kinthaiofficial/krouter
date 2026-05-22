@@ -11,8 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"strings"
-
 	"github.com/kinthaiofficial/krouter/internal/agentscan"
 	"github.com/kinthaiofficial/krouter/internal/api"
 	"github.com/kinthaiofficial/krouter/internal/config"
@@ -95,7 +93,6 @@ The daemon listens on two ports:
 			// providers can read keys from settings at request time.
 			configPath, _ := cmd.Flags().GetString("config")
 			settings := config.New(configPath)
-			settings.MigrateKeys()
 
 			// Proxy-aware transport — auto-detects OS system proxy (macOS scutil,
 			// Windows registry, Linux gsettings) and bypasses domestic China hosts.
@@ -113,7 +110,7 @@ The daemon listens on two ports:
 			reg := providers.New()
 			reg.Register(anthropicadapter.New("https://api.anthropic.com", sharedClient))
 			reg.Register(minimaxadapter.New(sharedClient)) // transparent proxy — auth header comes from the agent (OpenClaw OAuth)
-			loadProvidersFromDB(ctx, store, reg, settings, sharedClient)
+			loadProvidersFromDB(ctx, store, reg, sharedClient)
 
 			// Routing engine.
 			engine := routing.New(reg)
@@ -216,10 +213,30 @@ The daemon listens on two ports:
 			apiSrv.SetSettings(settings)
 			apiSrv.SetProxyManager(proxymgr)
 			apiSrv.SetMinimaxPoller(minimaxPoller)
-			apiSrv.SetSSEDebug(proxySrv.GetLastSSECapture)
-			apiSrv.SetProviderCreator(func(cfg storage.ProviderConfig, keyFn func() string) providers.Provider {
-				return openaiadapter.NewWithPathReplaceAndKeyFn(cfg.Name, cfg.BaseURL, cfg.PathPrefix, keyFn, nil, sharedClient)
+			// Wire the quota-exhaustion SSE event (spec/05 §12.3). Done
+			// after apiSrv exists so the closure can capture it; the
+			// poller's first cycle is ~20s after Start, plenty of time
+			// for apiSrv to be fully constructed.
+			minimaxPoller.WithExhaustCallback(func(provider, tier string, highspeed bool, windowEnd time.Time) {
+				apiSrv.Broadcast("subscription_exhausted", map[string]any{
+					"provider":   provider,
+					"tier":       tier,
+					"highspeed":  highspeed,
+					"window_end": windowEnd.UTC().Format(time.RFC3339),
+				})
 			})
+			// Auto-rescan + dashboard notice when MiniMax rejects our OAuth
+			// token (spec/05 §15.2). The rescan re-reads OpenClaw's
+			// auth-profiles.json so a token OpenClaw silently refreshed in
+			// the background gets picked up; the SSE event lets the user
+			// know to re-login if the rescan doesn't help.
+			minimaxPoller.WithUnauthorizedCallback(func() {
+				agentscan.RunAll(ctx, store, logger)
+				apiSrv.Broadcast("subscription_unauthorized", map[string]any{
+					"provider": "minimax",
+				})
+			})
+			apiSrv.SetSSEDebug(proxySrv.GetLastSSECapture)
 
 			// Agent inheritance — refresh inherited_endpoints from each enabled
 			// AI agent's config file. Runs early so model discovery and the
@@ -238,6 +255,18 @@ The daemon listens on two ports:
 				case <-ctx.Done():
 				}
 			}()
+
+			// Periodic rescan — picks up config changes the user made to
+			// their agent files between daemon restarts (spec/04 §14
+			// "Hot reload"). 5-minute cadence balances latency against
+			// the cost of re-reading small config files; SSE broadcast
+			// lets the dashboard react before its own refetchInterval
+			// fires.
+			go agentscan.StartPeriodicRescan(ctx, store, logger, 5*time.Minute, func() {
+				apiSrv.Broadcast("agents_changed", map[string]any{
+					"source": "periodic_rescan",
+				})
+			})
 
 			// Model discovery — re-syncs cached model lists on daemon start.
 			go func() {
@@ -431,29 +460,63 @@ func newSubscriptionSource(store *storage.Store) *subscriptionSource {
 	return &subscriptionSource{store: store}
 }
 
+// GetSubscriptionInfo answers routing's "does this provider have quota I can
+// route an anthropic-protocol text request to?" question. The fix here over
+// the pre-A3 implementation: we look up the tier whose ModelPattern actually
+// covers the model we'd rewrite the request to ("MiniMax-M2.7" or its
+// highspeed variant), rather than returning whichever tier happened to come
+// out of GetAllSubscriptionQuotas first. The old behaviour could mask
+// MiniMax-M* exhaustion when speech-hd or another auxiliary tier still had
+// leftover quota — routing would think minimax was available, send a
+// MiniMax-M2.7 request, and the upstream would 4xx because the M* tier was
+// actually empty.
+//
+// We prefer the standard (non-highspeed) tier when the user has bought both,
+// since the highspeed plans cost ~2× as much per call. Fall back to highspeed
+// when only that tier has remaining quota.
+//
+// Spec/05 §8 + §9. Phase 1 still hardcodes the rewrite target to MiniMax-M2.7
+// (the only minimax LLM family krouter routes to today); per-feature quota
+// matching for coding-plan-search etc. is Phase 3.
 func (s *subscriptionSource) GetSubscriptionInfo(ctx context.Context, provider string) routing.SubscriptionInfo {
+	if provider != "minimax" {
+		// No other vendor has a subscription model wired up yet.
+		return routing.SubscriptionInfo{}
+	}
 	quotas, err := s.store.GetAllSubscriptionQuotas(ctx)
 	if err != nil {
 		return routing.SubscriptionInfo{}
 	}
-	for _, q := range quotas {
-		if q.Provider != provider {
-			continue
+
+	// Try standard then highspeed. Each iteration picks the tier whose
+	// ModelPattern wildcard-matches the target model id we'd rewrite to.
+	for _, highspeed := range []bool{false, true} {
+		targetModel := "MiniMax-M2.7"
+		if highspeed {
+			targetModel = "MiniMax-M2.7-highspeed"
 		}
-		if !q.IsAvailable() {
-			continue
-		}
-		model := "MiniMax-M2.7"
-		if q.Highspeed {
-			model = "MiniMax-M2.7-highspeed"
-		}
-		price := q.PricingFor(ctx, s.store)
-		return routing.SubscriptionInfo{
-			Available:        true,
-			Model:            model,
-			Remaining:        q.TotalCount - q.UsedCount,
-			Total:            q.TotalCount,
-			EffectiveCostUSD: price.EffectiveCostPerCallUSD(),
+		for i := range quotas {
+			q := &quotas[i]
+			if q.Provider != provider {
+				continue
+			}
+			if q.Highspeed != highspeed {
+				continue
+			}
+			if !q.MatchesModel(targetModel) {
+				continue
+			}
+			if !q.IsAvailable() {
+				continue
+			}
+			price := q.PricingFor(ctx, s.store)
+			return routing.SubscriptionInfo{
+				Available:        true,
+				Model:            targetModel,
+				Remaining:        q.TotalCount - q.UsedCount,
+				Total:            q.TotalCount,
+				EffectiveCostUSD: price.EffectiveCostPerCallUSD(),
+			}
 		}
 	}
 	return routing.SubscriptionInfo{}
@@ -462,9 +525,7 @@ func (s *subscriptionSource) GetSubscriptionInfo(ctx context.Context, provider s
 // loadProvidersFromDB reads provider_config rows and registers an OpenAI adapter for
 // each openai-protocol entry. Anthropic and MiniMax are skipped — they are always
 // registered separately with custom protocol logic above.
-// Called once at startup; custom providers added at runtime are also registered
-// immediately by the API server's doAddProvider handler.
-func loadProvidersFromDB(ctx context.Context, store *storage.Store, reg *providers.Registry, settings *config.Manager, sharedClient *http.Client) {
+func loadProvidersFromDB(ctx context.Context, store *storage.Store, reg *providers.Registry, sharedClient *http.Client) {
 	cfgs, err := store.GetProviderConfigs(ctx)
 	if err != nil {
 		return
@@ -476,13 +537,7 @@ func loadProvidersFromDB(ctx context.Context, store *storage.Store, reg *provide
 		}
 		name := cfg.Name
 		keyFn := func() string {
-			// Prefer agent-inherited or settings-manual keys (see spec/04 §9).
-			if k := resolveProviderKeyForRouting(store, settings, name); k != "" {
-				return k
-			}
-			// Last-resort fallback for users running krouter from a shell with
-			// vendor env vars set directly. Unchanged from v2.0.50 behaviour.
-			return os.Getenv(strings.ToUpper(name) + "_API_KEY")
+			return resolveProviderKeyForRouting(store, name)
 		}
 		reg.Register(openaiadapter.NewWithPathReplaceAndKeyFn(name, cfg.BaseURL, cfg.PathPrefix, keyFn, nil, sharedClient))
 	}

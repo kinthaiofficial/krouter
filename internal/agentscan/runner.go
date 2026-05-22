@@ -44,6 +44,44 @@ func RunAll(ctx context.Context, store *storage.Store, logger logging.Logger) {
 	}
 }
 
+// StartPeriodicRescan runs RunAll on a fixed interval until ctx is cancelled.
+// After each tick the optional onTick callback fires (typically wired to an
+// SSE broadcast so the dashboard refetches /internal/agents/configured
+// without waiting for the next react-query refetchInterval).
+//
+// Spec/04 §14 — "Hot reload via SSE broadcast on config change." With no
+// fsnotify dependency, a 5-minute polling cadence is the Phase 1 compromise:
+// the user's config file is small, re-reading it costs microseconds, and
+// the latency between a user editing OpenClaw config and the daemon picking
+// it up is bounded by the interval. Phase 2 can layer fsnotify on top for
+// real-time updates if the polling latency proves annoying.
+//
+// Passing interval <= 0 returns immediately (disabled).
+func StartPeriodicRescan(
+	ctx context.Context,
+	store *storage.Store,
+	logger logging.Logger,
+	interval time.Duration,
+	onTick func(),
+) {
+	if interval <= 0 || store == nil {
+		return
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			RunAll(ctx, store, logger)
+			if onTick != nil {
+				onTick()
+			}
+		}
+	}
+}
+
 // ScanOne executes a single Scanner and persists the result. Returns the
 // underlying error so the API layer can surface it to the user; the
 // last_error column is always updated regardless of return value.

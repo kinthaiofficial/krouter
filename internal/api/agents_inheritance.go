@@ -261,14 +261,9 @@ func (s *Server) inheritanceActionDispatch(w http.ResponseWriter, r *http.Reques
 	return false
 }
 
-// resolveProviderKey returns the API key for providerName, preferring keys
-// inherited from any enabled AI agent (the user already configured the
-// vendor there) over the manual settings.ProviderKeys override (Dashboard
-// "Settings → API Keys").
-//
-// This is the single source of truth used by model discovery and any other
-// caller that needs to authenticate against an upstream vendor. Returning ""
-// means "no credential available — skip this provider".
+// resolveProviderKey returns the API key for providerName inherited from any
+// enabled AI agent's config. Returning "" means "no credential available —
+// skip this provider".
 func (s *Server) resolveProviderKey(ctx context.Context, providerName string) string {
 	if s.store != nil {
 		if eps, err := s.store.FindInheritedEndpointsByProvider(ctx, providerName); err == nil {
@@ -279,17 +274,12 @@ func (s *Server) resolveProviderKey(ctx context.Context, providerName string) st
 			}
 		}
 	}
-	if s.settings != nil {
-		if k := s.settings.Get().ProviderKeys[providerName]; k != "" {
-			return k
-		}
-	}
 	return ""
 }
 
-// providersWithCredentials returns the set of provider names for which
-// either an inherited endpoint or a settings key carries a non-empty
-// credential. Used by RefreshModelsIfStale to decide what to discover.
+// providersWithCredentials returns the set of provider names for which an
+// inherited endpoint from an enabled agent carries a non-empty credential.
+// Used by RefreshModelsIfStale to decide what to discover.
 func (s *Server) providersWithCredentials(ctx context.Context) []string {
 	set := map[string]struct{}{}
 	if s.store != nil {
@@ -298,13 +288,6 @@ func (s *Server) providersWithCredentials(ctx context.Context) []string {
 				if ep.APIKey != "" {
 					set[ep.Provider] = struct{}{}
 				}
-			}
-		}
-	}
-	if s.settings != nil {
-		for name, key := range s.settings.Get().ProviderKeys {
-			if key != "" {
-				set[name] = struct{}{}
 			}
 		}
 	}

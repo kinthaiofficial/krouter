@@ -14,16 +14,17 @@ import (
 
 // subscriptionTierJSON is one row in the per-provider tier list.
 type subscriptionTierJSON struct {
-	TierName                string `json:"tier_name"`
-	Total                   int64  `json:"total"`
-	Used                    int64  `json:"used"`
-	Remaining               int64  `json:"remaining"`
-	Highspeed               bool   `json:"highspeed"`
-	WindowStart             string `json:"window_start"`              // RFC3339
-	WindowEnd               string `json:"window_end"`                // RFC3339
-	SecondsToReset          int64  `json:"seconds_to_reset"`          // negative when window is past
+	TierName                string  `json:"tier_name"`
+	Total                   int64   `json:"total"`
+	Used                    int64   `json:"used"`
+	Remaining               int64   `json:"remaining"`
+	Highspeed               bool    `json:"highspeed"`
+	WindowStart             string  `json:"window_start"`              // RFC3339
+	WindowEnd               string  `json:"window_end"`                // RFC3339
+	SecondsToReset          int64   `json:"seconds_to_reset"`          // negative when window is past
 	EffectiveCostPerCallUSD float64 `json:"effective_cost_per_call_usd"`
-	MonthlyPriceUSD         float64 `json:"monthly_price_usd"`
+	MonthlyPriceCNY         float64 `json:"monthly_price_cny"`         // original sticker price on minimaxi.com
+	MonthlyPriceUSD         float64 `json:"monthly_price_usd"`         // CNY × fixed FX rate; for cross-vendor comparison
 }
 
 type subscriptionProviderJSON struct {
@@ -175,6 +176,7 @@ func tiersToJSON(ctx context.Context, store *storage.Store, tiers []storage.Subs
 			WindowEnd:               t.WindowEnd.UTC().Format(time.RFC3339),
 			SecondsToReset:          int64(t.WindowEnd.Sub(now).Seconds()),
 			EffectiveCostPerCallUSD: price.EffectiveCostPerCallUSD(),
+			MonthlyPriceCNY:         price.MonthlyPriceCNY,
 			MonthlyPriceUSD:         price.MonthlyPriceUSD(),
 		})
 	}

@@ -38,12 +38,6 @@ type Settings struct {
 	DaemonURL              string                     `json:"daemon_url,omitempty"`
 	NotificationCategories map[string]bool            `json:"notification_categories"`
 	BudgetWarnings         map[string]float64         `json:"budget_warnings"`
-	// ProviderKeys stores API keys for secondary providers (deepseek, groq, etc.)
-	// so the daemon can authenticate when running as a LaunchAgent without shell env.
-	// Keys use the provider name (e.g. "deepseek", "groq"); values are the API keys.
-	// File is stored at 0600 permissions. DO NOT store Anthropic keys here — those
-	// come from the agent's own request headers (krouter is a transparent proxy).
-	ProviderKeys           map[string]string          `json:"provider_keys,omitempty"`
 	// RoutingOverrides allows per-agent routing customisation.
 	// Keys are agent names ("openclaw", "claude-code", "cursor", "unknown").
 	RoutingOverrides       map[string]RoutingOverride `json:"routing_overrides,omitempty"`
@@ -107,27 +101,6 @@ func (m *Manager) GetRoutingOverride(agentName string) (alwaysUse, preset string
 		return "", ""
 	}
 	return o.AlwaysUse, o.Preset
-}
-
-// MigrateKeys rewrites any legacy provider key names to their current names.
-// Call once at daemon startup, after New but before serving requests.
-// Currently handles: "glm" → "zai" (renamed in v2.0.42).
-func (m *Manager) MigrateKeys() {
-	s := m.Get()
-	changed := false
-	if v, ok := s.ProviderKeys["glm"]; ok {
-		if s.ProviderKeys == nil {
-			s.ProviderKeys = make(map[string]string)
-		}
-		if _, exists := s.ProviderKeys["zai"]; !exists {
-			s.ProviderKeys["zai"] = v
-		}
-		delete(s.ProviderKeys, "glm")
-		changed = true
-	}
-	if changed {
-		_ = m.Set(s)
-	}
 }
 
 // Set writes settings atomically via temp file + rename (0600 perms).

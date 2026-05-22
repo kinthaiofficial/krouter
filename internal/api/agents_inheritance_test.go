@@ -223,13 +223,13 @@ func TestAgentDelete_RemovesRow(t *testing.T) {
 func TestAgentAction_LegacyVerbsStillReachableUnderNewDispatch(t *testing.T) {
 	srv, _ := newTestServer(t)
 
-	// POST /internal/agents/openclaw/connect — still wired (would 404 for an
-	// unknown verb). We don't expect it to succeed (no real OpenClaw on disk),
-	// but the response must NOT be 404, which would mean we accidentally broke
-	// the dispatch when introducing inheritance verbs.
+	// POST /internal/agents/openclaw/connect — still wired. No real OpenClaw is
+	// installed in the test environment, so the handler returns a JSON error body.
+	// We verify dispatch reached doAgentConnect (body contains "agent not found")
+	// rather than a routing-level 404 (which would have no JSON body).
 	w := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(w, authedReq(t, http.MethodPost,
 		"/internal/agents/openclaw/connect", ""))
-	assert.NotEqual(t, http.StatusNotFound, w.Code,
-		"connect verb must still be reachable; got %d body=%s", w.Code, w.Body.String())
+	assert.Contains(t, w.Body.String(), "agent not found",
+		"connect verb must reach its handler, not a routing 404; got %d body=%s", w.Code, w.Body.String())
 }
