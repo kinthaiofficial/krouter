@@ -1,10 +1,20 @@
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { RefreshCw, Zap, AlertCircle } from 'lucide-react'
+import { RefreshCw, Zap, AlertCircle, AlertTriangle } from 'lucide-react'
 import {
   api,
   type SubscriptionProvider,
   type SubscriptionTier,
 } from '../api/client'
+
+// ExhaustEvent is the payload of the daemon's subscription_exhausted SSE
+// event. Spec/05 §12.3.
+interface ExhaustEvent {
+  provider: string
+  tier: string
+  highspeed: boolean
+  window_end: string  // RFC3339
+}
 
 // SubscriptionQuotaCard surfaces spec/05's subscription-quota data: every
 // provider with a polled quota row gets a card showing per-tier remaining
@@ -18,6 +28,35 @@ export default function SubscriptionQuotaCard() {
     queryFn: api.subscriptionStatus,
     refetchInterval: 60_000,
   })
+
+  // Transient banner state: holds the most recent exhaust event so the user
+  // sees an attention-grabbing notice the next ~30s, then it self-clears.
+  // We also force-refetch on every event so the per-tier bar updates to
+  // "0 remaining" without waiting for the 60s refetch interval.
+  const [exhaust, setExhaust] = useState<ExhaustEvent | null>(null)
+
+  useEffect(() => {
+    const es = new EventSource('/internal/events', { withCredentials: true })
+    es.addEventListener('subscription_exhausted', (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data) as ExhaustEvent
+        setExhaust(data)
+        qc.invalidateQueries({ queryKey: ['subscription-status'] })
+      } catch { /* ignore malformed payload */ }
+    })
+    es.addEventListener('subscription_quota_refreshed', () => {
+      qc.invalidateQueries({ queryKey: ['subscription-status'] })
+    })
+    return () => es.close()
+  }, [qc])
+
+  // Auto-clear the banner after 30s. Re-running on every new event resets
+  // the timer so back-to-back exhaustions stay visible.
+  useEffect(() => {
+    if (!exhaust) return
+    const timer = setTimeout(() => setExhaust(null), 30_000)
+    return () => clearTimeout(timer)
+  }, [exhaust])
 
   const refresh = useMutation({
     mutationFn: () => api.subscriptionRefresh(),
@@ -34,6 +73,33 @@ export default function SubscriptionQuotaCard() {
       data-testid="subscription-quota-card"
       className="bg-white border border-border rounded-2xl p-5 shadow-sm"
     >
+      {exhaust && (
+        <div
+          data-testid="subscription-exhausted-banner"
+          role="status"
+          className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"
+        >
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+          <div className="flex-1">
+            <p className="font-medium">
+              {exhaust.provider} {exhaust.tier} quota exhausted
+            </p>
+            <p className="text-[11px] text-amber-700 mt-0.5">
+              Routing has fallen back to per-token vendors until the window
+              resets at {new Date(exhaust.window_end).toLocaleString()}.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setExhaust(null)}
+            aria-label="Dismiss"
+            className="text-amber-700 hover:text-amber-900 text-[11px] underline underline-offset-2"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       <header className="flex items-baseline justify-between mb-4">
         <div className="flex items-center gap-2">
           <Zap className="w-4 h-4 text-amber-500" />

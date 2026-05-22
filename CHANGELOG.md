@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`subscription_exhausted` SSE event (spec/05 §12.3)**: when the MiniMax quota poller observes a tier transitioning from "had quota" to "zero remaining" within the current window, the daemon broadcasts a `subscription_exhausted` event with `{provider, tier, highspeed, window_end}`. Dedupe key is `window_end` so we don't refire repeatedly within the same exhausted window. The dashboard `SubscriptionQuotaCard` listens for the event, surfaces a transient banner ("quota exhausted, routing fell back to per-token vendors until window reset at …"), and force-refetches `/internal/subscription/status` so the bars update immediately instead of waiting 60s for the next poll.
+
 ### Changed
 - **MiniMax subscription card now shows the original CNY price**: the dashboard formerly displayed e.g. `$6.76/mo plan`, which felt odd to users who paid `¥49/月` on minimaxi.com. It now shows `¥49/mo (≈ $6.76)`. The USD value is still computed (CNY × 0.138 fixed rate) so users can compare costs against per-token vendors. New `monthly_price_cny` field on `/internal/subscription/status` carries the original number.
 - **`agentscan.PendingFileDir()` now resolves to `~/.kinthai/` only** (was: `$XDG_CONFIG_HOME/krouter` → `~/Library/Application Support/krouter` → `~/.config/krouter` fallback chain). This fixes a silent-data-loss bug where the installer running from a shell with `XDG_CONFIG_HOME` set would write `pending-agents.json` somewhere the launchd-started daemon never looks (LaunchAgent plists inject `HOME` but not arbitrary shell env vars). New regression test asserts the path is invariant under `XDG_CONFIG_HOME` changes. `KROUTER_CONFIG_DIR` continues to override (for tests and site-specific deployments).

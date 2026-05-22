@@ -216,6 +216,18 @@ The daemon listens on two ports:
 			apiSrv.SetSettings(settings)
 			apiSrv.SetProxyManager(proxymgr)
 			apiSrv.SetMinimaxPoller(minimaxPoller)
+			// Wire the quota-exhaustion SSE event (spec/05 §12.3). Done
+			// after apiSrv exists so the closure can capture it; the
+			// poller's first cycle is ~20s after Start, plenty of time
+			// for apiSrv to be fully constructed.
+			minimaxPoller.WithExhaustCallback(func(provider, tier string, highspeed bool, windowEnd time.Time) {
+				apiSrv.Broadcast("subscription_exhausted", map[string]any{
+					"provider":   provider,
+					"tier":       tier,
+					"highspeed":  highspeed,
+					"window_end": windowEnd.UTC().Format(time.RFC3339),
+				})
+			})
 			apiSrv.SetSSEDebug(proxySrv.GetLastSSECapture)
 			apiSrv.SetProviderCreator(func(cfg storage.ProviderConfig, keyFn func() string) providers.Provider {
 				return openaiadapter.NewWithPathReplaceAndKeyFn(cfg.Name, cfg.BaseURL, cfg.PathPrefix, keyFn, nil, sharedClient)
