@@ -15,8 +15,8 @@ const NOTIFICATION_CATEGORIES = [
 ]
 
 const BUDGET_THRESHOLDS = [
-  { key: 'daily', label: 'Daily limit ($)' },
-  { key: 'weekly', label: 'Weekly limit ($)' },
+  { key: 'daily', label: 'Daily limit (USD)' },
+  { key: 'weekly', label: 'Weekly limit (USD)' },
 ]
 
 function fmtUSD(n: number) {
@@ -129,10 +129,10 @@ export default function Settings() {
         </div>
       </section>
 
-      {/* Budget warnings */}
+      {/* Budget limits */}
       <section className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
-        <h2 className="text-sm font-medium">Budget Warnings</h2>
-        <p className="text-xs text-gray-500">Set to 0 to disable.</p>
+        <h2 className="text-sm font-medium">Budget Limits</h2>
+        <p className="text-xs text-gray-500">Requests are blocked when the limit is reached. Set to 0 to disable. Currency is always USD.</p>
         <div className="space-y-3">
           {BUDGET_THRESHOLDS.map(({ key, label }) => (
             <div key={key} className="flex items-center gap-3">

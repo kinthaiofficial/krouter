@@ -40,6 +40,10 @@ export default function Dashboard() {
     })
     es.addEventListener('settings_changed', () => {
       qc.invalidateQueries({ queryKey: ['preset'] })
+      qc.invalidateQueries({ queryKey: ['settings'] })
+    })
+    es.addEventListener('budget_warning', () => {
+      qc.invalidateQueries({ queryKey: ['budget'] })
     })
     return () => es.close()
   }, [qc])
@@ -69,6 +73,15 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {budget?.daily_limit_usd && (
+        <BudgetBar
+          costUSD={budget.cost_today_usd}
+          limitUSD={budget.daily_limit_usd}
+          pct={budget.daily_percent_used ?? 0}
+          blocked={budget.budget_blocked ?? false}
+        />
+      )}
 
       {dashStats && (
         <section className="bg-white rounded-xl border border-gray-200 p-5">
@@ -154,6 +167,43 @@ export default function Dashboard() {
         <RequestTable logs={recentLogs} />
       </div>
     </div>
+  )
+}
+
+function BudgetBar({ costUSD, limitUSD, pct, blocked }: {
+  costUSD: number; limitUSD: number; pct: number; blocked: boolean
+}) {
+  const clampedPct = Math.min(pct, 1)
+  const barColor = blocked
+    ? 'bg-red-500'
+    : pct >= 0.95 ? 'bg-red-400'
+    : pct >= 0.80 ? 'bg-yellow-400'
+    : 'bg-green-400'
+
+  return (
+    <section className={[
+      'rounded-xl border p-4',
+      blocked ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200',
+    ].join(' ')}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-medium text-gray-700">Daily Budget</span>
+        <span className={['text-sm font-medium', blocked ? 'text-red-600' : 'text-gray-600'].join(' ')}>
+          ${costUSD.toFixed(2)} / ${limitUSD.toFixed(0)}
+          {blocked && <span className="ml-2 text-xs font-semibold uppercase tracking-wide">Blocked</span>}
+        </span>
+      </div>
+      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${barColor}`}
+          style={{ width: `${clampedPct * 100}%` }}
+        />
+      </div>
+      {blocked && (
+        <p className="text-xs text-red-600 mt-1.5">
+          Requests are blocked until tomorrow. Raise the limit in Settings to unblock.
+        </p>
+      )}
+    </section>
   )
 }
 

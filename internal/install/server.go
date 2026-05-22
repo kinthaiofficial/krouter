@@ -64,6 +64,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/install/register-service", s.withAuth(s.handleRegisterService))
 	mux.HandleFunc("/api/install/shell-integration", s.withAuth(s.handleShellIntegration))
 	mux.HandleFunc("/api/install/connect-agent", s.withAuth(s.handleConnectAgent))
+	mux.HandleFunc("/api/install/set-budget", s.withAuth(s.handleSetBudget))
 	mux.HandleFunc("/api/install/finalize", s.withAuth(s.handleFinalize))
 	mux.HandleFunc("/api/install/daemon-ready", s.withAuth(s.handleDaemonReady))
 
@@ -206,6 +207,33 @@ func (s *Server) handleConnectAgent(w http.ResponseWriter, r *http.Request) {
 	info := config.AgentInfo{Name: body.Agent, ConfigPath: body.ConfigPath}
 	if err := s.orch.connectAgent(info); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+// handleSetBudget writes the daily budget limit to settings.json so the daemon
+// honours it from first launch. Called by the install wizard's BudgetStep.
+func (s *Server) handleSetBudget(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var body struct {
+		DailyLimitUSD float64 `json:"daily_limit_usd"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	mgr := config.New("")
+	current := mgr.Get()
+	if current.BudgetWarnings == nil {
+		current.BudgetWarnings = make(map[string]float64)
+	}
+	current.BudgetWarnings["daily"] = body.DailyLimitUSD
+	if err := mgr.Set(current); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save settings")
 		return
 	}
 	writeJSON(w, map[string]bool{"ok": true})

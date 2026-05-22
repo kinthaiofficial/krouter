@@ -58,6 +58,9 @@ export interface Budget {
   requests_today: number
   cost_today_usd: number
   savings_today_usd: number
+  daily_limit_usd?: number
+  daily_percent_used?: number
+  budget_blocked?: boolean
 }
 
 export interface QuotaItem {

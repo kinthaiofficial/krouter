@@ -50,6 +50,14 @@ func applyDefaults(s Settings) Settings {
 	if s.Language == "" {
 		s.Language = "en"
 	}
+	// Default daily budget: $50 USD the first time settings are loaded with no
+	// "daily" key present. Distinguishes "never configured" from "user set 0 to
+	// disable" (in which case the key exists with value 0).
+	if s.BudgetWarnings == nil {
+		s.BudgetWarnings = map[string]float64{"daily": 50}
+	} else if _, ok := s.BudgetWarnings["daily"]; !ok {
+		s.BudgetWarnings["daily"] = 50
+	}
 	return s
 }
 

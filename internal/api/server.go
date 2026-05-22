@@ -419,12 +419,26 @@ func (s *Server) handleBudget(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w, map[string]any{
-		"date":            todayStart.Format("2006-01-02"),
-		"requests_today":  requestsToday,
-		"cost_today_usd":  float64(totalCost) / 1_000_000,
+	costTodayUSD := float64(totalCost) / 1_000_000
+
+	resp := map[string]any{
+		"date":             todayStart.Format("2006-01-02"),
+		"requests_today":   requestsToday,
+		"cost_today_usd":   costTodayUSD,
 		"savings_today_usd": float64(totalSavings) / 1_000_000,
-	})
+	}
+
+	if s.settings != nil {
+		cfg := s.settings.Get()
+		if daily := cfg.BudgetWarnings["daily"]; daily > 0 {
+			pct := costTodayUSD / daily
+			resp["daily_limit_usd"] = daily
+			resp["daily_percent_used"] = pct
+			resp["budget_blocked"] = pct >= 1.0
+		}
+	}
+
+	writeJSON(w, resp)
 }
 
 // handleEvents handles GET /internal/events (Server-Sent Events).

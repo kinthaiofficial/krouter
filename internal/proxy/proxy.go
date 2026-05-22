@@ -249,6 +249,12 @@ func (s *Server) handleAnthropicWithRouting(
 
 	upstreamResp, dec, err := s.tryWithFallback(r.Context(), r.Header, body, req, preset, "/v1/messages")
 	if err != nil {
+		if errors.Is(err, routing.ErrBudgetExceeded) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"type":"error","error":{"type":"rate_limit_error","message":"Daily budget limit exceeded. Adjust your limit in KRouter Settings."}}`))
+			return
+		}
 		if r.Context().Err() != nil {
 			s.logger.Debug("client disconnected before upstream responded")
 			return
@@ -362,6 +368,9 @@ func (s *Server) tryWithFallback(
 	path string,
 ) (*http.Response, routing.Decision, error) {
 	dec := s.engine.Decide(req, preset)
+	if dec.BudgetExceeded {
+		return nil, dec, routing.ErrBudgetExceeded
+	}
 	tried := make(map[string]bool)
 
 	var lastErrBody []byte
@@ -691,6 +700,12 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 
 	upstreamResp, dec, err := s.tryWithFallback(r.Context(), r.Header, body, req, preset, "/v1/chat/completions")
 	if err != nil {
+		if errors.Is(err, routing.ErrBudgetExceeded) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"error":{"type":"insufficient_quota","message":"Daily budget limit exceeded. Adjust your limit in KRouter Settings."}}`))
+			return
+		}
 		if r.Context().Err() != nil {
 			return
 		}

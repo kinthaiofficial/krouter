@@ -8,11 +8,17 @@ package routing
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/kinthaiofficial/krouter/internal/providers"
 )
+
+// ErrBudgetExceeded is returned by the routing engine when the daily (or
+// weekly) spend limit has been reached. The proxy layer turns this into an
+// HTTP 429 so the agent sees a clear, actionable error instead of a 502.
+var ErrBudgetExceeded = errors.New("daily budget limit exceeded")
 
 // complexityKeywords indicate a request that likely benefits from a more capable model.
 var complexityKeywords = []string{
@@ -86,6 +92,9 @@ type Decision struct {
 	Reason           string
 	EstimatedCostUSD float64
 	EstimatedTokens  int
+	// BudgetExceeded is true when the daily/weekly spend limit has been hit.
+	// The proxy returns HTTP 429 and does not forward the request upstream.
+	BudgetExceeded bool
 }
 
 // HealthChecker provides provider health metrics used for routing decisions.
@@ -248,6 +257,15 @@ func (e *Engine) pickProviderForModel(proto providers.Protocol, model string) pr
 // preset must be one of "saver", "balanced", "quality" (case-sensitive).
 // An empty or unrecognised preset is treated as "balanced".
 func (e *Engine) Decide(req Request, preset string) Decision {
+	// Hard stop: block the request when the daily or weekly budget is exhausted.
+	// Per-agent overrides do NOT bypass this — budget is an absolute ceiling.
+	if e.quota != nil {
+		qs := e.quota.CurrentQuota(context.Background())
+		if qs.DailyPercent >= 1.0 || qs.WeeklyPercent >= 1.0 {
+			return Decision{BudgetExceeded: true, Reason: ErrBudgetExceeded.Error()}
+		}
+	}
+
 	// Per-agent override takes priority over preset and quota logic.
 	if e.overrides != nil && req.AgentName != "" {
 		if alwaysUse, overridePreset := e.overrides.GetRoutingOverride(req.AgentName); alwaysUse != "" {

@@ -124,7 +124,8 @@ The daemon listens on two ports:
 			engine.WithSubscription(newSubscriptionSource(store))
 
 			// Anthropic quota source — budget-based downgrade logic.
-			engine.WithQuota(newQuotaSource(store, settings))
+			quotaSrc := newQuotaSource(store, settings)
+			engine.WithQuota(quotaSrc)
 
 			// Per-agent routing overrides from settings.
 			engine.WithOverrides(settings)
@@ -299,6 +300,12 @@ The daemon listens on two ports:
 				})
 			})
 
+			// Budget monitor — fires SSE events when spend crosses 80%/95%/100%
+			// of the daily (or weekly) limit so the dashboard can warn the user.
+			go monitorBudget(ctx, quotaSrc, func(event string, data any) {
+				apiSrv.Broadcast(event, data)
+			})
+
 			// Start management API. When remote access is toggled, the API
 			// restarts to switch between plain HTTP (127.0.0.1) and TLS (0.0.0.0).
 			go func() {
@@ -439,6 +446,57 @@ func (q *quotaSource) CurrentQuota(ctx context.Context) routing.QuotaState {
 		state.OpusPercent = float64(qw.TokensUsed) / opusTokenSoftCap
 	}
 	return state
+}
+
+// monitorBudget fires SSE events when daily/weekly spend crosses 80%, 95%, or
+// 100% of the configured limit. Runs every 60 seconds; tracks the previously
+// fired threshold level to avoid repeated notifications within the same day.
+func monitorBudget(ctx context.Context, qs *quotaSource, broadcast func(string, any)) {
+	var lastThreshold float64
+	ticker := time.NewTicker(60 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			state := qs.CurrentQuota(ctx)
+			maxPct := state.DailyPercent
+			if state.WeeklyPercent > maxPct {
+				maxPct = state.WeeklyPercent
+			}
+			newThreshold := budgetThresholdLevel(maxPct)
+			if newThreshold > lastThreshold {
+				broadcast("budget_warning", map[string]any{
+					"daily_percent":  state.DailyPercent,
+					"weekly_percent": state.WeeklyPercent,
+					"threshold":      newThreshold,
+					"blocked":        newThreshold >= 1.0,
+				})
+			}
+			// Reset when a new day/week brings usage back below the first threshold,
+			// so we re-notify if spending climbs again.
+			if newThreshold < lastThreshold && maxPct < 0.80 {
+				newThreshold = 0
+			}
+			lastThreshold = newThreshold
+		}
+	}
+}
+
+// budgetThresholdLevel maps a spend percentage to the highest crossed tier
+// (0 = none, 0.80, 0.95, 1.0).
+func budgetThresholdLevel(pct float64) float64 {
+	switch {
+	case pct >= 1.0:
+		return 1.0
+	case pct >= 0.95:
+		return 0.95
+	case pct >= 0.80:
+		return 0.80
+	default:
+		return 0
+	}
 }
 
 // weekStartUTC returns the start of the current ISO week (Monday 00:00 UTC).

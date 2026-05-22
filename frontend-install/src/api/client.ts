@@ -60,6 +60,8 @@ export const api = {
       agent,
       config_path: configPath ?? '',
     }),
+  setBudget: (dailyLimitUSD: number) =>
+    call<{ ok: boolean }>('POST', '/api/install/set-budget', { daily_limit_usd: dailyLimitUSD }),
   finalize: () => call<{ status: string }>('POST', '/api/install/finalize'),
   daemonReady: () =>
     call<{ ready: boolean; redirect_url?: string }>('GET', '/api/install/daemon-ready'),

@@ -4,12 +4,13 @@ import DetectStep from './pages/DetectStep'
 import AgentPathsStep from './pages/AgentPathsStep'
 import ServiceStep from './pages/ServiceStep'
 import ShellStep from './pages/ShellStep'
+import BudgetStep from './pages/BudgetStep'
 import DoneStep from './pages/DoneStep'
 
-export type Step = 'welcome' | 'detect' | 'agents' | 'service' | 'shell' | 'done'
+export type Step = 'welcome' | 'detect' | 'agents' | 'service' | 'shell' | 'budget' | 'done'
 
-const STEPS: Step[] = ['welcome', 'detect', 'agents', 'service', 'shell', 'done']
-const LABELS = ['Welcome', 'Detect agents', 'Agent paths', 'Install service', 'Shell setup', 'Done']
+const STEPS: Step[] = ['welcome', 'detect', 'agents', 'service', 'shell', 'budget', 'done']
+const LABELS = ['Welcome', 'Detect agents', 'Agent paths', 'Install service', 'Shell setup', 'Budget', 'Done']
 
 export default function App() {
   const [step, setStep] = useState<Step>('welcome')
@@ -34,7 +35,8 @@ export default function App() {
           {step === 'detect'  && <DetectStep     onNext={() => setStep('agents')}  />}
           {step === 'agents'  && <AgentPathsStep onNext={() => setStep('service')} />}
           {step === 'service' && <ServiceStep    onNext={() => setStep('shell')}   />}
-          {step === 'shell'   && <ShellStep      onNext={() => setStep('done')}    />}
+          {step === 'shell'   && <ShellStep      onNext={() => setStep('budget')}  />}
+          {step === 'budget'  && <BudgetStep     onNext={() => setStep('done')}    />}
           {step === 'done'    && <DoneStep />}
         </div>
 
