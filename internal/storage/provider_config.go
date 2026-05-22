@@ -1,10 +1,6 @@
 package storage
 
-import (
-	"context"
-	"database/sql"
-	"errors"
-)
+import "context"
 
 // ProviderConfig holds metadata for a single provider as stored in provider_config.
 type ProviderConfig struct {
@@ -39,20 +35,4 @@ func (s *Store) GetProviderConfigs(ctx context.Context) ([]ProviderConfig, error
 	return out, rows.Err()
 }
 
-// GetProviderConfig returns the config for a single provider. Returns nil if not found.
-func (s *Store) GetProviderConfig(ctx context.Context, name string) (*ProviderConfig, error) {
-	const q = `SELECT name, display_name, protocol, base_url, path_prefix, is_builtin, sort_order
-	           FROM provider_config WHERE name = ?`
-	var c ProviderConfig
-	var isBuiltin int
-	err := s.db.QueryRowContext(ctx, q, name).Scan(&c.Name, &c.DisplayName, &c.Protocol, &c.BaseURL, &c.PathPrefix, &isBuiltin, &c.SortOrder)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	c.IsBuiltin = isBuiltin != 0
-	return &c, nil
-}
 
