@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Auto-rescan + SSE on MiniMax OAuth failure (spec/05 §15.2)**: when the `QuotaPoller` sees the token rejected — either via HTTP 401/403 or via the body's `base_resp.status_code = 1004` ("login fail") that the token-plan endpoint returns as HTTP 200 — it now invokes a registered `UnauthorizedCallback`. The daemon wires that callback to `agentscan.RunAll` (so any fresher OAuth token OpenClaw has written to `auth-profiles.json` since the last scan gets picked up automatically) and broadcasts a `subscription_unauthorized` SSE event so the dashboard can surface a "re-login OpenClaw" prompt if the rescan didn't help. New `ErrMinimaxAuth` sentinel error lets callers `errors.Is(err, ErrMinimaxAuth)` instead of parsing message strings.
+
+
+### Added
 - **Agent inheritance flow (spec/04)**: krouter now auto-extracts vendor endpoints, API keys, and OAuth tokens from the user's already-configured AI agents (OpenClaw, Claude Code) and persists them to a new `inherited_endpoints` table. Wizard gains an "Agent Paths" step; Dashboard gains an inheritance section. See `spec/04-agent-inheritance.md`.
 - **Subscription quota dashboard (spec/05)**: new `/internal/subscription/status` and `/internal/subscription/refresh` endpoints; Dashboard gains a MiniMax subscription card showing effective cost, monthly price, and per-tier window-reset countdown. See `spec/05-subscription-quota.md`.
 - **Scanner architecture (`internal/agentscan`)**: one Go file per AI agent implementing the `Scanner` interface (`AgentID`, `DisplayName`, `DefaultConfigPath`, `Scan`). Adding a new agent is purely additive — write the file, append the value to the registry — no schema change, no manifest layer.
