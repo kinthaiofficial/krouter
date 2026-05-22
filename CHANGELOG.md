@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **MiniMax subscription card now shows the original CNY price**: the dashboard formerly displayed e.g. `$6.76/mo plan`, which felt odd to users who paid `¥49/月` on minimaxi.com. It now shows `¥49/mo (≈ $6.76)`. The USD value is still computed (CNY × 0.138 fixed rate) so users can compare costs against per-token vendors. New `monthly_price_cny` field on `/internal/subscription/status` carries the original number.
+- **`agentscan.PendingFileDir()` now resolves to `~/.kinthai/` only** (was: `$XDG_CONFIG_HOME/krouter` → `~/Library/Application Support/krouter` → `~/.config/krouter` fallback chain). This fixes a silent-data-loss bug where the installer running from a shell with `XDG_CONFIG_HOME` set would write `pending-agents.json` somewhere the launchd-started daemon never looks (LaunchAgent plists inject `HOME` but not arbitrary shell env vars). New regression test asserts the path is invariant under `XDG_CONFIG_HOME` changes. `KROUTER_CONFIG_DIR` continues to override (for tests and site-specific deployments).
+
 ### Added
 - **Agent inheritance flow (spec/04)**: krouter now auto-extracts vendor endpoints, API keys, and OAuth tokens from the user's already-configured AI agents (OpenClaw, Claude Code) and persists them to a new `inherited_endpoints` table. Wizard gains an "Agent Paths" step; Dashboard gains an inheritance section. See `spec/04-agent-inheritance.md`.
 - **Subscription quota dashboard (spec/05)**: new `/internal/subscription/status` and `/internal/subscription/refresh` endpoints; Dashboard gains a MiniMax subscription card showing effective cost, monthly price, and per-tier window-reset countdown. See `spec/05-subscription-quota.md`.

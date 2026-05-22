@@ -21,39 +21,37 @@ import (
 // place so a later daemon launch can retry without losing the wizard input.
 const PendingFileName = "pending-agents.json"
 
-// PendingFileDir returns the directory the daemon reads / installer writes
-// pending-agents.json in. Resolution order:
+// PendingFileDir returns the directory the daemon reads — and the installer
+// writes — pending-agents.json in. Resolution order:
 //
-//  1. $KROUTER_CONFIG_DIR if set (used by tests and the bundled installer)
-//  2. $XDG_CONFIG_HOME/krouter on Linux-ish hosts
-//  3. ~/Library/Application Support/krouter on macOS
-//  4. ~/.config/krouter as final fallback
+//  1. $KROUTER_CONFIG_DIR if set (used by tests; also a manual override for
+//     site-specific deployments).
+//  2. ~/.kinthai/ otherwise.
 //
-// The function never returns an error so callers can `os.MkdirAll` the result
-// unconditionally; if the home dir is unavailable we return "" and the caller
-// falls back to silent no-op.
+// The daemon already keeps data.db, internal-token, and logs/ under
+// ~/.kinthai/, so the pending file sitting next to them keeps the on-disk
+// layout coherent. More importantly, this avoids a subtle alignment bug:
+// the macOS LaunchAgent plist only injects HOME (see
+// internal/config/launchagent_darwin.go) — it does NOT propagate
+// XDG_CONFIG_HOME or any other shell env var. If the installer ran from a
+// terminal where the user had set XDG_CONFIG_HOME, the installer would
+// write the file under that XDG path while the daemon — started by
+// launchd with no XDG_CONFIG_HOME — would look elsewhere, silently losing
+// the wizard's selections. Tying the path purely to HOME (which both
+// processes see) keeps the two binaries in lockstep.
+//
+// The function never returns an error so callers can `os.MkdirAll` the
+// result unconditionally; if the home dir is unavailable we return "" and
+// the caller falls back to silent no-op.
 func PendingFileDir() string {
 	if explicit := os.Getenv("KROUTER_CONFIG_DIR"); explicit != "" {
 		return explicit
-	}
-	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
-		return filepath.Join(xdg, "krouter")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	// macOS preference for app data; we still pick ~/.config/krouter on
-	// Linux because that's what the v2.0.34 install token already uses.
-	if appSupport := filepath.Join(home, "Library", "Application Support"); fileExists(appSupport) {
-		return filepath.Join(appSupport, "krouter")
-	}
-	return filepath.Join(home, ".config", "krouter")
-}
-
-func fileExists(p string) bool {
-	_, err := os.Stat(p)
-	return err == nil
+	return filepath.Join(home, ".kinthai")
 }
 
 // PendingAgent is one entry in pending-agents.json. The installer writes one
