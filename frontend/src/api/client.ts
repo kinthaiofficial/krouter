@@ -163,6 +163,54 @@ export interface AgentDiff {
   after: string
 }
 
+// ─── Agent inheritance (spec/04) ──────────────────────────────────────────
+
+export interface SupportedAgent {
+  agent_id: string
+  display_name: string
+  default_path: string
+}
+
+export interface ConfiguredAgent {
+  agent_id: string
+  enabled: boolean
+  config_path: string
+  last_scanned_at?: number   // ms UTC
+  last_error?: string
+  inherited_count: number
+}
+
+export interface RescanResult {
+  ok: boolean
+  agent_id: string
+  config_path: string
+  inherited_count: number
+  error?: string
+}
+
+// ─── Subscription quota (spec/05) ─────────────────────────────────────────
+
+export interface SubscriptionTier {
+  tier_name: string
+  total: number
+  used: number
+  remaining: number
+  highspeed: boolean
+  window_start: string         // RFC3339
+  window_end: string           // RFC3339
+  seconds_to_reset: number
+  effective_cost_per_call_usd: number
+  monthly_price_usd: number
+}
+
+export interface SubscriptionProvider {
+  provider: string
+  source_agent?: string
+  oauth_present: boolean
+  last_polled_at?: string
+  tiers: SubscriptionTier[]
+}
+
 export const api = {
   status: () => get<StatusResponse>('/internal/status'),
   settings: () => get<Settings>('/internal/settings'),
@@ -190,4 +238,20 @@ export const api = {
   removeProvider: (name: string) => deleteReq(`/internal/providers/${encodeURIComponent(name)}`),
   setProviderKey: (name: string, key: string) =>
     patchReq<Settings>('/internal/settings', { provider_keys: { [name]: key } }),
+
+  // ─── Agent inheritance (spec/04) ────────────────────────────────────────
+  agentsSupported: () => get<SupportedAgent[]>('/internal/agents/supported'),
+  agentsConfigured: () => get<ConfiguredAgent[]>('/internal/agents/configured'),
+  agentRescan: (id: string, path?: string) =>
+    post<RescanResult>(`/internal/agents/${encodeURIComponent(id)}/rescan`, path ? { path } : {}),
+  agentEnable: (id: string) =>
+    post<{ ok: boolean }>(`/internal/agents/${encodeURIComponent(id)}/enable`),
+  agentDisable: (id: string) =>
+    post<{ ok: boolean }>(`/internal/agents/${encodeURIComponent(id)}/disable`),
+  agentDelete: (id: string) => deleteReq(`/internal/agents/${encodeURIComponent(id)}`),
+
+  // ─── Subscription quota (spec/05) ───────────────────────────────────────
+  subscriptionStatus: () => get<SubscriptionProvider[]>('/internal/subscription/status'),
+  subscriptionRefresh: (provider?: string) =>
+    post<SubscriptionProvider[]>('/internal/subscription/refresh', provider ? { provider } : {}),
 }

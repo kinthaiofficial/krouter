@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Agent inheritance flow (spec/04)**: krouter now auto-extracts vendor endpoints, API keys, and OAuth tokens from the user's already-configured AI agents (OpenClaw, Claude Code) and persists them to a new `inherited_endpoints` table. Wizard gains an "Agent Paths" step; Dashboard gains an inheritance section. See `spec/04-agent-inheritance.md`.
+- **Subscription quota dashboard (spec/05)**: new `/internal/subscription/status` and `/internal/subscription/refresh` endpoints; Dashboard gains a MiniMax subscription card showing effective cost, monthly price, and per-tier window-reset countdown. See `spec/05-subscription-quota.md`.
+- **Scanner architecture (`internal/agentscan`)**: one Go file per AI agent implementing the `Scanner` interface (`AgentID`, `DisplayName`, `DefaultConfigPath`, `Scan`). Adding a new agent is purely additive — write the file, append the value to the registry — no schema change, no manifest layer.
+- **Injectable MiniMax `QuotaPoller.WithTokenResolver`**: the poller now reads the OAuth token from `inherited_endpoints.extras_json` first, closing the cold-start gap where the daemon couldn't poll quota until the user had sent a first proxied MiniMax request.
+- **`resolveProviderKey` helper**: routing engine and model discovery resolve vendor API keys through a single helper with precedence `inherited_endpoints > settings.ProviderKeys > env var`. Vendors the user already configured in OpenClaw no longer require a second key entry in the dashboard Settings page.
+
+### Fixed
+- **MiniMax pricing — duplicate tables disagreed (caught in PR review)**: an earlier commit in this PR introduced `internal/providers/minimax/pricing.go` as an independent lookup table (USD prices, formula `monthly_price_usd / total_count`) that conflicted with the existing `internal/storage/subscription_quota.go::minimaxPlanPriceCNY` (CNY prices, formula multiplied by `windows_per_month`). Worst case: the dashboard reported an effective cost roughly 1043× the value the routing engine was using; the SKU `{600, true}` was treated as "free" by routing while the dashboard quoted $0.0483/call. Fix: deleted `internal/providers/minimax/pricing.go` outright, routed all callers through `storage.SubscriptionQuota.EffectiveCostUSD()` and `MonthlyPriceUSD()` (single source of truth), corrected the `spec/05 §11` formula to include the `windows_per_month` factor, and added the pricing matrix + call graph + bug history to the spec as a cautionary note for future contributors.
+
 ## [2.0.50] - 2026-05-19
 
 ### Added

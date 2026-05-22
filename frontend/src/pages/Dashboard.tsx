@@ -4,6 +4,7 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { api, type LogRecord, type Preset, type DashboardStats } from '../api/client'
 import PresetSwitcher from '../components/PresetSwitcher'
 import QuotaBar from '../components/QuotaBar'
+import SubscriptionQuotaCard from '../components/SubscriptionQuotaCard'
 
 const PROVIDER_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4']
 
@@ -143,6 +144,9 @@ export default function Dashboard() {
           {quotas.map((q) => <QuotaBar key={q.window} quota={q} />)}
         </div>
       )}
+
+      {/* Subscription quota — collapses to nothing when no providers polled. */}
+      <SubscriptionQuotaCard />
 
       {/* Recent requests */}
       <div className="bg-white rounded-xl border border-gray-200 p-5">
