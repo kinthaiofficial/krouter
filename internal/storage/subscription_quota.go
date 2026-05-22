@@ -31,92 +31,29 @@ func (q *SubscriptionQuota) IsAvailable() bool {
 	return q.UsedCount < q.TotalCount
 }
 
-// Subscription pricing constants. Single source of truth — both routing
+// PricingFor looks up the subscription tier row in token_price_sub that
+// matches this quota's provider / total_count / highspeed combination,
+// and returns a populated SubscriptionPrice. When no row matches (unknown
+// SKU, table not yet seeded), a zero-value SubscriptionPrice is returned
+// — its EffectiveCostPerCallUSD and MonthlyPriceUSD methods both return
+// 0, which the routing engine treats as "free" (the user already paid
+// for the subscription, we just lack the price tag).
+//
+// Single source of truth for subscription pricing: both routing
 // (cmd/krouter/serve.go::subscriptionSource.GetSubscriptionInfo) and the
-// dashboard (internal/api/subscription_status.go::tiersToJSON) read pricing
-// through the methods on SubscriptionQuota below; nothing else in the tree
-// is allowed to maintain its own lookup table for MiniMax SKUs.
-//
-// Data source: https://platform.minimaxi.com/subscribe/token-plan
-// (国内 minimaxi.com subscribe page; OpenClaw's minimax-portal provider
-// authenticates against this domain). The 6 SKUs catalogued below are the
-// ones we have verified by hand; unknown combinations return 0 → routing
-// treats them as "free" (the user already paid for the subscription, we
-// just lack the SKU price). Update this table when MiniMax adds new SKUs
-// or revises prices.
-const (
-	subCNYToUSD       = 0.138
-	subWindowsPerMonth = 144.0 // 30 days × 24h / 5h
-)
-
-// EffectiveCostUSD returns the amortised cost per call in USD.
-//
-// Formula: monthly_price_cny × cny_to_usd / (total_count_per_window × windows_per_month)
-//
-// Note total_count is the per-5h-window quota the user purchased, not a
-// monthly cap; windowsPerMonth applies the temporal multiplier so the
-// resulting number is genuinely per-call. Example:
-//
-//	{TotalCount=1500, Highspeed=false} → ¥49/月
-//	49 × 0.138 / (1500 × 144) = $6.762 / 216,000 ≈ $0.0000313/call
-//
-// Used by:
-//   - routing engine for cost-aware decisions (per spec/05 §9)
-//   - subscription status API for dashboard display
-func (q *SubscriptionQuota) EffectiveCostUSD() float64 {
-	if q == nil || q.TotalCount == 0 {
-		return 0
+// dashboard (internal/api/subscription_status.go::tiersToJSON) read the
+// same row through this method. No parallel lookup tables allowed
+// anywhere else in the tree — see spec/05 §11 for the bug history that
+// led to this rule.
+func (q *SubscriptionQuota) PricingFor(ctx context.Context, store *Store) SubscriptionPrice {
+	if q == nil || store == nil {
+		return SubscriptionPrice{}
 	}
-	priceCNY := minimaxPlanPriceCNY(q.TotalCount, q.Highspeed)
-	if priceCNY == 0 {
-		return 0
+	price, err := store.FindSubscriptionPrice(ctx, q.Provider, q.TotalCount, q.Highspeed)
+	if err != nil || price == nil {
+		return SubscriptionPrice{}
 	}
-	return priceCNY * subCNYToUSD / (float64(q.TotalCount) * subWindowsPerMonth)
-}
-
-// MonthlyPriceUSD returns the SKU's monthly sticker price converted to USD,
-// or 0 when the SKU is not in our catalogue. Exposed for the dashboard so
-// users see e.g. "$6.76/月 plan" alongside the remaining-quota bar.
-//
-// The underlying price is stored in CNY (per minimaxi.com tariff); this
-// method returns the float USD value at a fixed conversion rate. We
-// deliberately do not chase the live FX rate — the dashboard is showing
-// the user "your purchased plan, normalised so you can compare with
-// per-token vendor prices", which only needs to be within ~5% accuracy.
-func (q *SubscriptionQuota) MonthlyPriceUSD() float64 {
-	if q == nil {
-		return 0
-	}
-	return minimaxPlanPriceCNY(q.TotalCount, q.Highspeed) * subCNYToUSD
-}
-
-// minimaxPlanPriceCNY returns the monthly subscription price in CNY for the
-// given (per-5h-window quota, speed tier). Returns 0 for combinations
-// missing from our catalogue.
-//
-// Known gaps (returned as 0; routing therefore treats them as effectively
-// free until someone updates this table):
-//   - {30000, false}: standard 30k tier — may not exist; minimaxi sells
-//     highspeed only at the 30k size
-//   - {600,  true}:   highspeed 600 tier — may not be a public SKU
-//
-// To verify / extend: visit https://platform.minimaxi.com/subscribe/token-plan?tab=individual__monthly
-// (Chinese, requires login) and read the table; pricing is updated
-// quarterly. See spec/05 §11.
-func minimaxPlanPriceCNY(totalCount int64, highspeed bool) float64 {
-	type key struct {
-		count     int64
-		highspeed bool
-	}
-	prices := map[key]float64{
-		{600, false}:   29,
-		{1500, false}:  49,
-		{4500, false}:  119,
-		{1500, true}:   98,
-		{4500, true}:   199,
-		{30000, true}:  899,
-	}
-	return prices[key{totalCount, highspeed}]
+	return *price
 }
 
 // UpsertSubscriptionQuota writes (or replaces) a quota cache row.

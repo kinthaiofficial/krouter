@@ -447,12 +447,13 @@ func (s *subscriptionSource) GetSubscriptionInfo(ctx context.Context, provider s
 		if q.Highspeed {
 			model = "MiniMax-M2.7-highspeed"
 		}
+		price := q.PricingFor(ctx, s.store)
 		return routing.SubscriptionInfo{
 			Available:        true,
 			Model:            model,
 			Remaining:        q.TotalCount - q.UsedCount,
 			Total:            q.TotalCount,
-			EffectiveCostUSD: q.EffectiveCostUSD(),
+			EffectiveCostUSD: price.EffectiveCostPerCallUSD(),
 		}
 	}
 	return routing.SubscriptionInfo{}

@@ -175,7 +175,7 @@ func (s *Service) StartSync(ctx context.Context, interval time.Duration) {
 	}()
 }
 
-// loadFromDB populates in-memory prices from the SQLite pricing_cache.
+// loadFromDB populates in-memory prices from the SQLite token_price_api table.
 func (s *Service) loadFromDB(ctx context.Context) error {
 	entries, err := s.store.GetAllPrices(ctx)
 	if err != nil {
@@ -317,7 +317,7 @@ type parsedEntry struct {
 
 // parseLiteLLM parses the top-level map from LiteLLM JSON.
 // Returns only entries that have non-zero input cost. RawJSON carries the
-// original per-model bytes for storage in the pricing_cache.raw_json column.
+// original per-model bytes for storage in the token_price_api.raw_json column.
 func (s *Service) parseLiteLLM(data []byte) (map[string]parsedEntry, error) {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {

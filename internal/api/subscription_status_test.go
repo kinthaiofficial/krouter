@@ -46,6 +46,20 @@ func TestSubscriptionStatus_AggregatesTiersAndEffectiveCost(t *testing.T) {
 	windowStart := now.Add(-30 * time.Minute)
 	windowEnd := now.Add(4*time.Hour + 30*time.Minute)
 
+	// Seed token_price_sub with the ¥49/1500 standard tier so the lookup
+	// inside tiersToJSON finds it. In production the installer seeds this
+	// table from data/token_price_sub.json; tests do it manually.
+	require.NoError(t, store.UpsertSubscriptionPrice(ctx, storage.SubscriptionPrice{
+		Provider:        "minimax",
+		TierPattern:     "MiniMax-M*",
+		TotalCount:      1500,
+		Highspeed:       false,
+		MonthlyPriceCNY: 49,
+		WindowHours:     5,
+		CNYToUSD:        0.138,
+		UpdatedAt:       now,
+	}))
+
 	require.NoError(t, store.UpsertSubscriptionQuota(ctx, storage.SubscriptionQuota{
 		Provider:     "minimax",
 		ModelPattern: "MiniMax-M*",
@@ -83,18 +97,16 @@ func TestSubscriptionStatus_AggregatesTiersAndEffectiveCost(t *testing.T) {
 	assert.Equal(t, int64(1500), mTier.Total)
 	assert.Equal(t, int64(1479), mTier.Remaining)
 
-	// effective_cost is computed by storage.SubscriptionQuota.EffectiveCostUSD:
+	// effective_cost is derived from the SubscriptionPrice row we seeded above:
 	//   ¥49 × 0.138 / (1500 × 144) ≈ $0.0000313/call
-	// (See internal/storage/subscription_quota.go for the formula and the
-	//  CNY pricing table. UI and routing must agree on these numbers.)
+	// where 144 = windows_per_month = (30 days × 24h) / 5h.
 	wantEffective := 49.0 * 0.138 / (1500.0 * 144.0)
 	assert.InDelta(t, wantEffective, mTier.EffectiveCostPerCallUSD, 1e-9)
 
-	// MonthlyPriceUSD is the CNY sticker price normalised at the fixed
-	// conversion rate (see storage.subCNYToUSD): ¥49 × 0.138 ≈ $6.762.
+	// MonthlyPriceUSD is the CNY sticker price normalised at cny_to_usd: ¥49 × 0.138 ≈ $6.762.
 	assert.InDelta(t, 49.0*0.138, mTier.MonthlyPriceUSD, 1e-9)
 
-	// speech-hd is not in the MiniMax monthly-plan catalogue → 0.
+	// speech-hd has no token_price_sub row → effective cost 0, monthly price 0.
 	speechTier := got[0].Tiers[1]
 	assert.Equal(t, "speech-hd", speechTier.TierName)
 	assert.Equal(t, 0.0, speechTier.EffectiveCostPerCallUSD)

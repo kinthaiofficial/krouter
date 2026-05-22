@@ -72,6 +72,7 @@ func (o *Orchestrator) Install() error {
 		fn   func() error
 	}{
 		{"Copy binary", o.CopyBinary},
+		{"Seed subscription prices", o.SeedSubPrices},
 		{"Register service", o.RegisterService},
 		{"Shell integration", o.ShellIntegration},
 		{"Connect agents", o.ConnectAgents},

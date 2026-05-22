@@ -41,8 +41,10 @@ CREATE TABLE IF NOT EXISTS provider_status (
     rolling_success_rate REAL                    -- last 100 requests
 );
 
--- LLM pricing (synced from LiteLLM JSON every 24h).
-CREATE TABLE IF NOT EXISTS pricing_cache (
+-- LLM per-token pricing (synced from LiteLLM JSON every 24h).
+-- Sibling table token_price_sub (migration 010) holds per-call subscription
+-- pricing for vendors like MiniMax.
+CREATE TABLE IF NOT EXISTS token_price_api (
     model_id                    TEXT PRIMARY KEY,
     provider                    TEXT NOT NULL,
     input_cost_per_token        REAL,
@@ -53,7 +55,7 @@ CREATE TABLE IF NOT EXISTS pricing_cache (
     updated_at                  TIMESTAMP NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS pricing_sync_meta (
+CREATE TABLE IF NOT EXISTS token_price_api_meta (
     key   TEXT PRIMARY KEY,
     value TEXT
     -- Keys: last_sync_at, last_etag, last_sha256, source_url
