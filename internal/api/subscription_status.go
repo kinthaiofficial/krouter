@@ -72,7 +72,7 @@ func (s *Server) writeSubscriptionStatus(w http.ResponseWriter, ctx context.Cont
 			SourceAgent:  sourceAgent,
 			OAuthPresent: oauthPresent,
 			LastPolledAt: newestFetchedAt(tiers),
-			Tiers:        tiersToJSON(tiers),
+			Tiers:        tiersToJSON(ctx, s.store, tiers),
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Provider < out[j].Provider })
@@ -145,7 +145,7 @@ func newestFetchedAt(tiers []storage.SubscriptionQuota) string {
 	return newest.UTC().Format(time.RFC3339)
 }
 
-func tiersToJSON(tiers []storage.SubscriptionQuota) []subscriptionTierJSON {
+func tiersToJSON(ctx context.Context, store *storage.Store, tiers []storage.SubscriptionQuota) []subscriptionTierJSON {
 	sort.Slice(tiers, func(i, j int) bool {
 		if tiers[i].ModelPattern == tiers[j].ModelPattern {
 			return !tiers[i].Highspeed && tiers[j].Highspeed
@@ -160,11 +160,11 @@ func tiersToJSON(tiers []storage.SubscriptionQuota) []subscriptionTierJSON {
 		if remaining < 0 {
 			remaining = 0
 		}
-		// Pricing comes from storage.SubscriptionQuota's helpers — the same
-		// source the routing engine consumes. This guarantees the cost
-		// number on the dashboard matches the cost used in routing
-		// decisions (see PR #1 reviewer comment for the previous
-		// dual-table bug).
+		// Pricing comes from token_price_sub via SubscriptionQuota.PricingFor,
+		// the same lookup the routing engine consumes. This guarantees the
+		// dashboard cost matches what routing sees (see spec/05 §11 for the
+		// PR #1 dual-table bug history).
+		price := t.PricingFor(ctx, store)
 		out = append(out, subscriptionTierJSON{
 			TierName:                t.ModelPattern,
 			Total:                   t.TotalCount,
@@ -174,8 +174,8 @@ func tiersToJSON(tiers []storage.SubscriptionQuota) []subscriptionTierJSON {
 			WindowStart:             t.WindowStart.UTC().Format(time.RFC3339),
 			WindowEnd:               t.WindowEnd.UTC().Format(time.RFC3339),
 			SecondsToReset:          int64(t.WindowEnd.Sub(now).Seconds()),
-			EffectiveCostPerCallUSD: t.EffectiveCostUSD(),
-			MonthlyPriceUSD:         t.MonthlyPriceUSD(),
+			EffectiveCostPerCallUSD: price.EffectiveCostPerCallUSD(),
+			MonthlyPriceUSD:         price.MonthlyPriceUSD(),
 		})
 	}
 	return out

@@ -5,7 +5,9 @@ import (
 	"time"
 )
 
-// PriceCacheEntry mirrors the pricing_cache table row.
+// PriceCacheEntry mirrors the token_price_api table row.
+// (Table was renamed from pricing_cache in migration 001; the in-memory
+// type name is kept for now to keep the diff focused.)
 type PriceCacheEntry struct {
 	ModelID                  string
 	Provider                 string
@@ -17,9 +19,9 @@ type PriceCacheEntry struct {
 	UpdatedAt                time.Time
 }
 
-// UpsertPrice inserts or replaces a single entry in pricing_cache.
+// UpsertPrice inserts or replaces a single entry in token_price_api.
 func (s *Store) UpsertPrice(ctx context.Context, e PriceCacheEntry) error {
-	const q = `INSERT INTO pricing_cache
+	const q = `INSERT INTO token_price_api
 		(model_id, provider, input_cost_per_token, output_cost_per_token,
 		 cached_input_cost_per_token, max_tokens, raw_json, updated_at)
 		VALUES (?,?,?,?,?,?,?,?)
@@ -40,13 +42,13 @@ func (s *Store) UpsertPrice(ctx context.Context, e PriceCacheEntry) error {
 	return err
 }
 
-// GetAllPrices returns all entries from pricing_cache.
+// GetAllPrices returns all entries from token_price_api.
 func (s *Store) GetAllPrices(ctx context.Context) ([]PriceCacheEntry, error) {
 	const q = `SELECT model_id, provider,
 		COALESCE(input_cost_per_token,0), COALESCE(output_cost_per_token,0),
 		COALESCE(cached_input_cost_per_token,0), COALESCE(max_tokens,0),
 		COALESCE(raw_json,''), updated_at
-		FROM pricing_cache`
+		FROM token_price_api`
 	rows, err := s.db.QueryContext(ctx, q)
 	if err != nil {
 		return nil, err
@@ -72,9 +74,9 @@ func (s *Store) GetAllPrices(ctx context.Context) ([]PriceCacheEntry, error) {
 	return out, rows.Err()
 }
 
-// GetSyncMeta returns a value from pricing_sync_meta. Returns "" when absent.
+// GetSyncMeta returns a value from token_price_api_meta. Returns "" when absent.
 func (s *Store) GetSyncMeta(ctx context.Context, key string) (string, error) {
-	const q = `SELECT COALESCE(value,'') FROM pricing_sync_meta WHERE key = ?`
+	const q = `SELECT COALESCE(value,'') FROM token_price_api_meta WHERE key = ?`
 	var v string
 	err := s.db.QueryRowContext(ctx, q, key).Scan(&v)
 	if err != nil {
@@ -83,9 +85,9 @@ func (s *Store) GetSyncMeta(ctx context.Context, key string) (string, error) {
 	return v, nil
 }
 
-// SetSyncMeta upserts a key in pricing_sync_meta.
+// SetSyncMeta upserts a key in token_price_api_meta.
 func (s *Store) SetSyncMeta(ctx context.Context, key, value string) error {
-	const q = `INSERT INTO pricing_sync_meta (key, value) VALUES (?,?)
+	const q = `INSERT INTO token_price_api_meta (key, value) VALUES (?,?)
 		ON CONFLICT(key) DO UPDATE SET value=excluded.value`
 	_, err := s.db.ExecContext(ctx, q, key, value)
 	return err

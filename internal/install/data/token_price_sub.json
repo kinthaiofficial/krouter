@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "note": "Subscription pricing seed for the token_price_sub table. The installer reads this file (via go:embed) at install time and upserts the rows. Updating prices is a JSON edit + reinstall — no daemon rebuild required.",
+  "tiers": [
+    {
+      "provider": "minimax",
+      "tier_pattern": "MiniMax-M*",
+      "total_count": 600,
+      "highspeed": false,
+      "monthly_price_cny": 29,
+      "window_hours": 5,
+      "cny_to_usd": 0.138,
+      "data_source_url": "https://platform.minimaxi.com/subscribe/token-plan?tab=individual__monthly"
+    },
+    {
+      "provider": "minimax",
+      "tier_pattern": "MiniMax-M*",
+      "total_count": 1500,
+      "highspeed": false,
+      "monthly_price_cny": 49,
+      "window_hours": 5,
+      "cny_to_usd": 0.138,
+      "data_source_url": "https://platform.minimaxi.com/subscribe/token-plan?tab=individual__monthly"
+    },
+    {
+      "provider": "minimax",
+      "tier_pattern": "MiniMax-M*",
+      "total_count": 4500,
+      "highspeed": false,
+      "monthly_price_cny": 119,
+      "window_hours": 5,
+      "cny_to_usd": 0.138,
+      "data_source_url": "https://platform.minimaxi.com/subscribe/token-plan?tab=individual__monthly"
+    },
+    {
+      "provider": "minimax",
+      "tier_pattern": "MiniMax-M*",
+      "total_count": 1500,
+      "highspeed": true,
+      "monthly_price_cny": 98,
+      "window_hours": 5,
+      "cny_to_usd": 0.138,
+      "data_source_url": "https://platform.minimaxi.com/subscribe/token-plan?tab=individual__monthly"
+    },
+    {
+      "provider": "minimax",
+      "tier_pattern": "MiniMax-M*",
+      "total_count": 4500,
+      "highspeed": true,
+      "monthly_price_cny": 199,
+      "window_hours": 5,
+      "cny_to_usd": 0.138,
+      "data_source_url": "https://platform.minimaxi.com/subscribe/token-plan?tab=individual__monthly"
+    },
+    {
+      "provider": "minimax",
+      "tier_pattern": "MiniMax-M*",
+      "total_count": 30000,
+      "highspeed": true,
+      "monthly_price_cny": 899,
+      "window_hours": 5,
+      "cny_to_usd": 0.138,
+      "data_source_url": "https://platform.minimaxi.com/subscribe/token-plan?tab=individual__monthly"
+    }
+  ]
+}

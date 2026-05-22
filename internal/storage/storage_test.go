@@ -59,13 +59,13 @@ func TestAllTablesExist(t *testing.T) {
 		"announcements",
 		"feed_meta",
 		"paired_devices",
-		"pricing_cache",
-		"pricing_sync_meta",
 		"provider_status",
 		"quota_state",
 		"requests",
 		"schema_migrations",
 		"settings_kv",
+		"token_price_api",
+		"token_price_api_meta",
 	}
 	for _, want := range expected {
 		assert.Contains(t, tables, want, "table %q should exist", want)

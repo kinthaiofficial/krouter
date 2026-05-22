@@ -75,7 +75,7 @@
 ### 4.2 用户感知到的 routing 行为
 
 - 当订阅 quota 充足：所有 MiniMax-M* 请求都走订阅，**用户不付任何额外 token 费**
-- 当订阅 quota 耗尽：自动 fallback 到 pay-per-token vendor（按 pricing_cache 选 cheapest），UI 顶部弹一条 toast "MiniMax 5h 配额已用尽，已切换到 DeepSeek（$0.04/MTok）"
+- 当订阅 quota 耗尽：自动 fallback 到 pay-per-token vendor（按 token_price_api 选 cheapest），UI 顶部弹一条 toast "MiniMax 5h 配额已用尽，已切换到 DeepSeek（$0.04/MTok）"
 - 窗口重置时刻自动恢复订阅优先
 
 ---
@@ -269,7 +269,7 @@ fallback 到 cheapestProviderModel(protocol="anthropic", model="MiniMax-M2.7")
   - openrouter (如果用户也配过, OpenRouter 上的 anthropic 系列)
   - anthropic 直连 (如果 inherit 有 key)
   ↓
-按 pricing_cache cost 排序选 cheapest
+按 token_price_api cost 排序选 cheapest
   ↓
 broadcast SSE "subscription_exhausted":
   {provider: "minimax", tier: "MiniMax-M*", resets_at: <window_end>}
