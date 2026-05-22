@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link2, Link2Off, RefreshCw, ChevronDown, ChevronUp, TerminalSquare, RotateCcw, History } from 'lucide-react'
 import { api, type BackupInfo, type AgentDiff } from '../api/client'
+import AgentInheritanceSection from '../components/AgentInheritanceSection'
 
 interface AgentStats {
   requests_today: number
@@ -149,6 +150,8 @@ export default function Agents() {
           Re-detect
         </button>
       </div>
+
+      <AgentInheritanceSection />
 
       {isLoading ? (
         <p className="text-sm text-gray-400">Detecting agents…</p>
