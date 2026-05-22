@@ -225,6 +225,17 @@ The daemon listens on two ports:
 					"window_end": windowEnd.UTC().Format(time.RFC3339),
 				})
 			})
+			// Auto-rescan + dashboard notice when MiniMax rejects our OAuth
+			// token (spec/05 §15.2). The rescan re-reads OpenClaw's
+			// auth-profiles.json so a token OpenClaw silently refreshed in
+			// the background gets picked up; the SSE event lets the user
+			// know to re-login if the rescan doesn't help.
+			minimaxPoller.WithUnauthorizedCallback(func() {
+				agentscan.RunAll(ctx, store, logger)
+				apiSrv.Broadcast("subscription_unauthorized", map[string]any{
+					"provider": "minimax",
+				})
+			})
 			apiSrv.SetSSEDebug(proxySrv.GetLastSSECapture)
 
 			// Agent inheritance — refresh inherited_endpoints from each enabled
