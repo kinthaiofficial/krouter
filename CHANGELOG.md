@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Subscription routing could pick the wrong tier when minimax has multiple plans (spec/05 §8)**: `subscriptionSource.GetSubscriptionInfo` iterated `GetAllSubscriptionQuotas` and returned the first `IsAvailable()` row, then hardcoded the rewrite-target model as `MiniMax-M2.7` regardless of which tier had matched. If a user's `MiniMax-M*` (LLM) tier was exhausted but `speech-hd` (TTS) still had quota, routing thought minimax was available, sent an LLM request as `MiniMax-M2.7`, and minimax replied 4xx because the M* tier was empty. Fixed by explicitly looking for the tier whose `model_pattern` wildcard-matches the rewrite target (`storage.SubscriptionQuota.MatchesModel` using `path.Match`). Standard tier preferred over highspeed; highspeed used only as fallback. New tests cover the speech-hd masking scenario, standard-vs-highspeed precedence, the highspeed fallback path, and the non-minimax provider case.
+
 ### Added
 - **`subscription_exhausted` SSE event (spec/05 §12.3)**: when the MiniMax quota poller observes a tier transitioning from "had quota" to "zero remaining" within the current window, the daemon broadcasts a `subscription_exhausted` event with `{provider, tier, highspeed, window_end}`. Dedupe key is `window_end` so we don't refire repeatedly within the same exhausted window. The dashboard `SubscriptionQuotaCard` listens for the event, surfaces a transient banner ("quota exhausted, routing fell back to per-token vendors until window reset at …"), and force-refetches `/internal/subscription/status` so the bars update immediately instead of waiting 60s for the next poll.
 
