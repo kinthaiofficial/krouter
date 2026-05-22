@@ -58,3 +58,51 @@ func TestManager_DefaultPreset_WhenPartialFile(t *testing.T) {
 	assert.Equal(t, "balanced", s.Preset)
 	assert.Equal(t, "zh-CN", s.Language)
 }
+
+func TestManager_DefaultDailyBudget_WhenNoFile(t *testing.T) {
+	dir := t.TempDir()
+	m := config.New(filepath.Join(dir, "settings.json"))
+
+	s := m.Get()
+	assert.Equal(t, 50.0, s.BudgetWarnings["daily"],
+		"first-run default daily budget should be $50")
+}
+
+func TestManager_DefaultDailyBudget_WhenKeyMissing(t *testing.T) {
+	dir := t.TempDir()
+	m := config.New(filepath.Join(dir, "settings.json"))
+
+	// Write a settings file with no budget_warnings key.
+	require.NoError(t, m.Set(config.Settings{Preset: "saver"}))
+
+	s := m.Get()
+	assert.Equal(t, 50.0, s.BudgetWarnings["daily"],
+		"daily key missing from saved file should default to $50")
+}
+
+func TestManager_DefaultDailyBudget_DoesNotOverrideExplicitZero(t *testing.T) {
+	dir := t.TempDir()
+	m := config.New(filepath.Join(dir, "settings.json"))
+
+	// User explicitly disables the budget by setting daily to 0.
+	require.NoError(t, m.Set(config.Settings{
+		BudgetWarnings: map[string]float64{"daily": 0},
+	}))
+
+	s := m.Get()
+	assert.Equal(t, 0.0, s.BudgetWarnings["daily"],
+		"explicit 0 must not be overridden by default")
+}
+
+func TestManager_DefaultDailyBudget_DoesNotOverrideUserValue(t *testing.T) {
+	dir := t.TempDir()
+	m := config.New(filepath.Join(dir, "settings.json"))
+
+	require.NoError(t, m.Set(config.Settings{
+		BudgetWarnings: map[string]float64{"daily": 100},
+	}))
+
+	s := m.Get()
+	assert.Equal(t, 100.0, s.BudgetWarnings["daily"],
+		"user-set limit must not be overridden by default")
+}

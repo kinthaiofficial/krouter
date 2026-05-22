@@ -351,3 +351,63 @@ func TestEngine_Saver_LivePricingCrossProtocol(t *testing.T) {
 	assert.Equal(t, "deepseek-chat", dec.Model)
 	assert.Contains(t, dec.Reason, "live pricing")
 }
+
+// ── Budget hard-stop ──────────────────────────────────────────────────────────
+
+// stubQuota implements routing.QuotaSource for testing.
+type stubQuota struct{ state routing.QuotaState }
+
+func (s *stubQuota) CurrentQuota(_ context.Context) routing.QuotaState { return s.state }
+
+func TestEngine_BudgetExceeded_DailyBlocksRequest(t *testing.T) {
+	engine := routing.New(anthropicRegistry())
+	engine.WithQuota(&stubQuota{state: routing.QuotaState{DailyPercent: 1.0}})
+
+	dec := engine.Decide(routing.Request{
+		Protocol:       "anthropic",
+		RequestedModel: "claude-sonnet-4-5",
+	}, routing.PresetBalanced)
+
+	assert.True(t, dec.BudgetExceeded, "daily >= 100% must set BudgetExceeded")
+	assert.Equal(t, "", dec.Provider, "blocked decision must have no provider")
+}
+
+func TestEngine_BudgetExceeded_WeeklyBlocksRequest(t *testing.T) {
+	engine := routing.New(anthropicRegistry())
+	engine.WithQuota(&stubQuota{state: routing.QuotaState{WeeklyPercent: 1.05}})
+
+	dec := engine.Decide(routing.Request{
+		Protocol:       "anthropic",
+		RequestedModel: "claude-sonnet-4-5",
+	}, routing.PresetQuality)
+
+	assert.True(t, dec.BudgetExceeded)
+}
+
+func TestEngine_BudgetNotExceeded_RoutesNormally(t *testing.T) {
+	engine := routing.New(anthropicRegistry())
+	engine.WithQuota(&stubQuota{state: routing.QuotaState{DailyPercent: 0.99}})
+
+	dec := engine.Decide(routing.Request{
+		Protocol:       "anthropic",
+		RequestedModel: "claude-sonnet-4-5",
+	}, routing.PresetBalanced)
+
+	assert.False(t, dec.BudgetExceeded, "99% should still route normally")
+	assert.NotEmpty(t, dec.Provider)
+}
+
+func TestEngine_NoBudgetConfigured_RoutesNormally(t *testing.T) {
+	// When no quota source is wired (DailyPercent == 0 == "not configured"),
+	// requests must never be blocked regardless of the zero value.
+	engine := routing.New(anthropicRegistry())
+	engine.WithQuota(&stubQuota{state: routing.QuotaState{}})
+
+	dec := engine.Decide(routing.Request{
+		Protocol:       "anthropic",
+		RequestedModel: "claude-sonnet-4-5",
+	}, routing.PresetBalanced)
+
+	assert.False(t, dec.BudgetExceeded)
+	assert.NotEmpty(t, dec.Provider)
+}

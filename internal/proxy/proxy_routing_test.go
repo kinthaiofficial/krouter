@@ -210,3 +210,94 @@ data: [DONE]
 	assert.Equal(t, 20, rows[0].InputTokens)
 	assert.Equal(t, 15, rows[0].OutputTokens)
 }
+
+// ── Budget hard-stop ──────────────────────────────────────────────────────────
+
+// exhaustedQuota is a routing.QuotaSource stub that reports 100% daily usage.
+type exhaustedQuota struct{}
+
+func (exhaustedQuota) CurrentQuota(_ context.Context) routing.QuotaState {
+	return routing.QuotaState{DailyPercent: 1.0}
+}
+
+func newRoutingServerWithQuota(t *testing.T, upstream *httptest.Server, qs routing.QuotaSource) *httptest.Server {
+	t.Helper()
+
+	store, err := storage.Open(":memory:")
+	require.NoError(t, err)
+	require.NoError(t, store.Migrate())
+	t.Cleanup(func() { _ = store.Close() })
+
+	adapter := anthropicadapter.New(upstream.URL, upstream.Client())
+	reg := providers.New()
+	reg.Register(adapter)
+	engine := routing.New(reg)
+	engine.WithQuota(qs)
+
+	var buf bytes.Buffer
+	srv := proxy.New(
+		proxy.WithLogger(logging.NewWithWriter("debug", &buf)),
+		proxy.WithEngine(engine),
+		proxy.WithRegistry(reg),
+		proxy.WithStore(store),
+	)
+
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestBudgetExceeded_Anthropic_Returns429(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// Should never be reached — budget block must fire before any forward.
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"msg_1"}`))
+	}))
+	defer upstream.Close()
+
+	ts := newRoutingServerWithQuota(t, upstream, exhaustedQuota{})
+
+	reqBody := `{"model":"claude-sonnet-4-5","messages":[],"max_tokens":50}`
+	resp, err := http.Post(ts.URL+"/v1/messages", "application/json", strings.NewReader(reqBody)) //nolint:noctx
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusTooManyRequests, resp.StatusCode, "exhausted budget must return 429")
+
+	body, _ := io.ReadAll(resp.Body)
+	assert.Contains(t, string(body), "budget", "error body must mention budget")
+}
+
+func TestBudgetExceeded_OpenAI_Returns429(t *testing.T) {
+	upstream := httptest.NewServer(http.NotFoundHandler())
+	defer upstream.Close()
+
+	store, err := storage.Open(":memory:")
+	require.NoError(t, err)
+	require.NoError(t, store.Migrate())
+	t.Cleanup(func() { _ = store.Close() })
+
+	reg := providers.New()
+	engine := routing.New(reg)
+	engine.WithQuota(exhaustedQuota{})
+
+	var buf bytes.Buffer
+	srv := proxy.New(
+		proxy.WithLogger(logging.NewWithWriter("debug", &buf)),
+		proxy.WithEngine(engine),
+		proxy.WithRegistry(reg),
+		proxy.WithStore(store),
+	)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	reqBody := `{"model":"gpt-4o","messages":[]}`
+	resp, err := http.Post(ts.URL+"/v1/chat/completions", "application/json", strings.NewReader(reqBody)) //nolint:noctx
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusTooManyRequests, resp.StatusCode, "exhausted budget must return 429 for OpenAI protocol")
+
+	body, _ := io.ReadAll(resp.Body)
+	assert.Contains(t, string(body), "budget")
+}
