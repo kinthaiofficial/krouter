@@ -52,6 +52,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kinthaiofficial/krouter/internal/agentscan"
 	"github.com/kinthaiofficial/krouter/internal/config"
 	"github.com/kinthaiofficial/krouter/internal/notify"
 	"github.com/kinthaiofficial/krouter/internal/pricing"
@@ -1118,40 +1119,126 @@ type agentStats struct {
 type agentWithStats struct {
 	config.AgentStatus
 	Stats agentStats `json:"stats"`
+
+	// Inheritance fields (spec/04 §8.6). Optional — empty for legacy agents
+	// that have no Scanner registered (Cursor / Hermes etc. still go
+	// through v2.0.47 connect/disconnect for now). All omitempty so older
+	// frontends ignoring these fields keep working.
+	Supported      bool   `json:"supported,omitempty"`        // Scanner is compiled in
+	Enabled        bool   `json:"enabled,omitempty"`          // agent_settings.enabled = 1
+	InheritedCount int    `json:"inherited_count,omitempty"`  // count of inherited_endpoints rows
+	LastScannedAt  *int64 `json:"last_scanned_at,omitempty"`  // ms UTC of most recent scan
+	LastError      string `json:"last_error,omitempty"`       // last scanner error, if any
 }
 
 // handleAgents handles GET /internal/agents.
-// Detects installed AI agents, reports connection status, and includes today's per-agent stats.
+//
+// Returns a unified view spanning two sources, keyed by agent name:
+//
+//   1. v2.0.47 filesystem detection (config.DetectAgentStatuses) — finds AI
+//      agents installed on disk, reports whether their baseUrl already
+//      points at krouter, and which provider names appear in their config.
+//      This list also drives the per-agent today's-stats numbers.
+//
+//   2. The spec/04 inheritance Scanner registry — every agent the daemon
+//      knows how to inherit from, joined against agent_settings (enabled
+//      flag + last scan state) and inherited_endpoints (vendor count).
+//
+// Agents that appear in either source show up in the output. The Scanner
+// registry is the authoritative list of "known agents"; v2.0.47 detection
+// adds runtime presence information when the agent files exist on disk.
 func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
+	ctx := r.Context()
 	statuses := config.DetectAgentStatuses()
-	out := make([]agentWithStats, len(statuses))
 	todayStart := time.Now().UTC().Truncate(24 * time.Hour)
 
-	for i, a := range statuses {
-		out[i] = agentWithStats{AgentStatus: a}
+	// Index v2.0.47 detection by name so we can join Scanner-derived data.
+	detected := make(map[string]config.AgentStatus, len(statuses))
+	for _, st := range statuses {
+		detected[st.Name] = st
+	}
+
+	// Index agent_settings rows (inheritance state) by agent_id.
+	settingsByID := make(map[string]storage.AgentSetting)
+	if s.store != nil {
+		if rows, err := s.store.ListAgentSettings(ctx); err == nil {
+			for _, row := range rows {
+				settingsByID[row.AgentID] = row
+			}
+		}
+	}
+
+	// Build the union: every Scanner ID + every detected-but-unscanned name.
+	type key struct{ name string }
+	seen := make(map[string]struct{})
+	order := make([]string, 0)
+	for _, sc := range agentscan.Scanners {
+		if _, ok := seen[sc.AgentID()]; !ok {
+			seen[sc.AgentID()] = struct{}{}
+			order = append(order, sc.AgentID())
+		}
+	}
+	for _, st := range statuses {
+		if _, ok := seen[st.Name]; !ok {
+			seen[st.Name] = struct{}{}
+			order = append(order, st.Name)
+		}
+	}
+
+	out := make([]agentWithStats, 0, len(order))
+	for _, name := range order {
+		row := agentWithStats{}
+		if st, ok := detected[name]; ok {
+			row.AgentStatus = st
+		} else {
+			// Scanner-registered agent not detected on disk: emit a stub
+			// AgentStatus so the JSON still has Name + default empty fields.
+			row.AgentStatus = config.AgentStatus{
+				AgentInfo: config.AgentInfo{Name: name},
+			}
+		}
+
+		// Today's stats (v2.0.47 behaviour, only for names that have request rows).
 		if s.store != nil {
-			recs, err := s.store.ListRequestsByAgent(r.Context(), a.Name, 10000)
+			recs, err := s.store.ListRequestsByAgent(ctx, name, 10000)
 			if err == nil {
 				for _, rec := range recs {
 					if rec.Timestamp.UTC().Before(todayStart) {
 						continue
 					}
-					out[i].Stats.RequestsToday++
-					out[i].Stats.CostTodayUSD += float64(rec.CostMicroUSD) / 1_000_000
+					row.Stats.RequestsToday++
+					row.Stats.CostTodayUSD += float64(rec.CostMicroUSD) / 1_000_000
 					if s.pricing != nil {
 						baseline := s.pricing.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens)
 						if saved := baseline - rec.CostMicroUSD; saved > 0 {
-							out[i].Stats.SavingsTodayUSD += float64(saved) / 1_000_000
+							row.Stats.SavingsTodayUSD += float64(saved) / 1_000_000
 						}
 					}
 				}
 			}
 		}
+
+		// Inheritance overlay (spec/04 §8.6).
+		if agentscan.Get(name) != nil {
+			row.Supported = true
+		}
+		if cfg, ok := settingsByID[name]; ok {
+			row.Enabled = cfg.Enabled
+			row.LastScannedAt = cfg.LastScannedAt
+			row.LastError = cfg.LastError
+			if s.store != nil {
+				if eps, err := s.store.ListInheritedEndpointsByAgent(ctx, name); err == nil {
+					row.InheritedCount = len(eps)
+				}
+			}
+		}
+
+		out = append(out, row)
 	}
 
 	writeJSON(w, out)
