@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### Added
+- **`spec/00-design-principles.md`**: distilled cross-cutting design rules (product positioning, transparent-proxy invariants, data architecture, UX rules, engineering trade-offs, process meta-rules). New PRs and reviews are expected to reference principles by their letter+number (e.g. "violates C2 — single source of truth"). Compiled from the working-session history that produced `spec/04` and `spec/05`; each principle ships with the concrete incident or trade-off that motivated it, so a future contributor can decide whether the rule still applies when their case looks different.
+
+
+### Added
 - **Agent inheritance flow (spec/04)**: krouter now auto-extracts vendor endpoints, API keys, and OAuth tokens from the user's already-configured AI agents (OpenClaw, Claude Code) and persists them to a new `inherited_endpoints` table. Wizard gains an "Agent Paths" step; Dashboard gains an inheritance section. See `spec/04-agent-inheritance.md`.
 - **Subscription quota dashboard (spec/05)**: new `/internal/subscription/status` and `/internal/subscription/refresh` endpoints; Dashboard gains a MiniMax subscription card showing effective cost, monthly price, and per-tier window-reset countdown. See `spec/05-subscription-quota.md`.
 - **Scanner architecture (`internal/agentscan`)**: one Go file per AI agent implementing the `Scanner` interface (`AgentID`, `DisplayName`, `DefaultConfigPath`, `Scan`). Adding a new agent is purely additive — write the file, append the value to the registry — no schema change, no manifest layer.
