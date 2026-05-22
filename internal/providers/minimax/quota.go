@@ -17,24 +17,48 @@ const quotaAPIURL = "https://api.minimaxi.com/v1/token_plan/remains"
 // QuotaPoller fetches MiniMax subscription quota from token_plan/remains and
 // writes the result to the subscription_quota_cache table.
 //
-// It uses the most recently cached OAuth token (set by CacheOAuthToken on each
-// proxied MiniMax request). If no token has been seen yet, polling is skipped.
+// The OAuth token comes from a pluggable resolver. The default resolver reads
+// from the in-memory cache populated by proxied request headers (see
+// CacheOAuthToken). serve.go overrides it via WithTokenResolver so the poller
+// prefers tokens inherited from agent configs (inherited_endpoints.extras_json)
+// over the request-traffic cache, which fixes the cold-start gap where the
+// daemon couldn't poll until the user had sent a first MiniMax request.
 //
 // Poll schedule:
 //   - Normal interval: 30 minutes
 //   - When current window ends in < 30 minutes: poll every 5 minutes
-//   - Skips poll if GetCachedToken() == "" (no MiniMax traffic seen yet)
+//   - Skips poll if the resolver returns "" (no token available)
 type QuotaPoller struct {
 	store      *storage.Store
 	httpClient *http.Client
+	resolver   TokenResolver
 }
 
-// NewQuotaPoller creates a QuotaPoller backed by the given store and HTTP client.
+// TokenResolver returns the OAuth token to use for the next poll, or "" to
+// skip this cycle. ctx is honoured for any DB / network lookups the resolver
+// performs.
+type TokenResolver func(ctx context.Context) string
+
+// defaultTokenResolver reads from the in-memory request-header cache.
+func defaultTokenResolver(_ context.Context) string { return GetCachedToken() }
+
+// NewQuotaPoller creates a QuotaPoller backed by the given store and HTTP
+// client. The default OAuth resolver reads from the in-memory cache populated
+// by proxied requests; use WithTokenResolver to override (preferred).
 func NewQuotaPoller(store *storage.Store, client *http.Client) *QuotaPoller {
 	if client == nil {
 		client = &http.Client{Timeout: 15 * time.Second}
 	}
-	return &QuotaPoller{store: store, httpClient: client}
+	return &QuotaPoller{store: store, httpClient: client, resolver: defaultTokenResolver}
+}
+
+// WithTokenResolver installs a custom OAuth-token resolver and returns the
+// poller for chaining. Passing nil keeps the existing resolver.
+func (p *QuotaPoller) WithTokenResolver(r TokenResolver) *QuotaPoller {
+	if r != nil {
+		p.resolver = r
+	}
+	return p
 }
 
 // Start runs the polling loop until ctx is cancelled.
@@ -56,9 +80,9 @@ func (p *QuotaPoller) Start(ctx context.Context) {
 
 // PollOnce performs a single quota fetch and persists results. Exported for testing.
 func (p *QuotaPoller) PollOnce(ctx context.Context) error {
-	token := GetCachedToken()
+	token := p.resolver(ctx)
 	if token == "" {
-		return nil // no MiniMax traffic yet; skip silently
+		return nil // no OAuth token available yet; skip silently
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, quotaAPIURL, nil)
