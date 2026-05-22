@@ -11,8 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"strings"
-
 	"github.com/kinthaiofficial/krouter/internal/agentscan"
 	"github.com/kinthaiofficial/krouter/internal/api"
 	"github.com/kinthaiofficial/krouter/internal/config"
@@ -95,7 +93,6 @@ The daemon listens on two ports:
 			// providers can read keys from settings at request time.
 			configPath, _ := cmd.Flags().GetString("config")
 			settings := config.New(configPath)
-			settings.MigrateKeys()
 
 			// Proxy-aware transport — auto-detects OS system proxy (macOS scutil,
 			// Windows registry, Linux gsettings) and bypasses domestic China hosts.
@@ -113,7 +110,7 @@ The daemon listens on two ports:
 			reg := providers.New()
 			reg.Register(anthropicadapter.New("https://api.anthropic.com", sharedClient))
 			reg.Register(minimaxadapter.New(sharedClient)) // transparent proxy — auth header comes from the agent (OpenClaw OAuth)
-			loadProvidersFromDB(ctx, store, reg, settings, sharedClient)
+			loadProvidersFromDB(ctx, store, reg, sharedClient)
 
 			// Routing engine.
 			engine := routing.New(reg)
@@ -217,9 +214,6 @@ The daemon listens on two ports:
 			apiSrv.SetProxyManager(proxymgr)
 			apiSrv.SetMinimaxPoller(minimaxPoller)
 			apiSrv.SetSSEDebug(proxySrv.GetLastSSECapture)
-			apiSrv.SetProviderCreator(func(cfg storage.ProviderConfig, keyFn func() string) providers.Provider {
-				return openaiadapter.NewWithPathReplaceAndKeyFn(cfg.Name, cfg.BaseURL, cfg.PathPrefix, keyFn, nil, sharedClient)
-			})
 
 			// Agent inheritance — refresh inherited_endpoints from each enabled
 			// AI agent's config file. Runs early so model discovery and the
@@ -462,9 +456,7 @@ func (s *subscriptionSource) GetSubscriptionInfo(ctx context.Context, provider s
 // loadProvidersFromDB reads provider_config rows and registers an OpenAI adapter for
 // each openai-protocol entry. Anthropic and MiniMax are skipped — they are always
 // registered separately with custom protocol logic above.
-// Called once at startup; custom providers added at runtime are also registered
-// immediately by the API server's doAddProvider handler.
-func loadProvidersFromDB(ctx context.Context, store *storage.Store, reg *providers.Registry, settings *config.Manager, sharedClient *http.Client) {
+func loadProvidersFromDB(ctx context.Context, store *storage.Store, reg *providers.Registry, sharedClient *http.Client) {
 	cfgs, err := store.GetProviderConfigs(ctx)
 	if err != nil {
 		return
@@ -476,13 +468,7 @@ func loadProvidersFromDB(ctx context.Context, store *storage.Store, reg *provide
 		}
 		name := cfg.Name
 		keyFn := func() string {
-			// Prefer agent-inherited or settings-manual keys (see spec/04 §9).
-			if k := resolveProviderKeyForRouting(store, settings, name); k != "" {
-				return k
-			}
-			// Last-resort fallback for users running krouter from a shell with
-			// vendor env vars set directly. Unchanged from v2.0.50 behaviour.
-			return os.Getenv(strings.ToUpper(name) + "_API_KEY")
+			return resolveProviderKeyForRouting(store, name)
 		}
 		reg.Register(openaiadapter.NewWithPathReplaceAndKeyFn(name, cfg.BaseURL, cfg.PathPrefix, keyFn, nil, sharedClient))
 	}
