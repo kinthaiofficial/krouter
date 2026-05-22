@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### Added
+- **Periodic agent rescan (spec/04 §14 "Hot reload")**: the daemon now runs `agentscan.RunAll` every 5 minutes in addition to the startup-time pass, so config changes the user makes to OpenClaw / Claude Code between daemon restarts are picked up without manual intervention. After each tick the daemon broadcasts an `agents_changed` SSE event with `source: periodic_rescan` so the dashboard can refetch `/internal/agents/configured` immediately rather than waiting for its own react-query refetch interval. Implemented as `agentscan.StartPeriodicRescan(ctx, store, logger, interval, onTick)` — exported so tests (and future fsnotify variants) can drive it with a custom cadence.
+
+
+### Added
 - **Agent inheritance flow (spec/04)**: krouter now auto-extracts vendor endpoints, API keys, and OAuth tokens from the user's already-configured AI agents (OpenClaw, Claude Code) and persists them to a new `inherited_endpoints` table. Wizard gains an "Agent Paths" step; Dashboard gains an inheritance section. See `spec/04-agent-inheritance.md`.
 - **Subscription quota dashboard (spec/05)**: new `/internal/subscription/status` and `/internal/subscription/refresh` endpoints; Dashboard gains a MiniMax subscription card showing effective cost, monthly price, and per-tier window-reset countdown. See `spec/05-subscription-quota.md`.
 - **Scanner architecture (`internal/agentscan`)**: one Go file per AI agent implementing the `Scanner` interface (`AgentID`, `DisplayName`, `DefaultConfigPath`, `Scan`). Adding a new agent is purely additive — write the file, append the value to the registry — no schema change, no manifest layer.
