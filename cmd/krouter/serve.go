@@ -13,6 +13,7 @@ import (
 
 	"strings"
 
+	"github.com/kinthaiofficial/krouter/internal/agentscan"
 	"github.com/kinthaiofficial/krouter/internal/api"
 	"github.com/kinthaiofficial/krouter/internal/config"
 	"github.com/kinthaiofficial/krouter/internal/logging"
@@ -167,9 +168,18 @@ The daemon listens on two ports:
 			})
 			pricingSvc.StartSync(ctx, 24*time.Hour)
 
-			// MiniMax subscription quota poller — uses cached OAuth token from proxied requests.
+			// MiniMax subscription quota poller. OAuth token is resolved with
+			// inherited_endpoints.extras_json as the preferred source (populated
+			// by agentscan from the user's OpenClaw auth-profiles.json), with
+			// the in-memory request-header cache as a fallback for users on
+			// older daemon configurations or who haven't enabled OpenClaw yet.
 			minimaxPoller := minimaxadapter.NewQuotaPoller(store, &http.Client{
 				Timeout: 15 * time.Second, Transport: bgTransport,
+			}).WithTokenResolver(func(ctx context.Context) string {
+				if t := readMinimaxOAuthFromInheritedEndpoints(ctx, store); t != "" {
+					return t
+				}
+				return minimaxadapter.GetCachedToken()
 			})
 			go minimaxPoller.Start(ctx)
 
@@ -205,10 +215,29 @@ The daemon listens on two ports:
 			apiSrv.SetRegistry(reg)
 			apiSrv.SetSettings(settings)
 			apiSrv.SetProxyManager(proxymgr)
+			apiSrv.SetMinimaxPoller(minimaxPoller)
 			apiSrv.SetSSEDebug(proxySrv.GetLastSSECapture)
 			apiSrv.SetProviderCreator(func(cfg storage.ProviderConfig, keyFn func() string) providers.Provider {
 				return openaiadapter.NewWithPathReplaceAndKeyFn(cfg.Name, cfg.BaseURL, cfg.PathPrefix, keyFn, nil, sharedClient)
 			})
+
+			// Agent inheritance — refresh inherited_endpoints from each enabled
+			// AI agent's config file. Runs early so model discovery and the
+			// MiniMax quota poller can rely on freshly-extracted API keys and
+			// OAuth tokens.
+			//
+			// Before RunAll, ImportPending picks up wizard selections (see
+			// spec/04 §4) the installer wrote to pending-agents.json.
+			go func() {
+				timer := time.NewTimer(2 * time.Second)
+				defer timer.Stop()
+				select {
+				case <-timer.C:
+					agentscan.ImportPending(ctx, store, logger)
+					agentscan.RunAll(ctx, store, logger)
+				case <-ctx.Done():
+				}
+			}()
 
 			// Model discovery — re-syncs cached model lists on daemon start.
 			go func() {
@@ -446,9 +475,12 @@ func loadProvidersFromDB(ctx context.Context, store *storage.Store, reg *provide
 		}
 		name := cfg.Name
 		keyFn := func() string {
-			if k := settings.Get().ProviderKeys[name]; k != "" {
+			// Prefer agent-inherited or settings-manual keys (see spec/04 §9).
+			if k := resolveProviderKeyForRouting(store, settings, name); k != "" {
 				return k
 			}
+			// Last-resort fallback for users running krouter from a shell with
+			// vendor env vars set directly. Unchanged from v2.0.50 behaviour.
 			return os.Getenv(strings.ToUpper(name) + "_API_KEY")
 		}
 		reg.Register(openaiadapter.NewWithPathReplaceAndKeyFn(name, cfg.BaseURL, cfg.PathPrefix, keyFn, nil, sharedClient))
