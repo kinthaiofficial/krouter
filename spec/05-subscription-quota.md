@@ -166,7 +166,9 @@ CREATE TABLE subscription_quota_cache (
 可读字段衍生：
 - `remaining = total_count - used_count`
 - `seconds_until_reset = (window_end - now) / 1000`
-- `effective_cost_per_call = monthly_price_usd / total_count`（pricing 推算见 §11）
+- `effective_cost_per_call = monthly_price_cny × cny_to_usd / (total_count × windows_per_month)` (see §11 for pricing derivation)
+
+**Important**: `total_count` is the **quota for a single 5h window**, not a monthly quota. Monthly call total = `total_count × windows_per_month` where `windows_per_month = 144` (30 days × 24h ÷ 5h). An earlier draft of this spec missed the `× windows_per_month` factor, which caused PR #1 to ship two pricing tables that disagreed by a factor of ~1043. See the bug history at the end of §11.
 
 ### 7.2 不需要新表
 
@@ -342,46 +344,59 @@ func nextInterval(rows []QuotaRow) time.Duration {
 
 ---
 
-## 11. Effective cost 推算
+## 11. Effective cost derivation
 
-UI 和 routing 需要"订阅模式下单次有效成本"用于比价。**vendor API 不直接返回月费**，需要静态映射：
+The UI and the routing engine both need a per-call cost figure for a subscription tier so it can be compared against per-token vendors. The vendor's quota API does not return the monthly price, so we maintain a static mapping.
 
-```jsonc
-// data/subscription_pricing.json (krouter-data repo, 跟 spec/04 同套同步机制)
-{
-  "minimax": {
-    "tiers": [
-      {
-        "tier_name": "MiniMax-M*",
-        "total_count": 600,   "monthly_price_usd": 19,  "highspeed": false
-      },
-      {
-        "tier_name": "MiniMax-M*",
-        "total_count": 1500,  "monthly_price_usd": 49,  "highspeed": false
-      },
-      {
-        "tier_name": "MiniMax-M*",
-        "total_count": 4500,  "monthly_price_usd": 99,  "highspeed": false
-      },
-      {
-        "tier_name": "MiniMax-M*",
-        "total_count": 30000, "monthly_price_usd": 599, "highspeed": false
-      }
-      // highspeed 系列同样档位另算
-    ]
-  }
-}
+### 11.1 Pricing table (Phase 1: embedded in Go)
+
+Data source: <https://platform.minimaxi.com/subscribe/token-plan?tab=individual__monthly>
+(the 国内 / `minimaxi.com` monthly-plan page; this is the same API the OpenClaw `minimax-portal` provider authenticates against).
+
+| total_count / 5h | highspeed | Monthly (¥CNY) | Monthly (≈ USD) | Effective / call (USD) |
+| --- | --- | --- | --- | --- |
+| 600   | false | 29  | $4.00   | $0.0000463 |
+| 1500  | false | 49  | $6.76   | $0.0000313 |
+| 4500  | false | 119 | $16.42  | $0.0000253 |
+| 1500  | true  | 98  | $13.52  | $0.0000626 |
+| 4500  | true  | 199 | $27.46  | $0.0000424 |
+| 30000 | true  | 899 | $124.06 | $0.0000287 |
+| 30000 | false | ?   | —       | — |
+| 600   | true  | ?   | —       | — |
+
+The last two rows (`{30000, false}` standard 30k, `{600, true}` highspeed 600) have not been verified against the public `minimaxi.com` page; they are treated as unknown SKUs. The lookup returns 0 for them, which routing interprets as "free" (the user has already paid for the subscription — we simply do not have the price). Update the table when the SKU list changes.
+
+### 11.2 Formula (important!)
+
+```
+effective_cost_per_call_usd
+  = monthly_price_cny × cny_to_usd
+  / (total_count_per_window × windows_per_month)
+
+windows_per_month = 144   # 30 days × 24h / 5h
+cny_to_usd        = 0.138 # fixed rate; ~5% off the live FX is acceptable here
 ```
 
-**effective_cost_per_call = monthly_price_usd / total_count**
+**`total_count` is the per-5h-window quota, not the monthly quota.** Monthly call total = `total_count × 144`. An earlier draft of this spec missed the `× windows_per_month` factor; the duplicate table added at `internal/providers/minimax/pricing.go::EffectiveCostPerCallUSD` (since deleted) followed the broken formula and reported costs about 1043× the value the routing engine was computing. PR review caught the conflict before the PR merged; only one table now exists, in `internal/storage/subscription_quota.go`.
 
-例：1500 次套餐 $49/月 → 单次 $0.033，远低于 per-token cost。
+Example: 1500 calls per 5h on the ¥49 standard plan →
+`49 × 0.138 / (1500 × 144) ≈ $0.0000313 / call`, i.e. 216,000 calls/month, roughly two orders of magnitude below per-token vendors like deepseek.
 
-**为什么不让用户填月费**：krouter API 没法从 vendor 拿到月费数据，用户也不一定记得自己什么档位。研发**人工维护这份 JSON**（季度更新一次或 vendor 调价时），通过 §spec/04 的 10min ETag 同步机制下发。
+### 11.3 Implementation locations (post PR #1)
 
-匹配规则：
-- vendor 返回 `total_count = 1500` → 查表找 1500 这一档的月费 → 算 effective_cost
-- 找不到匹配档（用户买了非标准档位）→ effective_cost 默认 $0（routing 仍然优先用）
+Single source of truth:
+- `internal/storage/subscription_quota.go::minimaxPlanPriceCNY` — the lookup table
+- `SubscriptionQuota.EffectiveCostUSD()` and `MonthlyPriceUSD()` — derived helpers
+
+Consumers:
+- Routing engine → `cmd/krouter/serve.go::subscriptionSource.GetSubscriptionInfo` → `routing.SubscriptionInfo.EffectiveCostUSD`
+- Dashboard API → `internal/api/subscription_status.go::tiersToJSON` → the same two helpers
+
+Both paths share the lookup table and derived formula. **No parallel table may be introduced elsewhere in the tree** (the PR review history is the reason this rule exists).
+
+### 11.4 Future: ETag-synced pricing data (Phase 2)
+
+Migrate the lookup table to `data/subscription_pricing.json` in the `krouter-data` repo and reuse the 10-minute ETag-conditional sync mechanism already used for model discovery. This decouples the release cadence from pricing data. For Phase 1 the Go-embedded table is sufficient — MiniMax pricing changes roughly quarterly.
 
 ---
 

@@ -46,8 +46,12 @@ describe('<SubscriptionQuotaCard>', () => {
           window_start: new Date(Date.now() - 30 * 60_000).toISOString(),
           window_end: new Date(Date.now() + 4 * 60 * 60_000).toISOString(),
           seconds_to_reset: 14400,
-          effective_cost_per_call_usd: 49 / 1500,
-          monthly_price_usd: 49,
+          // Pricing values come from storage.SubscriptionQuota helpers;
+          // see internal/storage/subscription_quota.go for the formula.
+          // The exact numbers used here just need to round-trip through
+          // the UI — display formatting is what's under test.
+          effective_cost_per_call_usd: 0.0000313,
+          monthly_price_usd: 6.76,
         },
       ],
     }])
@@ -61,7 +65,7 @@ describe('<SubscriptionQuotaCard>', () => {
     expect(screen.getByText(/via openclaw/)).toBeInTheDocument()
     expect(screen.getByText('MiniMax-M*')).toBeInTheDocument()
     expect(screen.getByText(/1,479 \/ 1,500 left/)).toBeInTheDocument()
-    expect(screen.getByText(/\$49\/mo plan/)).toBeInTheDocument()
+    expect(screen.getByText(/\$6\.76\/mo plan/)).toBeInTheDocument()
   })
 
   it('shows static-key warning when oauth_present is false', async () => {

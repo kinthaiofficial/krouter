@@ -7,7 +7,6 @@ import (
 	"sort"
 	"time"
 
-	minimaxadapter "github.com/kinthaiofficial/krouter/internal/providers/minimax"
 	"github.com/kinthaiofficial/krouter/internal/storage"
 )
 
@@ -155,11 +154,17 @@ func tiersToJSON(tiers []storage.SubscriptionQuota) []subscriptionTierJSON {
 	})
 	out := make([]subscriptionTierJSON, 0, len(tiers))
 	now := time.Now().UTC()
-	for _, t := range tiers {
+	for i := range tiers {
+		t := &tiers[i]
 		remaining := t.TotalCount - t.UsedCount
 		if remaining < 0 {
 			remaining = 0
 		}
+		// Pricing comes from storage.SubscriptionQuota's helpers — the same
+		// source the routing engine consumes. This guarantees the cost
+		// number on the dashboard matches the cost used in routing
+		// decisions (see PR #1 reviewer comment for the previous
+		// dual-table bug).
 		out = append(out, subscriptionTierJSON{
 			TierName:                t.ModelPattern,
 			Total:                   t.TotalCount,
@@ -169,8 +174,8 @@ func tiersToJSON(tiers []storage.SubscriptionQuota) []subscriptionTierJSON {
 			WindowStart:             t.WindowStart.UTC().Format(time.RFC3339),
 			WindowEnd:               t.WindowEnd.UTC().Format(time.RFC3339),
 			SecondsToReset:          int64(t.WindowEnd.Sub(now).Seconds()),
-			EffectiveCostPerCallUSD: minimaxadapter.EffectiveCostPerCallUSD(t.ModelPattern, int(t.TotalCount), t.Highspeed),
-			MonthlyPriceUSD:         minimaxadapter.MonthlyPriceUSD(t.ModelPattern, int(t.TotalCount), t.Highspeed),
+			EffectiveCostPerCallUSD: t.EffectiveCostUSD(),
+			MonthlyPriceUSD:         t.MonthlyPriceUSD(),
 		})
 	}
 	return out

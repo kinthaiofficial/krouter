@@ -83,11 +83,18 @@ func TestSubscriptionStatus_AggregatesTiersAndEffectiveCost(t *testing.T) {
 	assert.Equal(t, int64(1500), mTier.Total)
 	assert.Equal(t, int64(1479), mTier.Remaining)
 
-	// effective_cost = 49 / 1500 (matches pricing.go standard tier)
-	assert.InDelta(t, 49.0/1500.0, mTier.EffectiveCostPerCallUSD, 1e-9)
-	assert.Equal(t, 49.0, mTier.MonthlyPriceUSD)
+	// effective_cost is computed by storage.SubscriptionQuota.EffectiveCostUSD:
+	//   ¥49 × 0.138 / (1500 × 144) ≈ $0.0000313/call
+	// (See internal/storage/subscription_quota.go for the formula and the
+	//  CNY pricing table. UI and routing must agree on these numbers.)
+	wantEffective := 49.0 * 0.138 / (1500.0 * 144.0)
+	assert.InDelta(t, wantEffective, mTier.EffectiveCostPerCallUSD, 1e-9)
 
-	// speech-hd is unknown in our pricing table → effective_cost = 0
+	// MonthlyPriceUSD is the CNY sticker price normalised at the fixed
+	// conversion rate (see storage.subCNYToUSD): ¥49 × 0.138 ≈ $6.762.
+	assert.InDelta(t, 49.0*0.138, mTier.MonthlyPriceUSD, 1e-9)
+
+	// speech-hd is not in the MiniMax monthly-plan catalogue → 0.
 	speechTier := got[0].Tiers[1]
 	assert.Equal(t, "speech-hd", speechTier.TierName)
 	assert.Equal(t, 0.0, speechTier.EffectiveCostPerCallUSD)
