@@ -333,3 +333,10 @@ jobs:
             dist/krouter-linux-arm64 \
             dist/krouter-apple-macos \
             dist/krouter-windows.exe
+
+      - name: Trigger krouter-site rebuild
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.SITE_DISPATCH_TOKEN }}
+          repository: kinthaiofficial/krouter-site
+          event-type: krouter-release
