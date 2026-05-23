@@ -177,6 +177,34 @@ func (s *Store) ProviderStatSince(ctx context.Context, provider string, sinceUTC
 	return stat, nil
 }
 
+// ProviderTokenTotals aggregates lifetime token counts for a provider.
+// Used by the Providers dashboard page so users can see "this provider
+// has done 1.2M in / 0.4M out / 280k cached for $4.27 over its lifetime".
+// `since == zero time` returns lifetime totals.
+type ProviderTokenTotals struct {
+	RequestCount  int
+	InputTokens   int64
+	OutputTokens  int64
+	CachedTokens  int64
+	CostMicroUSD  int64
+}
+
+func (s *Store) ProviderTokenTotalsSince(ctx context.Context, provider string, sinceUTC time.Time) (ProviderTokenTotals, error) {
+	const q = `
+		SELECT COUNT(*),
+		       COALESCE(SUM(input_tokens), 0),
+		       COALESCE(SUM(output_tokens), 0),
+		       COALESCE(SUM(cached_tokens), 0),
+		       COALESCE(SUM(cost_micro_usd), 0)
+		  FROM requests
+		 WHERE actual_provider = ?
+		   AND ts_utc >= ?`
+	var tot ProviderTokenTotals
+	err := s.db.QueryRowContext(ctx, q, provider, sinceUTC.UTC().Format(time.RFC3339)).
+		Scan(&tot.RequestCount, &tot.InputTokens, &tot.OutputTokens, &tot.CachedTokens, &tot.CostMicroUSD)
+	return tot, err
+}
+
 // ListRequestsInRange returns requests where from <= ts_utc <= to, newest first.
 // Optional agent filter. Limit defaults to 10000 if <= 0.
 func (s *Store) ListRequestsInRange(ctx context.Context, from, to time.Time, agent string, limit int) ([]RequestRecord, error) {

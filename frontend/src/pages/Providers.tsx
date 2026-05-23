@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle, XCircle, AlertCircle, Plus, Trash2 } from 'lucide-react'
+import {
+  CheckCircle, XCircle, AlertCircle, Plus, Trash2,
+  ChevronDown, ChevronRight,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { api, type ProviderInfo, type AddProviderBody } from '../api/client'
+import { api, type ProviderInfo, type AddProviderBody, type ProviderModelRow } from '../api/client'
 
 export default function Providers() {
   const { t } = useTranslation()
@@ -10,59 +13,126 @@ export default function Providers() {
   const { data: providers = [], isLoading, isError } = useQuery<ProviderInfo[]>({
     queryKey: ['providers'],
     queryFn: api.providers,
-    refetchInterval: 15_000,
+    // 60s — no longer live-reordering by usage, so don't poll aggressively.
+    refetchInterval: 60_000,
   })
 
   const active = providers.filter((p) => p.configured)
   const inactive = providers.filter((p) => !p.configured)
 
   return (
-    <div className="p-6 space-y-6 max-w-3xl mx-auto">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">{t('providers.title')}</h1>
+    <div className="p-6 space-y-4 max-w-4xl mx-auto">
+      <div className="flex items-end justify-between">
+        <div>
+          <h1 className="text-lg font-semibold">{t('providers.title')}</h1>
+          <p className="text-xs text-gray-400 mt-0.5">{t('providers.subtitle')}</p>
+        </div>
         <button
           onClick={() => setShowAdd(true)}
           className="flex items-center gap-1.5 text-sm border border-gray-200 rounded-lg px-3 py-1.5 hover:border-blue-400 hover:text-blue-600"
         >
           <Plus size={14} />
-          Add Provider
+          {t('providers.add')}
         </button>
       </div>
 
-      <div className="space-y-2">
-        {isLoading ? (
-          <p className="text-sm text-gray-400">{t('common.loading')}</p>
-        ) : isError ? (
-          <p className="text-sm text-red-500">Failed to load providers. Is the daemon running?</p>
-        ) : (
-          <>
-            {active.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-xs text-gray-400 uppercase tracking-wide">{t('providers.active')}</p>
-                {active.map((p) => <ActiveCard key={p.name} provider={p} />)}
-              </div>
-            )}
-            {inactive.length > 0 && (
-              <div className="space-y-2 mt-4">
-                <p className="text-xs text-gray-400 uppercase tracking-wide">{t('providers.not_configured')}</p>
-                {inactive.map((p) => <InactiveCard key={p.name} provider={p} />)}
-              </div>
-            )}
-          </>
-        )}
-      </div>
+      {isLoading ? (
+        <p className="text-sm text-gray-400">{t('common.loading')}</p>
+      ) : isError ? (
+        <p className="text-sm text-red-500">{t('providers.load_failed')}</p>
+      ) : (
+        <>
+          {active.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs text-gray-400 uppercase tracking-wide">{t('providers.active')}</p>
+              {active.map((p) => <ProviderCard key={p.name} provider={p} />)}
+            </div>
+          )}
+          {inactive.length > 0 && (
+            <div className="space-y-2 mt-6">
+              <p className="text-xs text-gray-400 uppercase tracking-wide">{t('providers.not_configured')}</p>
+              {inactive.map((p) => <ProviderCard key={p.name} provider={p} />)}
+            </div>
+          )}
+        </>
+      )}
 
       {showAdd && <AddProviderDialog onClose={() => setShowAdd(false)} />}
     </div>
   )
 }
 
-function ActiveCard({ provider: p }: { provider: ProviderInfo }) {
+// ─── Per-provider card ─────────────────────────────────────────────────────
+
+function ProviderCard({ provider: p }: { provider: ProviderInfo }) {
   const { t } = useTranslation()
-  const pct = Math.round(p.success_rate * 100)
-  const healthy = p.consecutive_failures === 0 && p.available
-  const [testResult, setTestResult] = useState<{ latency_ms: number; status_code: number; ok: boolean } | null>(null)
+  const [open, setOpen] = useState(false)
+
+  const fullEndpoint = (p.base_url || '') + (p.path_prefix || '')
+  const healthy = p.configured && p.consecutive_failures === 0 && p.available
+  const statusIcon = !p.configured ? (
+    <AlertCircle size={18} className="text-gray-300" />
+  ) : healthy ? (
+    <CheckCircle size={18} className="text-green-500" />
+  ) : (
+    <XCircle size={18} className="text-red-500" />
+  )
+
+  return (
+    <div
+      className={[
+        'rounded-xl border transition-colors',
+        p.configured ? 'bg-white border-gray-200' : 'bg-gray-50 border-dashed border-gray-200',
+      ].join(' ')}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-gray-50/60 rounded-xl"
+      >
+        {open ? <ChevronDown size={14} className="text-gray-400 shrink-0" /> : <ChevronRight size={14} className="text-gray-400 shrink-0" />}
+        {statusIcon}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={['font-medium text-sm', p.configured ? 'text-gray-900' : 'text-gray-500'].join(' ')}>
+              {p.display_name || p.name}
+            </span>
+            <ProtocolBadge protocol={p.protocol} />
+            {p.is_builtin && (
+              <span className="text-[10px] uppercase tracking-wider text-gray-400 border border-gray-200 rounded px-1.5 py-0.5">
+                {t('providers.builtin')}
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-gray-400 font-mono truncate mt-0.5" title={fullEndpoint}>
+            {fullEndpoint || `env: ${p.name.toUpperCase().replace(/-/g, '_')}_API_KEY`}
+          </p>
+        </div>
+
+        <Chip label={t('providers.models')} value={p.model_count.toLocaleString()} />
+        <Chip
+          label={t('providers.lifetime_requests')}
+          value={p.requests_total.toLocaleString()}
+          tone={p.requests_total > 0 ? 'blue' : 'gray'}
+        />
+        <Chip
+          label={t('providers.lifetime_cost')}
+          value={`$${p.cost_total_usd.toFixed(2)}`}
+          tone={p.cost_total_usd > 0 ? 'amber' : 'gray'}
+        />
+      </button>
+
+      {open && <CardDetails p={p} fullEndpoint={fullEndpoint} />}
+    </div>
+  )
+}
+
+// ─── Expanded details ──────────────────────────────────────────────────────
+
+function CardDetails({ p, fullEndpoint }: { p: ProviderInfo; fullEndpoint: string }) {
+  const { t } = useTranslation()
   const qc = useQueryClient()
+  const [testResult, setTestResult] = useState<{ latency_ms: number; status_code: number; ok: boolean; error?: string } | null>(null)
 
   const test = useMutation({
     mutationFn: () => api.testProvider(p.name),
@@ -73,61 +143,120 @@ function ActiveCard({ provider: p }: { provider: ProviderInfo }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['providers'] }),
   })
 
+  const { data: models = [], isLoading: modelsLoading } = useQuery<ProviderModelRow[]>({
+    queryKey: ['provider-models', p.name],
+    queryFn: () => api.providerModels(p.name),
+    staleTime: 5 * 60_000,
+  })
+
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
-      <div className="shrink-0">
-        {healthy ? (
-          <CheckCircle size={20} className="text-green-500" />
+    <div className="px-4 pb-4 pt-1 space-y-4 border-t border-gray-100">
+      {/* Endpoint */}
+      <DetailGrid>
+        <DetailRow label={t('providers.base_url')} value={p.base_url || '—'} mono />
+        <DetailRow label={t('providers.path_prefix')} value={p.path_prefix || '—'} mono />
+        <DetailRow label={t('providers.full_endpoint')} value={fullEndpoint || '—'} mono />
+        <DetailRow label={t('providers.protocol')} value={p.protocol} />
+      </DetailGrid>
+
+      {/* Stats */}
+      {p.configured && (
+        <DetailGrid>
+          <DetailRow
+            label={t('providers.success_rate')}
+            value={`${Math.round(p.success_rate * 100)}%`}
+            tone={p.success_rate >= 0.95 ? 'green' : p.success_rate >= 0.8 ? 'yellow' : 'red'}
+          />
+          <DetailRow
+            label={t('providers.requests_today')}
+            value={p.requests_today.toLocaleString()}
+          />
+          <DetailRow
+            label={t('providers.cost_today')}
+            value={`$${p.cost_today_usd.toFixed(4)}`}
+          />
+          <DetailRow
+            label={t('providers.latency_p50_p95')}
+            value={p.latency_p50_ms > 0 ? `${p.latency_p50_ms}ms / ${p.latency_p95_ms}ms` : '—'}
+          />
+        </DetailGrid>
+      )}
+
+      {/* Lifetime totals */}
+      <DetailGrid>
+        <DetailRow
+          label={t('providers.lifetime_requests')}
+          value={p.requests_total.toLocaleString()}
+        />
+        <DetailRow
+          label={t('providers.lifetime_in')}
+          value={p.input_tokens_total.toLocaleString()}
+        />
+        <DetailRow
+          label={t('providers.lifetime_out')}
+          value={p.output_tokens_total.toLocaleString()}
+        />
+        <DetailRow
+          label={t('providers.lifetime_cached')}
+          value={p.cached_tokens_total.toLocaleString()}
+        />
+      </DetailGrid>
+
+      {/* Recent error */}
+      {p.consecutive_failures > 0 && (
+        <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+          {t('providers.failure_streak', {
+            n: p.consecutive_failures,
+            code: p.last_error_code ?? '—',
+          })}
+        </p>
+      )}
+
+      {/* Models */}
+      <div className="space-y-2">
+        <div className="flex items-baseline justify-between">
+          <h3 className="text-xs uppercase tracking-wider text-gray-500 font-semibold">
+            {t('providers.models')}
+          </h3>
+          <span className="text-xs text-gray-400">{models.length || p.model_count} {t('providers.models')}</span>
+        </div>
+        {modelsLoading ? (
+          <p className="text-sm text-gray-400">{t('common.loading')}</p>
+        ) : models.length === 0 ? (
+          <p className="text-sm text-gray-400 italic">{t('providers.no_models')}</p>
         ) : (
-          <XCircle size={20} className="text-red-500" />
+          <ModelsTable models={models} t={t} />
         )}
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="font-medium text-sm">{p.display_name || p.name}</p>
-        <p className="text-xs text-gray-400 font-mono truncate">{p.base_url || p.protocol}</p>
-      </div>
-      <div className="text-right shrink-0">
-        <p className="text-sm font-mono">{pct}%</p>
-        <p className="text-xs text-gray-400">success</p>
-      </div>
-      {(p.requests_today > 0 || p.latency_p50_ms > 0) && (
-        <div className="text-right shrink-0">
-          <p className="text-sm font-mono">{p.requests_today}</p>
-          <p className="text-xs text-gray-400">{t('providers.success_today')}</p>
-        </div>
-      )}
-      {p.latency_p50_ms > 0 && (
-        <div className="text-right shrink-0">
-          <p className="text-sm font-mono">{p.latency_p50_ms}ms</p>
-          <p className="text-xs text-gray-400">{t('providers.p50_lat')}</p>
-        </div>
-      )}
-      {p.consecutive_failures > 0 && (
-        <div className="text-right shrink-0">
-          <p className="text-sm text-red-500">{p.consecutive_failures}</p>
-          <p className="text-xs text-gray-400">{t('providers.failures')}</p>
-        </div>
-      )}
-      <div className="shrink-0 flex flex-col items-end gap-1">
-        <button
-          onClick={() => test.mutate()}
-          disabled={test.isPending}
-          className="text-xs border border-gray-200 rounded-lg px-2.5 py-1 hover:border-blue-400 hover:text-blue-600 disabled:opacity-40"
-        >
-          {test.isPending ? t('providers.testing') : t('providers.test')}
-        </button>
+
+      {/* Actions */}
+      <div className="flex items-center gap-2 pt-2 border-t border-gray-50">
+        {p.configured && (
+          <button
+            onClick={() => test.mutate()}
+            disabled={test.isPending}
+            className="text-xs border border-gray-200 rounded-lg px-2.5 py-1 hover:border-blue-400 hover:text-blue-600 disabled:opacity-40"
+          >
+            {test.isPending ? t('providers.testing') : t('providers.test')}
+          </button>
+        )}
         {testResult && (
-          <span className={`text-xs font-mono ${testResult.ok ? 'text-green-600' : 'text-red-500'}`}>
-            {testResult.latency_ms}ms · {testResult.status_code}
+          <span className={[
+            'text-xs font-mono',
+            testResult.ok ? 'text-green-600' : 'text-red-500',
+          ].join(' ')}>
+            {testResult.latency_ms}ms · {testResult.status_code}{testResult.error ? ` · ${testResult.error}` : ''}
           </span>
         )}
+        {!p.configured && <SetKeyButton p={p} />}
         {!p.is_builtin && (
           <button
             onClick={() => remove.mutate()}
             disabled={remove.isPending}
-            className="text-xs text-red-400 hover:text-red-600 disabled:opacity-40"
+            className="ml-auto text-xs text-red-400 hover:text-red-600 disabled:opacity-40 flex items-center gap-1"
           >
             <Trash2 size={13} />
+            {t('providers.remove')}
           </button>
         )}
       </div>
@@ -135,10 +264,13 @@ function ActiveCard({ provider: p }: { provider: ProviderInfo }) {
   )
 }
 
-function InactiveCard({ provider: p }: { provider: ProviderInfo }) {
+// ─── Set-key inline form ───────────────────────────────────────────────────
+
+function SetKeyButton({ p }: { p: ProviderInfo }) {
+  const { t } = useTranslation()
+  const qc = useQueryClient()
   const [expanded, setExpanded] = useState(false)
   const [key, setKey] = useState('')
-  const qc = useQueryClient()
 
   const setKeyMutation = useMutation({
     mutationFn: () => api.setProviderKey(p.name, key),
@@ -148,61 +280,141 @@ function InactiveCard({ provider: p }: { provider: ProviderInfo }) {
       setKey('')
     },
   })
-  const remove = useMutation({
-    mutationFn: () => api.removeProvider(p.name),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['providers'] }),
-  })
 
-  const envHint = `${p.name.toUpperCase().replace(/-/g, '_')}_API_KEY`
+  if (!expanded) {
+    return (
+      <button
+        onClick={() => setExpanded(true)}
+        className="text-xs border border-blue-200 text-blue-600 rounded-lg px-2.5 py-1 hover:border-blue-400 hover:text-blue-700"
+      >
+        {t('providers.set_key')}
+      </button>
+    )
+  }
 
   return (
-    <div className="bg-gray-50 rounded-xl border border-dashed border-gray-200 p-4">
-      <div className="flex items-center gap-4">
-        <AlertCircle size={20} className="text-gray-300 shrink-0" />
-        <div className="flex-1 min-w-0">
-          <p className="font-medium text-sm text-gray-500">{p.display_name || p.name}</p>
-          <p className="text-xs text-gray-400 font-mono truncate">{p.base_url || `env: ${envHint}`}</p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {!p.is_builtin && (
-            <button
-              onClick={() => remove.mutate()}
-              disabled={remove.isPending}
-              className="text-xs text-red-400 hover:text-red-600 disabled:opacity-40"
-            >
-              <Trash2 size={13} />
-            </button>
-          )}
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="text-xs text-blue-500 hover:text-blue-700 border border-blue-200 rounded-lg px-2.5 py-1 hover:border-blue-400"
-          >
-            {expanded ? 'Cancel' : 'Set Key'}
-          </button>
-        </div>
-      </div>
-      {expanded && (
-        <div className="mt-3 flex gap-2">
-          <input
-            type="password"
-            placeholder={`API key (or set ${envHint} env var)`}
-            value={key}
-            onChange={(e) => setKey(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && key && setKeyMutation.mutate()}
-            className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-400"
-          />
-          <button
-            onClick={() => setKeyMutation.mutate()}
-            disabled={!key || setKeyMutation.isPending}
-            className="text-sm px-3 py-1.5 bg-blue-600 text-white rounded-lg disabled:opacity-40 hover:bg-blue-700"
-          >
-            {setKeyMutation.isPending ? 'Saving…' : 'Save'}
-          </button>
-        </div>
-      )}
+    <div className="flex items-center gap-2 flex-1">
+      <input
+        type="password"
+        value={key}
+        onChange={(e) => setKey(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && key && setKeyMutation.mutate()}
+        placeholder={t('providers.api_key_placeholder')}
+        className="flex-1 text-xs border border-gray-200 rounded-lg px-2.5 py-1"
+        autoFocus
+      />
+      <button
+        onClick={() => setKeyMutation.mutate()}
+        disabled={!key || setKeyMutation.isPending}
+        className="text-xs bg-blue-600 text-white rounded-lg px-2.5 py-1 disabled:opacity-40 hover:bg-blue-700"
+      >
+        {setKeyMutation.isPending ? t('providers.saving') : t('providers.save')}
+      </button>
+      <button
+        onClick={() => { setExpanded(false); setKey('') }}
+        className="text-xs text-gray-500"
+      >
+        {t('common.cancel')}
+      </button>
     </div>
   )
 }
+
+// ─── Models table ──────────────────────────────────────────────────────────
+
+function ModelsTable({
+  models,
+  t,
+}: {
+  models: ProviderModelRow[]
+  t: ReturnType<typeof useTranslation>['t']
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-gray-400 border-b border-gray-100">
+            <th className="text-left py-1 font-normal">{t('providers.model_id')}</th>
+            <th className="text-right py-1 font-normal">{t('providers.input_per_mtok')}</th>
+            <th className="text-right py-1 font-normal">{t('providers.output_per_mtok')}</th>
+            <th className="text-right py-1 font-normal">{t('providers.max_tokens')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {models.map((m) => (
+            <tr key={m.model_id} className="border-b border-gray-50">
+              <td className="py-1 font-mono text-gray-700 max-w-[260px] truncate" title={m.model_id}>{m.model_id}</td>
+              <td className="py-1 text-right tabular-nums">{m.input_per_mtok > 0 ? `$${m.input_per_mtok.toFixed(2)}` : '—'}</td>
+              <td className="py-1 text-right tabular-nums">{m.output_per_mtok > 0 ? `$${m.output_per_mtok.toFixed(2)}` : '—'}</td>
+              <td className="py-1 text-right tabular-nums text-gray-500">
+                {m.max_tokens > 0 ? m.max_tokens.toLocaleString() : '—'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// ─── Small bits ────────────────────────────────────────────────────────────
+
+function ProtocolBadge({ protocol }: { protocol: string }) {
+  const cls =
+    protocol === 'anthropic' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+    protocol === 'openai' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+    'bg-gray-50 text-gray-600 border-gray-200'
+  return (
+    <span className={['text-[10px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded border', cls].join(' ')}>
+      {protocol}
+    </span>
+  )
+}
+
+function Chip({ label, value, tone = 'gray' }: { label: string; value: string; tone?: 'gray' | 'blue' | 'amber' }) {
+  const cls = {
+    gray: 'bg-gray-50 text-gray-700',
+    blue: 'bg-blue-50 text-blue-700',
+    amber: 'bg-amber-50 text-amber-700',
+  }[tone]
+  return (
+    <div className={['hidden sm:flex shrink-0 flex-col items-end rounded-lg px-2 py-1', cls].join(' ')}>
+      <span className="text-xs font-mono tabular-nums">{value}</span>
+      <span className="text-[10px] text-gray-400 uppercase tracking-wider">{label}</span>
+    </div>
+  )
+}
+
+function DetailGrid({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">{children}</div>
+  )
+}
+
+function DetailRow({
+  label,
+  value,
+  mono = false,
+  tone,
+}: {
+  label: string
+  value: string
+  mono?: boolean
+  tone?: 'green' | 'yellow' | 'red'
+}) {
+  const valueCls =
+    tone === 'green' ? 'text-green-600' :
+    tone === 'yellow' ? 'text-yellow-700' :
+    tone === 'red' ? 'text-red-500' : 'text-gray-900'
+  return (
+    <div>
+      <p className="text-[11px] uppercase tracking-wider text-gray-400">{label}</p>
+      <p className={['text-sm mt-0.5 break-all', mono ? 'font-mono' : '', valueCls].join(' ')} title={value}>{value}</p>
+    </div>
+  )
+}
+
+// ─── Add Provider dialog (unchanged from before) ───────────────────────────
 
 function AddProviderDialog({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient()

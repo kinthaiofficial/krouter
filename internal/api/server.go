@@ -1099,6 +1099,7 @@ type providerInfoJSON struct {
 	DisplayName         string  `json:"display_name"`
 	Protocol            string  `json:"protocol"`
 	BaseURL             string  `json:"base_url"`
+	PathPrefix          string  `json:"path_prefix,omitempty"`
 	IsBuiltin           bool    `json:"is_builtin"`
 	Available           bool    `json:"available"`
 	Configured          bool    `json:"configured"`
@@ -1109,6 +1110,20 @@ type providerInfoJSON struct {
 	CostTodayUSD        float64 `json:"cost_today_usd"`
 	LatencyP50MS        int64   `json:"latency_p50_ms"`
 	LatencyP95MS        int64   `json:"latency_p95_ms"`
+
+	// Lifetime totals — across all rows in the requests table for this
+	// provider. Used by the Providers dashboard page to show "this
+	// provider has handled X requests for $Y" without the user having
+	// to filter the Logs page.
+	RequestsTotal      int     `json:"requests_total"`
+	InputTokensTotal   int64   `json:"input_tokens_total"`
+	OutputTokensTotal  int64   `json:"output_tokens_total"`
+	CachedTokensTotal  int64   `json:"cached_tokens_total"`
+	CostTotalUSD       float64 `json:"cost_total_usd"`
+
+	// Catalog meta — model count from model_catalog, so the page can
+	// surface "12 models priced" without an extra request.
+	ModelCount int `json:"model_count"`
 }
 
 // handleProviders handles GET /internal/providers.
@@ -1150,7 +1165,22 @@ func (s *Server) doListProviders(w http.ResponseWriter, r *http.Request) {
 			if meta, ok := dbMeta[p.Name()]; ok {
 				info.DisplayName = meta.DisplayName
 				info.BaseURL = meta.BaseURL
+				info.PathPrefix = meta.PathPrefix
 				info.IsBuiltin = meta.IsBuiltin
+			}
+			if s.store != nil {
+				// Lifetime totals — show even for not-yet-configured providers
+				// so the page tells the full story.
+				if tot, err := s.store.ProviderTokenTotalsSince(r.Context(), p.Name(), time.Time{}); err == nil {
+					info.RequestsTotal = tot.RequestCount
+					info.InputTokensTotal = tot.InputTokens
+					info.OutputTokensTotal = tot.OutputTokens
+					info.CachedTokensTotal = tot.CachedTokens
+					info.CostTotalUSD = float64(tot.CostMicroUSD) / 1_000_000
+				}
+				if models, err := s.store.GetModelsByLiteLLMProvider(r.Context(), p.Name()); err == nil {
+					info.ModelCount = len(models)
+				}
 			}
 			if configured && s.store != nil {
 				if ps, err := s.store.GetProviderStatus(r.Context(), p.Name()); err == nil && ps != nil {
@@ -1705,7 +1735,7 @@ func (s *Server) handleUninstall(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleProviderAction handles /internal/providers/{name}/{action}.
-// Currently only "test" is supported.
+// Supported actions: "test" (ping), "models" (model_catalog list).
 func (s *Server) handleProviderAction(w http.ResponseWriter, r *http.Request) {
 	tail := strings.TrimPrefix(r.URL.Path, "/internal/providers/")
 	slash := strings.LastIndex(tail, "/")
@@ -1714,6 +1744,10 @@ func (s *Server) handleProviderAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name, action := tail[:slash], tail[slash+1:]
+	if action == "models" {
+		s.handleProviderModels(w, r, name)
+		return
+	}
 	if action != "test" {
 		http.NotFound(w, r)
 		return
@@ -1756,6 +1790,44 @@ func (s *Server) handleProviderAction(w http.ResponseWriter, r *http.Request) {
 		"status_code": code,
 		"ok":          code >= 200 && code < 500, // 401 = reachable for Anthropic
 	})
+}
+
+// handleProviderModels handles GET /internal/providers/{name}/models.
+// Returns the catalogued models for the given provider with their
+// per-million-token pricing — used by the Providers dashboard page
+// to render an inline price table when the user expands a card.
+func (s *Server) handleProviderModels(w http.ResponseWriter, r *http.Request, providerName string) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.store == nil {
+		writeJSON(w, []any{})
+		return
+	}
+	all, err := s.store.GetAllModelCatalog(r.Context())
+	if err != nil {
+		http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
+		return
+	}
+	entries := all[providerName]
+
+	type row struct {
+		ModelID     string  `json:"model_id"`
+		InputPerMTok  float64 `json:"input_per_mtok"`
+		OutputPerMTok float64 `json:"output_per_mtok"`
+		MaxTokens     int     `json:"max_tokens"`
+	}
+	out := make([]row, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, row{
+			ModelID:       e.ModelID,
+			InputPerMTok:  e.InputCostPerToken * 1_000_000,
+			OutputPerMTok: e.OutputCostPerToken * 1_000_000,
+			MaxTokens:     e.MaxTokens,
+		})
+	}
+	writeJSON(w, out)
 }
 
 // handleQuota handles GET /internal/quota.
