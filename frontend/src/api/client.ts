@@ -215,6 +215,30 @@ export interface SubscriptionProvider {
   tiers: SubscriptionTier[]
 }
 
+// ─── Free token providers (spec/06) ────────────────────────────────────────
+
+export interface FreeProvider {
+  id: string
+  display_name: string
+  krouter_provider_name: string
+  protocol: string
+  region: string
+  free_type: 'trial_credit' | 'daily_quota' | 'free_tier'
+  free_summary: string
+  free_quota_usd: number
+  validity: string
+  conditions: string
+  signup_url: string
+  key_setup_hint: string
+  last_verified: string
+  notes?: string
+  user_configured: boolean
+  source_agent?: string
+  exhausted?: boolean
+  exhausted_until?: string
+  exhausted_reason?: string
+}
+
 export const api = {
   status: () => get<StatusResponse>('/internal/status'),
   settings: () => get<Settings>('/internal/settings'),
@@ -258,4 +282,7 @@ export const api = {
   subscriptionStatus: () => get<SubscriptionProvider[]>('/internal/subscription/status'),
   subscriptionRefresh: (provider?: string) =>
     post<SubscriptionProvider[]>('/internal/subscription/refresh', provider ? { provider } : {}),
+
+  // ─── Free token providers (spec/06) ─────────────────────────────────────
+  freeProviders: () => get<FreeProvider[]>('/internal/free-providers'),
 }

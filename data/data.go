@@ -1,28 +1,21 @@
-// Package data exposes static seed data files (currently just MiniMax
-// subscription pricing) to other packages via go:embed.
+// Package data exposes static JSON files (curated by krouter operators)
+// to the rest of the codebase via go:embed.
 //
-// The JSON files in this directory are the *source of truth* and serve two
-// roles simultaneously:
+// Files in this directory share two distribution channels:
 //
-//  1. They are embedded into the installer binary at build time (see
-//     SubPricesSeedJSON below), so a fresh install always has at least the
-//     pricing snapshot that shipped with that binary.
+//  1. They are embedded into the installer binary at build time, providing
+//     an offline seed used at first daemon launch.
+//  2. They are served by https://krouter.kinthai.ai/data/<file> (primary)
+//     and mirrored at https://raw.githubusercontent.com/kinthaiofficial/krouter/main/data/<file>
+//     (fallback), so running daemons can pick up edits without a binary upgrade.
 //
-//  2. They are served by GitHub raw at
-//     https://raw.githubusercontent.com/kinthaiofficial/krouter/main/data/
-//     so a running daemon can pick up edits between releases by polling
-//     that URL with an ETag — see internal/subpricing for the fetch loop.
+// **The on-disk path is part of an HTTP contract** — moving these files
+// breaks the live URL that running v2.x daemons in the wild poll. Don't
+// rename without coordinating with operations to update mirrors.
 //
-// Editing one of these files and committing to main is therefore the
-// canonical way to roll a pricing update: all existing v2.x daemons learn
-// the new prices on their next daily poll, *without* the user upgrading the
-// binary. The next release that builds from the same commit picks up the
-// edit automatically through go:embed.
-//
-// **Do not move these files** without updating both the daemon's fetch URL
-// (internal/subpricing/sync.go) and the installer's seed reference
-// (internal/install/seed_sub_prices.go). The on-disk path is part of the
-// HTTP contract that running daemons in the wild already depend on.
+// Editing a JSON here and committing to main is the canonical way to roll
+// an update: existing daemons learn the change on their next 24-hour
+// poll, and the next krouter release picks up the same edit via go:embed.
 package data
 
 import _ "embed"
@@ -30,7 +23,19 @@ import _ "embed"
 // SubPricesSeedJSON is the byte content of data/token_price_sub.json,
 // embedded at compile time. Installer uses it to seed the token_price_sub
 // DB table on first install. The daemon's remote-sync loop later refreshes
-// the same table from the GitHub raw URL.
+// the same table from the kinthai.ai primary URL (see internal/subpricing).
 //
 //go:embed token_price_sub.json
 var SubPricesSeedJSON []byte
+
+// FreeTokensSeedJSON is the byte content of data/free_tokens.json,
+// embedded at compile time. Provides the offline-seed list of providers
+// offering free trial credits / daily quotas / free tiers, with signup
+// URLs the daemon exposes through /internal/free-providers.
+//
+// Refreshed at runtime by internal/freeproviders/sync.go from
+// https://krouter.kinthai.ai/data/free_tokens.json (primary) with
+// fallback to https://raw.githubusercontent.com/kinthaiofficial/krouter/main/data/free_tokens.json.
+//
+//go:embed free_tokens.json
+var FreeTokensSeedJSON []byte

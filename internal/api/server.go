@@ -287,6 +287,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/internal/announcements/dismiss", auth(http.HandlerFunc(s.handleAnnouncementDismiss)))
 	mux.Handle("/internal/announcements/count", auth(http.HandlerFunc(s.handleAnnouncementsCount)))
 	mux.Handle("/internal/announcements", auth(http.HandlerFunc(s.handleAnnouncements)))
+	mux.Handle("/internal/free-providers", auth(http.HandlerFunc(s.handleFreeProviders)))
 	mux.Handle("/internal/update-status", auth(http.HandlerFunc(s.handleUpdateStatus)))
 	mux.Handle("/internal/remote/enable", auth(http.HandlerFunc(s.handleRemoteEnable)))
 	mux.Handle("/internal/remote/disable", auth(http.HandlerFunc(s.handleRemoteDisable)))
