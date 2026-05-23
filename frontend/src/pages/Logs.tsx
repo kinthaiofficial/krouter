@@ -79,6 +79,19 @@ export default function Logs() {
     return () => es.close()
   }, [])
 
+  // Derive the protocol filter options from the data itself. Previously we
+  // hardcoded ['openai', 'anthropic'], which silently missed any new
+  // protocol the backend added (gemini / bedrock / etc.). Now we walk
+  // liveLogs once and expose whatever protocols the user actually has —
+  // works even before the catalogue endpoint exists for new protocols.
+  const protocolOptions = useMemo(() => {
+    const seen = new Set<string>()
+    for (const r of liveLogs) {
+      if (r.protocol) seen.add(r.protocol)
+    }
+    return Array.from(seen).sort()
+  }, [liveLogs])
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return liveLogs.filter((r) => {
@@ -167,15 +180,18 @@ export default function Logs() {
           </select>
         )}
 
-        <select
-          value={protocolFilter}
-          onChange={(e) => { setProtocolFilter(e.target.value); setPage(0) }}
-          className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white"
-        >
-          <option value="">{t('logs.all_protocols')}</option>
-          <option value="openai">OpenAI</option>
-          <option value="anthropic">Anthropic</option>
-        </select>
+        {protocolOptions.length > 0 && (
+          <select
+            value={protocolFilter}
+            onChange={(e) => { setProtocolFilter(e.target.value); setPage(0) }}
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white"
+          >
+            <option value="">{t('logs.all_protocols')}</option>
+            {protocolOptions.map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+        )}
 
         <input
           type="date"
