@@ -54,12 +54,21 @@ export default function FreeProvidersCard() {
         </span>
       </header>
 
-      <p className="text-[12px] text-gray-500 mb-4 leading-relaxed">
+      <p className="text-[12px] text-gray-500 mb-2 leading-relaxed">
         Apply at the signup link, paste the API key into your AI agent
         (OpenClaw / Claude Code / etc.). krouter detects the new key via
         agent inheritance and{' '}
         <span className="font-medium text-gray-700">automatically prefers free providers</span>{' '}
         until their quota runs out.
+      </p>
+
+      <p className="text-[11px] text-gray-400 mb-4 leading-relaxed border-l-2 border-gray-100 pl-2">
+        协议约束 (spec/00 §B2): 免费路由必须同协议匹配。表中绝大多数 provider 是
+        OpenAI 协议 — Cursor/Cline/Codex 等 OpenAI 协议客户端立即享有免费 routing,
+        而 Claude Code 等 Anthropic 协议客户端只有在 provider 同时支持 Anthropic
+        endpoint (例如 OpenRouter / GLM / Moonshot) 时才有效。下方双协议 provider 旁
+        会显示 "也支持 Anthropic 协议" 提示,需要在 agent 里同时配置 OpenAI 和
+        Anthropic 两个 provider entry (同一个 key,不同 baseURL)。
       </p>
 
       {/* Available (not yet configured) — primary CTA */}
@@ -144,6 +153,40 @@ function ProviderRow({ p }: { p: FreeProvider }) {
           )}
           {p.exhausted_reason && (
             <p className="text-[11px] text-amber-600 mt-0.5">{p.exhausted_reason}</p>
+          )}
+
+          {/* Dual-protocol providers: surface the alternate setup so
+              Anthropic-protocol clients can also benefit. */}
+          {p.additional_protocols && p.additional_protocols.length > 0 && (
+            <div className="mt-2 rounded-md border border-indigo-100 bg-indigo-50 p-2">
+              <p className="text-[11px] font-medium text-indigo-900 mb-1">
+                💡 也支持 {p.additional_protocols.map((a) => a.protocol).join(' / ')} 协议
+              </p>
+              <ul className="space-y-1.5">
+                {p.additional_protocols.map((a) => (
+                  <li key={a.krouter_provider_name} className="text-[11px] text-indigo-700">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-mono bg-white px-1 rounded">{a.protocol}</span>
+                      <span>→</span>
+                      <span className="font-mono bg-white px-1 rounded">{a.krouter_provider_name}</span>
+                      {a.user_configured ? (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-700 bg-emerald-50 rounded-full px-1.5 py-0.5">
+                          <Check className="w-3 h-3" />
+                          {a.source_agent ? `via ${a.source_agent}` : 'configured'}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-indigo-500">未配置</span>
+                      )}
+                    </div>
+                    {a.key_setup_hint && (
+                      <p className="text-[10px] text-indigo-600 mt-0.5 leading-snug">
+                        {a.key_setup_hint}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
 
           <p className="text-[10px] text-gray-300 mt-1">

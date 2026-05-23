@@ -10,20 +10,21 @@ import (
 // ─── DTOs ──────────────────────────────────────────────────────────────────
 
 type freeProviderJSON struct {
-	ID                  string  `json:"id"`
-	DisplayName         string  `json:"display_name"`
-	KrouterProviderName string  `json:"krouter_provider_name"`
-	Protocol            string  `json:"protocol"`
-	Region              string  `json:"region"`
-	FreeType            string  `json:"free_type"`
-	FreeSummary         string  `json:"free_summary"`
-	FreeQuotaUSD        float64 `json:"free_quota_usd"`
-	Validity            string  `json:"validity"`
-	Conditions          string  `json:"conditions"`
-	SignupURL           string  `json:"signup_url"`
-	KeySetupHint        string  `json:"key_setup_hint"`
-	LastVerified        string  `json:"last_verified"`
-	Notes               string  `json:"notes,omitempty"`
+	ID                  string                       `json:"id"`
+	DisplayName         string                       `json:"display_name"`
+	KrouterProviderName string                       `json:"krouter_provider_name"`
+	Protocol            string                       `json:"protocol"`
+	Region              string                       `json:"region"`
+	FreeType            string                       `json:"free_type"`
+	FreeSummary         string                       `json:"free_summary"`
+	FreeQuotaUSD        float64                      `json:"free_quota_usd"`
+	Validity            string                       `json:"validity"`
+	Conditions          string                       `json:"conditions"`
+	SignupURL           string                       `json:"signup_url"`
+	KeySetupHint        string                       `json:"key_setup_hint"`
+	LastVerified        string                       `json:"last_verified"`
+	Notes               string                       `json:"notes,omitempty"`
+	AdditionalProtocols []freeProviderProtocolJSON   `json:"additional_protocols,omitempty"`
 
 	// Runtime-joined fields:
 	UserConfigured  bool   `json:"user_configured"`            // matches an inherited_endpoints row
@@ -31,6 +32,14 @@ type freeProviderJSON struct {
 	Exhausted       bool   `json:"exhausted,omitempty"`        // 4xx mark currently active
 	ExhaustedUntil  string `json:"exhausted_until,omitempty"`  // RFC3339 of expiry
 	ExhaustedReason string `json:"exhausted_reason,omitempty"` // e.g. "HTTP 402 quota_exceeded"
+}
+
+type freeProviderProtocolJSON struct {
+	Protocol            string `json:"protocol"`
+	KrouterProviderName string `json:"krouter_provider_name"`
+	KeySetupHint        string `json:"key_setup_hint,omitempty"`
+	UserConfigured      bool   `json:"user_configured"`        // join: did the user inherit this alt-protocol provider?
+	SourceAgent         string `json:"source_agent,omitempty"` // which agent supplied it
 }
 
 // handleFreeProviders returns the free-provider catalog joined with the
@@ -94,15 +103,26 @@ func (s *Server) handleFreeProviders(w http.ResponseWriter, r *http.Request) {
 		}
 		if s.store.IsProviderExhausted(ctx, p.KrouterProviderName) {
 			row.Exhausted = true
-			// We could surface the exact expiry but the DB column is just an
-			// "until" timestamp; clients can render the badge without it.
-			// If a future UI needs the timestamp we add a JOIN; for now
-			// keep the response shape compact.
-			_ = time.Now // placeholder for the explicit-timestamp future
+		}
+		// Per-protocol-alternate join so the dashboard can show "this
+		// vendor also has Anthropic free routing — and you've already
+		// (or haven't) configured a key for the alternate endpoint".
+		for _, ap := range p.AdditionalProtocols {
+			apRow := freeProviderProtocolJSON{
+				Protocol:            ap.Protocol,
+				KrouterProviderName: ap.KrouterProviderName,
+				KeySetupHint:        ap.KeySetupHint,
+			}
+			if agentID, ok := inheritedByName[ap.KrouterProviderName]; ok {
+				apRow.UserConfigured = true
+				apRow.SourceAgent = agentID
+			}
+			row.AdditionalProtocols = append(row.AdditionalProtocols, apRow)
 		}
 		out = append(out, row)
 	}
 	writeJSON(w, out)
+	_ = time.Time{} // retained import; future commit may surface ExhaustedUntil
 }
 
 // freeProvidersHandler returns the http.Handler form for mux registration.

@@ -188,6 +188,80 @@ func TestFreeProviderSource_SameProviderAcrossAgentsDeduped(t *testing.T) {
 		"same provider in two agents should appear once in routing's free list")
 }
 
+func TestFreeProviderSource_DualProtocolRoutedByProtocol(t *testing.T) {
+	// OpenRouter is dual-protocol: primary openai (`openrouter`) + an
+	// alternate anthropic (`openrouter-anthropic`). Both must be picked
+	// up when the user has inherited keys for both — but routing for
+	// "openai" must NOT see the anthropic name and vice versa
+	// (spec/00 §B2).
+	store := newStoreForFP(t)
+	ctx := context.Background()
+
+	primary := storage.FreeProvider{
+		ID:                  "openrouter",
+		DisplayName:         "OpenRouter",
+		KrouterProviderName: "openrouter",
+		Protocol:            "openai",
+		FreeType:            "free_tier",
+		SignupURL:           "https://example.com/",
+		Active:              true,
+		UpdatedAt:           time.Now().UTC(),
+		AdditionalProtocols: []storage.FreeProviderProtocol{
+			{Protocol: "anthropic", KrouterProviderName: "openrouter-anthropic"},
+		},
+	}
+	require.NoError(t, store.UpsertFreeProvider(ctx, primary))
+
+	// User has inherited keys for both — typical post-setup state.
+	require.NoError(t, store.UpsertAgentSetting(ctx, storage.AgentSetting{
+		AgentID: "openclaw", Enabled: true, ConfigPath: "/x",
+	}))
+	require.NoError(t, store.ReplaceInheritedEndpoints(ctx, "openclaw", []storage.InheritedEndpoint{
+		{Provider: "openrouter", EndpointURL: "u1", APIKey: "sk-or", CapturedAt: 1},
+		{Provider: "openrouter-anthropic", EndpointURL: "u2", APIKey: "sk-or", CapturedAt: 1},
+	}))
+
+	src := newFreeProviderSource(store)
+
+	openaiList := src.ListAvailableFreeProviders(ctx, "openai")
+	assert.Equal(t, []string{"openrouter"}, openaiList,
+		"openai-protocol routing must only see the primary openai entry")
+
+	anthropicList := src.ListAvailableFreeProviders(ctx, "anthropic")
+	assert.Equal(t, []string{"openrouter-anthropic"}, anthropicList,
+		"anthropic-protocol routing must only see the anthropic alternate")
+}
+
+func TestFreeProviderSource_DualProtocolOnlyOneSideConfigured(t *testing.T) {
+	// User inherited the openai side but never set up the anthropic
+	// baseURL in their agent. anthropic routing must return empty (no
+	// candidate) so the engine falls back to paid anthropic.
+	store := newStoreForFP(t)
+	ctx := context.Background()
+
+	primary := storage.FreeProvider{
+		ID:                  "openrouter",
+		DisplayName:         "OpenRouter",
+		KrouterProviderName: "openrouter",
+		Protocol:            "openai",
+		FreeType:            "free_tier",
+		SignupURL:           "https://example.com/",
+		Active:              true,
+		UpdatedAt:           time.Now().UTC(),
+		AdditionalProtocols: []storage.FreeProviderProtocol{
+			{Protocol: "anthropic", KrouterProviderName: "openrouter-anthropic"},
+		},
+	}
+	require.NoError(t, store.UpsertFreeProvider(ctx, primary))
+
+	seedInherited(t, store, "openclaw", "openrouter") // only openai side
+	src := newFreeProviderSource(store)
+
+	assert.Equal(t, []string{"openrouter"}, src.ListAvailableFreeProviders(ctx, "openai"))
+	assert.Empty(t, src.ListAvailableFreeProviders(ctx, "anthropic"),
+		"anthropic side not configured → no free candidate available")
+}
+
 func TestFreeProviderSource_NilStoreSafe(t *testing.T) {
 	src := newFreeProviderSource(nil)
 	assert.Empty(t, src.ListAvailableFreeProviders(context.Background(), "openai"),

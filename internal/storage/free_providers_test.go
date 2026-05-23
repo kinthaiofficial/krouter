@@ -68,6 +68,83 @@ func TestFreeProvider_UpsertReplacesOnConflict(t *testing.T) {
 		"upsert should overwrite quota with the most recent value")
 }
 
+func TestFreeProvider_AdditionalProtocolsRoundTrip(t *testing.T) {
+	s := openMigratedStore(t)
+	ctx := context.Background()
+
+	want := newFreeProvider("openrouter", "openrouter", true)
+	want.AdditionalProtocols = []storage.FreeProviderProtocol{
+		{
+			Protocol:            "anthropic",
+			KrouterProviderName: "openrouter-anthropic",
+			KeySetupHint:        "same key, baseURL /v1",
+		},
+	}
+	require.NoError(t, s.UpsertFreeProvider(ctx, want))
+
+	rows, err := s.ListFreeProviders(ctx, true)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	require.Len(t, rows[0].AdditionalProtocols, 1)
+	assert.Equal(t, "anthropic", rows[0].AdditionalProtocols[0].Protocol)
+	assert.Equal(t, "openrouter-anthropic", rows[0].AdditionalProtocols[0].KrouterProviderName)
+}
+
+func TestFreeProvider_KrouterNamesIncludesAlternates(t *testing.T) {
+	// Both the primary krouter_provider_name and every alternate's name
+	// must appear in the union set used by the API handler's "is this
+	// inherited provider on the catalog?" join.
+	s := openMigratedStore(t)
+	ctx := context.Background()
+
+	p := newFreeProvider("openrouter", "openrouter", true)
+	p.AdditionalProtocols = []storage.FreeProviderProtocol{
+		{Protocol: "anthropic", KrouterProviderName: "openrouter-anthropic"},
+	}
+	require.NoError(t, s.UpsertFreeProvider(ctx, p))
+
+	names, err := s.FreeProviderKrouterNames(ctx)
+	require.NoError(t, err)
+	_, hasPrimary := names["openrouter"]
+	_, hasAlt := names["openrouter-anthropic"]
+	assert.True(t, hasPrimary)
+	assert.True(t, hasAlt, "alternate krouter_provider_name should also appear in the union set")
+}
+
+func TestFreeProvider_KrouterNamesByProtocol(t *testing.T) {
+	// Dual-protocol catalog row → two entries in the per-protocol map.
+	s := openMigratedStore(t)
+	ctx := context.Background()
+
+	p := newFreeProvider("openrouter", "openrouter", true)
+	p.Protocol = "openai"
+	p.AdditionalProtocols = []storage.FreeProviderProtocol{
+		{Protocol: "anthropic", KrouterProviderName: "openrouter-anthropic"},
+	}
+	require.NoError(t, s.UpsertFreeProvider(ctx, p))
+
+	// Single-protocol provider as a control.
+	q := newFreeProvider("deepseek", "deepseek", true)
+	q.Protocol = "openai"
+	require.NoError(t, s.UpsertFreeProvider(ctx, q))
+
+	byProto, err := s.FreeProviderKrouterNamesByProtocol(ctx)
+	require.NoError(t, err)
+
+	require.Contains(t, byProto, "openai")
+	_, hasDeepseek := byProto["openai"]["deepseek"]
+	_, hasOR := byProto["openai"]["openrouter"]
+	assert.True(t, hasDeepseek)
+	assert.True(t, hasOR)
+
+	require.Contains(t, byProto, "anthropic")
+	_, hasORA := byProto["anthropic"]["openrouter-anthropic"]
+	assert.True(t, hasORA)
+	_, accidentalCrossover := byProto["anthropic"]["openrouter"]
+	assert.False(t, accidentalCrossover,
+		"primary openai-only entry must NOT leak into the anthropic protocol bucket")
+}
+
 func TestFreeProvider_KrouterNamesActiveOnly(t *testing.T) {
 	s := openMigratedStore(t)
 	ctx := context.Background()

@@ -192,21 +192,33 @@ func (s *Service) tryFetch(ctx context.Context, url, urlLabel string) (body []by
 // providerJSON matches data/free_tokens.json schema. Loose fields tolerate
 // missing values; required fields are validated in applyBody.
 type providerJSON struct {
-	ID                  string  `json:"id"`
-	DisplayName         string  `json:"display_name"`
-	KrouterProviderName string  `json:"krouter_provider_name"`
-	Protocol            string  `json:"protocol"`
-	Region              string  `json:"region"`
-	FreeType            string  `json:"free_type"`
-	FreeSummary         string  `json:"free_summary"`
-	FreeQuotaUSD        float64 `json:"free_quota_usd"`
-	Validity            string  `json:"validity"`
-	Conditions          string  `json:"conditions"`
-	SignupURL           string  `json:"signup_url"`
-	KeySetupHint        string  `json:"key_setup_hint"`
-	Active              bool    `json:"active"`
-	LastVerified        string  `json:"last_verified"`
-	Notes               string  `json:"notes"`
+	ID                  string                 `json:"id"`
+	DisplayName         string                 `json:"display_name"`
+	KrouterProviderName string                 `json:"krouter_provider_name"`
+	Protocol            string                 `json:"protocol"`
+	Region              string                 `json:"region"`
+	FreeType            string                 `json:"free_type"`
+	FreeSummary         string                 `json:"free_summary"`
+	FreeQuotaUSD        float64                `json:"free_quota_usd"`
+	Validity            string                 `json:"validity"`
+	Conditions          string                 `json:"conditions"`
+	SignupURL           string                 `json:"signup_url"`
+	KeySetupHint        string                 `json:"key_setup_hint"`
+	Active              bool                   `json:"active"`
+	LastVerified        string                 `json:"last_verified"`
+	Notes               string                 `json:"notes"`
+	AdditionalProtocols []protocolEntryJSON    `json:"additional_protocols"`
+}
+
+// protocolEntryJSON describes one alternate-protocol endpoint a vendor
+// exposes alongside its primary protocol — see spec/06's dual-protocol
+// section. The user has to configure the alternate as a separate
+// provider entry inside their agent (different baseURL, same key) so
+// inheritance picks both up.
+type protocolEntryJSON struct {
+	Protocol            string `json:"protocol"`
+	KrouterProviderName string `json:"krouter_provider_name"`
+	KeySetupHint        string `json:"key_setup_hint"`
 }
 
 type catalogFile struct {
@@ -257,6 +269,27 @@ func (s *Service) applyBody(ctx context.Context, body []byte) (int, error) {
 			return 0, fmt.Errorf("provider %s: free_type %q must be trial_credit | daily_quota | free_tier",
 				p.ID, p.FreeType)
 		}
+		// Validate alternates: each must declare its own protocol +
+		// krouter_provider_name. A blank or duplicate entry indicates an
+		// editing accident.
+		seen := map[string]struct{}{p.KrouterProviderName: {}}
+		for j, ap := range p.AdditionalProtocols {
+			if ap.Protocol == "" {
+				return 0, fmt.Errorf("provider %s additional_protocols[%d]: protocol required", p.ID, j)
+			}
+			if ap.Protocol == p.Protocol {
+				return 0, fmt.Errorf("provider %s additional_protocols[%d]: protocol %q duplicates primary",
+					p.ID, j, ap.Protocol)
+			}
+			if ap.KrouterProviderName == "" {
+				return 0, fmt.Errorf("provider %s additional_protocols[%d]: krouter_provider_name required", p.ID, j)
+			}
+			if _, dup := seen[ap.KrouterProviderName]; dup {
+				return 0, fmt.Errorf("provider %s additional_protocols[%d]: krouter_provider_name %q duplicates another entry",
+					p.ID, j, ap.KrouterProviderName)
+			}
+			seen[ap.KrouterProviderName] = struct{}{}
+		}
 	}
 
 	now := time.Now().UTC()
@@ -278,6 +311,16 @@ func (s *Service) applyBody(ctx context.Context, body []byte) (int, error) {
 			LastVerified:        p.LastVerified,
 			Notes:               p.Notes,
 			UpdatedAt:           now,
+		}
+		if len(p.AdditionalProtocols) > 0 {
+			row.AdditionalProtocols = make([]storage.FreeProviderProtocol, 0, len(p.AdditionalProtocols))
+			for _, ap := range p.AdditionalProtocols {
+				row.AdditionalProtocols = append(row.AdditionalProtocols, storage.FreeProviderProtocol{
+					Protocol:            ap.Protocol,
+					KrouterProviderName: ap.KrouterProviderName,
+					KeySetupHint:        ap.KeySetupHint,
+				})
+			}
 		}
 		if err := s.store.UpsertFreeProvider(ctx, row); err != nil {
 			return 0, fmt.Errorf("upsert %s: %w", p.ID, err)

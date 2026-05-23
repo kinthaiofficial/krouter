@@ -193,6 +193,100 @@ func TestSyncOnce_RejectsMissingSignupURL(t *testing.T) {
 	assert.Contains(t, err.Error(), "signup_url required")
 }
 
+func TestSyncOnce_AcceptsAdditionalProtocols(t *testing.T) {
+	body := `{
+      "schema_version": 1,
+      "providers": [{
+        "id": "openrouter",
+        "display_name": "OpenRouter",
+        "krouter_provider_name": "openrouter",
+        "protocol": "openai",
+        "free_type": "free_tier",
+        "signup_url": "https://openrouter.ai/keys",
+        "active": true,
+        "additional_protocols": [
+          {
+            "protocol": "anthropic",
+            "krouter_provider_name": "openrouter-anthropic",
+            "key_setup_hint": "same key, baseURL /v1"
+          }
+        ]
+      }]
+    }`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	store := newTestStore(t)
+	svc := New(store, logging.New("error")).
+		WithHTTPClient(&http.Client{Transport: urlRewriter{srv.URL}})
+	require.NoError(t, svc.SyncOnce(context.Background()))
+
+	rows, _ := store.ListFreeProviders(context.Background(), true)
+	require.Len(t, rows, 1)
+	require.Len(t, rows[0].AdditionalProtocols, 1)
+	assert.Equal(t, "anthropic", rows[0].AdditionalProtocols[0].Protocol)
+	assert.Equal(t, "openrouter-anthropic", rows[0].AdditionalProtocols[0].KrouterProviderName)
+}
+
+func TestSyncOnce_RejectsAdditionalProtocolWithSameProtocolAsPrimary(t *testing.T) {
+	// additional_protocols listing the same protocol as the primary is
+	// an editing accident — would either be a duplicate or hide the
+	// primary entry. Reject.
+	body := `{
+      "schema_version": 1,
+      "providers": [{
+        "id": "dup",
+        "display_name": "Dup",
+        "krouter_provider_name": "dup",
+        "protocol": "openai",
+        "free_type": "free_tier",
+        "signup_url": "https://example.com/",
+        "additional_protocols": [
+          {"protocol": "openai", "krouter_provider_name": "dup-2"}
+        ]
+      }]
+    }`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	svc := New(newTestStore(t), logging.New("error")).
+		WithHTTPClient(&http.Client{Transport: urlRewriter{srv.URL}})
+	err := svc.SyncOnce(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicates primary")
+}
+
+func TestSyncOnce_RejectsAdditionalProtocolWithDuplicateName(t *testing.T) {
+	body := `{
+      "schema_version": 1,
+      "providers": [{
+        "id": "openrouter",
+        "display_name": "OpenRouter",
+        "krouter_provider_name": "openrouter",
+        "protocol": "openai",
+        "free_type": "free_tier",
+        "signup_url": "https://example.com/",
+        "additional_protocols": [
+          {"protocol": "anthropic", "krouter_provider_name": "openrouter"}
+        ]
+      }]
+    }`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	svc := New(newTestStore(t), logging.New("error")).
+		WithHTTPClient(&http.Client{Transport: urlRewriter{srv.URL}})
+	err := svc.SyncOnce(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicates another")
+}
+
 func TestApplyEmbedded_SeedsFromBytes(t *testing.T) {
 	// Test the install-time path: apply the embedded JSON without any
 	// network involvement.

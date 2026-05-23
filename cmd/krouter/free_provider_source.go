@@ -31,33 +31,43 @@ func newFreeProviderSource(store *storage.Store) *freeProviderSource {
 }
 
 // ListAvailableFreeProviders returns the krouter_provider_name strings
-// of every catalogued, configured, non-exhausted free-credit provider
-// whose protocol matches `protocol`. Order is unspecified — routing
-// picks the cheapest model across the returned set, so ordering here
-// would be cosmetic.
+// of catalogued, configured, non-exhausted free-credit providers whose
+// protocol matches `protocol`.
+//
+// Protocol-aware (spec/00 §B2): an anthropic-protocol request only sees
+// anthropic-side krouter_provider_names, even if the same vendor has an
+// openai entry alongside it. Dual-protocol vendors (OpenRouter, GLM,
+// Moonshot per data/free_tokens.json) appear under both protocols' lists
+// — each with the dedicated krouter_provider_name the user configured
+// in their agent for that protocol's baseURL.
+//
+// Order is unspecified — the routing engine picks the cheapest model
+// across the returned set, so ordering here would be cosmetic.
 func (s *freeProviderSource) ListAvailableFreeProviders(ctx context.Context, protocol string) []string {
 	if s.store == nil {
 		return nil
 	}
 
-	// Catalogued free-credit providers (filtered to active rows).
-	catalog, err := s.store.FreeProviderKrouterNames(ctx)
-	if err != nil || len(catalog) == 0 {
+	// Protocol → set-of-krouter-names from the catalog (active rows only).
+	byProto, err := s.store.FreeProviderKrouterNamesByProtocol(ctx)
+	if err != nil {
+		return nil
+	}
+	catalog := byProto[protocol]
+	if len(catalog) == 0 {
 		return nil
 	}
 
-	// User-configured (inherited) provider names.
+	// User-configured (inherited) provider names — across all enabled
+	// agents. The actual adapter for each provider is registered with a
+	// specific protocol (`reg.Get(name).Protocol()` in the engine); the
+	// engine re-checks that as a guard. Here we just filter by name
+	// membership in `catalog[protocol]`.
 	eps, err := s.store.ListInheritedEndpoints(ctx)
 	if err != nil {
 		return nil
 	}
 
-	// Build the intersection (catalog ∩ inherited) minus exhausted rows.
-	// Protocol filter is best-effort: free_provider_state stores a hint
-	// (`protocol` column) but the authoritative protocol is the actual
-	// adapter's. The engine's cheapestFreeProviderModel re-checks the
-	// adapter, so we don't have to be strict here. We still drop
-	// obvious mismatches when both sides are known.
 	seen := map[string]struct{}{}
 	for _, ep := range eps {
 		name := ep.Provider
