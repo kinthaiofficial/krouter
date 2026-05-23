@@ -44,7 +44,14 @@ export default function Layout() {
     try { return localStorage.getItem(COLLAPSED_KEY) === '1' } catch { return false }
   })
   useEffect(() => {
-    try { localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0') } catch { /* ignore */ }
+    try {
+      localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0')
+    } catch (e) {
+      // Safari Private Browsing throws SecurityError on localStorage.setItem;
+      // warn so the user/operator sees why the preference isn't persisting
+      // instead of silently dropping it.
+      console.warn('krouter: failed to persist sidebar state:', e)
+    }
   }, [collapsed])
 
   return (
