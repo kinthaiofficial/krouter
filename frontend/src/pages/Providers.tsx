@@ -143,7 +143,11 @@ function CardDetails({ p, fullEndpoint }: { p: ProviderInfo; fullEndpoint: strin
     onSuccess: () => qc.invalidateQueries({ queryKey: ['providers'] }),
   })
 
-  const { data: models = [], isLoading: modelsLoading } = useQuery<ProviderModelRow[]>({
+  const {
+    data: models = [],
+    isLoading: modelsLoading,
+    isError: modelsError,
+  } = useQuery<ProviderModelRow[]>({
     queryKey: ['provider-models', p.name],
     queryFn: () => api.providerModels(p.name),
     staleTime: 5 * 60_000,
@@ -222,6 +226,11 @@ function CardDetails({ p, fullEndpoint }: { p: ProviderInfo; fullEndpoint: strin
         </div>
         {modelsLoading ? (
           <p className="text-sm text-gray-400">{t('common.loading')}</p>
+        ) : modelsError ? (
+          // Distinct from "no_models" — that's the genuinely-empty case;
+          // this surfaces an actual fetch failure so the user doesn't
+          // confuse a 500 with an empty catalog.
+          <p className="text-sm text-red-500">{t('providers.models_load_failed')}</p>
         ) : models.length === 0 ? (
           <p className="text-sm text-gray-400 italic">{t('providers.no_models')}</p>
         ) : (

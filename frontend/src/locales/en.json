@@ -187,6 +187,7 @@
     "protocol": "Protocol",
     "models": "Models",
     "no_models": "No models catalogued yet for this provider.",
+    "models_load_failed": "Failed to load models for this provider. Check the daemon logs.",
     "model_id": "Model",
     "input_per_mtok": "Input / 1M",
     "output_per_mtok": "Output / 1M",
