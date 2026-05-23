@@ -139,6 +139,33 @@ describe('Providers page', () => {
     })
   })
 
+  it('surfaces an explicit error message when the models endpoint 500s', async () => {
+    providers = [makeProvider({ name: 'flaky', display_name: 'Flaky', model_count: 0 })]
+    // Override fetch only for this test — /providers responds 200 with
+    // the provider list, /providers/flaky/models responds 500.
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const path = url.split('?')[0]
+      if (path === '/internal/providers') {
+        return { ok: true, status: 200, json: () => Promise.resolve(providers) } as Response
+      }
+      if (path === '/internal/providers/flaky/models') {
+        return { ok: false, status: 500, json: () => Promise.resolve({ error: 'boom' }) } as Response
+      }
+      return { ok: true, status: 200, json: () => Promise.resolve([]) } as Response
+    }))
+
+    renderWithProviders(<Providers />)
+    await waitFor(() => screen.getByText('Flaky'))
+    fireEvent.click(screen.getByText('Flaky'))
+
+    await waitFor(() => {
+      expect(screen.getByText(/Failed to load models|加载该 Provider 的模型失败/)).toBeInTheDocument()
+    })
+    // Should NOT show the empty-state copy — that would conflate the
+    // genuinely-empty case with the error case.
+    expect(screen.queryByText(/No models catalogued yet|该 Provider 暂无已收录的模型/)).not.toBeInTheDocument()
+  })
+
   it('renders both base_url and path_prefix as separate rows', async () => {
     providers = [makeProvider({
       name: 'qwen',

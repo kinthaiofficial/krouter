@@ -187,6 +187,7 @@
     "protocol": "协议",
     "models": "模型",
     "no_models": "该 Provider 暂无已收录的模型。",
+    "models_load_failed": "加载该 Provider 的模型失败，请检查 daemon 日志。",
     "model_id": "模型",
     "input_per_mtok": "输入 / 1M",
     "output_per_mtok": "输出 / 1M",
