@@ -418,6 +418,21 @@ func (s *Server) tryWithFallback(
 		// 4xx: return immediately, no retry.
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
 			s.recordProviderHealth(dec.Provider, resp.StatusCode)
+			// Mark the provider exhausted for free-credit routing when
+			// the upstream rejects auth (401/403), reports the user has
+			// no remaining credit (402), or rate-limits (429). The
+			// routing engine's free-first path will skip this provider
+			// until the TTL expires; expiry depends on status:
+			//   401/403 → 1 h  (often a stale key the user will fix)
+			//   402     → 24 h (credit usually resets monthly,
+			//                   but daily quotas reset overnight)
+			//   429     → 5 min (short-term burst)
+			//
+			// We mark all of these unconditionally — if the provider is
+			// NOT a free-credit one, the routing engine just doesn't
+			// consult provider_exhausted_until for it, so marking is a
+			// cheap no-op for paid providers.
+			s.markIfThrottle(dec.Provider, resp.StatusCode)
 			return resp, dec, nil
 		}
 
@@ -1102,5 +1117,48 @@ func (s *Server) recordProviderHealth(providerName string, statusCode int) {
 	}
 	go func() {
 		_ = s.store.RecordFailure(context.Background(), providerName, 0)
+	}()
+}
+
+// markIfThrottle records a provider_exhausted_until entry when the
+// upstream returned an auth / quota / rate-limit status. The routing
+// engine's free-first path consults this table and skips marked
+// providers until their TTL expires; for paid providers (the majority),
+// the row is written but never read, which is fine — a few extra rows
+// in a tiny table is cheaper than per-provider feature flags.
+//
+// Status-code → TTL map:
+//
+//	401, 403 → 1 hour   (likely a fixable key)
+//	402      → 24 hours (paid credit exhausted; daily quotas reset overnight)
+//	429      → 5 minutes (short-term burst)
+//	other 4xx → no mark (probably a request-format issue, not a provider problem)
+//
+// Reason text records the status code so the dashboard can surface
+// "DeepSeek exhausted: HTTP 402 from upstream".
+func (s *Server) markIfThrottle(providerName string, statusCode int) {
+	if s.store == nil || providerName == "" {
+		return
+	}
+	var ttl time.Duration
+	var reason string
+	switch statusCode {
+	case 401, 403:
+		ttl = 1 * time.Hour
+		reason = fmt.Sprintf("HTTP %d unauthorized — key may need rotation", statusCode)
+	case 402:
+		ttl = 24 * time.Hour
+		reason = "HTTP 402 — provider reports no credit remaining"
+	case 429:
+		ttl = 5 * time.Minute
+		reason = "HTTP 429 — rate limited"
+	default:
+		return
+	}
+	go func() {
+		_ = s.store.MarkProviderExhausted(
+			context.Background(), providerName,
+			time.Now().UTC().Add(ttl), statusCode, reason,
+		)
 	}()
 }

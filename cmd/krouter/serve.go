@@ -11,9 +11,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/kinthaiofficial/krouter/data"
 	"github.com/kinthaiofficial/krouter/internal/agentscan"
 	"github.com/kinthaiofficial/krouter/internal/api"
 	"github.com/kinthaiofficial/krouter/internal/config"
+	"github.com/kinthaiofficial/krouter/internal/freeproviders"
 	"github.com/kinthaiofficial/krouter/internal/logging"
 	"github.com/kinthaiofficial/krouter/internal/notifications"
 	"github.com/kinthaiofficial/krouter/internal/pricing"
@@ -130,6 +132,12 @@ The daemon listens on two ports:
 			// Per-agent routing overrides from settings.
 			engine.WithOverrides(settings)
 
+			// Free-credit provider routing (spec/06): inherited providers
+			// matching the data/free_tokens.json catalog are preferred over
+			// paid candidates. Source impl reads from free_provider_state ∩
+			// inherited_endpoints, filtering out exhausted rows.
+			engine.WithFreeProviders(newFreeProviderSource(store))
+
 			// Proxy server.
 			proxySrv := proxy.New(
 				proxy.WithLogger(logger),
@@ -165,6 +173,22 @@ The daemon listens on two ports:
 				}
 			})
 			pricingSvc.StartSync(ctx, 24*time.Hour)
+
+			// Free-credit provider catalog (spec/06). Seed from the
+			// embedded data/free_tokens.json on first launch (idempotent
+			// upsert — safe to run every startup), then sync from
+			// krouter.kinthai.ai every 24 h so policy edits land in
+			// daemons within a day rather than waiting for a binary
+			// release.
+			freeProvidersSvc := freeproviders.New(store, logger).
+				WithHTTPClient(&http.Client{Timeout: 30 * time.Second, Transport: bgTransport}).
+				WithVersion(Version)
+			if n, err := freeProvidersSvc.ApplyEmbedded(ctx, data.FreeTokensSeedJSON); err != nil {
+				logger.Warn("free providers: embed seed failed", "err", err)
+			} else {
+				logger.Info("free providers: seeded from embed", "rows", n)
+			}
+			go freeProvidersSvc.StartSync(ctx, 24*time.Hour)
 
 			// MiniMax subscription quota poller. OAuth token is resolved with
 			// inherited_endpoints.extras_json as the preferred source (populated

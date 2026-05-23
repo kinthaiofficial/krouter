@@ -5,6 +5,16 @@ All notable changes to krouter will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Free LLM credit discovery + automatic routing preference (spec/06)**: krouter now ships with a curated catalog of LLM providers that offer free tokens — DeepSeek (¥10 trial), Groq (永久免费 daily quota), NVIDIA NIM (1000 credits), Qwen / Zhipu / Moonshot / Cerebras / Together / OpenRouter / Mistral / Gemini and more (currently 19 entries, see `data/free_tokens.json`). The dashboard surfaces them as a "Free LLM credits" card with one-click signup links; once a user pastes the API key into any agent (OpenClaw / Claude Code / etc.), krouter detects it via the existing inheritance flow and routing automatically prefers the free provider until the upstream returns 4xx (auth / quota / rate-limit), at which point the provider is marked exhausted for 1 h–24 h and routing falls back to the paid cheapest path. No dashboard configuration required from the user — pasting the key into the agent is the entire workflow.
+  - New tables `free_provider_state` (curated catalog) and `provider_exhausted_until` (4xx exhaustion marks, TTL-based) in migration 011.
+  - New `internal/freeproviders` package mirrors the spec/05 §11.4 sync pattern: primary `https://krouter.kinthai.ai/data/free_tokens.json`, fallback `https://raw.githubusercontent.com/kinthaiofficial/krouter/main/data/free_tokens.json`, ETag-conditional, 24 h cadence, schema-validated before upsert. Daemon sends `User-Agent: krouter-freeproviders-sync/<version>` so kinthai.ai access logs can break down by fleet version.
+  - Routing engine gains `WithFreeProviders(FreeProviderSource)`. When set, `cheapestProviderModel` consults the free list first (provider in `free_provider_state` ∩ `inherited_endpoints` ∩ not exhausted, protocol matches) and falls through to the paid cheapest path only when no free candidate qualifies.
+  - Proxy's 4xx path now marks the provider exhausted: 401/403 → 1 h, 402 → 24 h, 429 → 5 min. Marks are harmless for paid providers (routing doesn't consult the table for non-free routes) and let free-credit users see "exhausted" badges on the dashboard with the upstream's status code as the reason.
+  - New `/internal/free-providers` API joins the catalog with `inherited_endpoints` so dashboards can show "claimed / not yet claimed" state. Tests: 38 across 5 packages (storage / freeproviders / api / routing / cmd-krouter freeProviderSource / frontend FreeProvidersCard).
+
 ## [2.2.0] - 2026-05-23
 
 ### Added
