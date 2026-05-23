@@ -5,6 +5,14 @@ All notable changes to krouter will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Remote subscription pricing sync (spec/05 §11.4)**: the daemon now polls `https://krouter.kinthai.ai/data/token_price_sub.json` every 24 h with ETag conditional requests, so price changes propagate to running daemons within a day — no binary upgrade needed. The kinthai.ai endpoint is the **primary** channel because operating it ourselves gives us access logs (fleet version distribution, daily unique IPs, 304 vs 200 ratio, geographic spread) that `raw.githubusercontent.com` does not expose to repo owners; the daemon sends a versioned User-Agent (`krouter-subpricing-sync/<version>`) so the access log breaks down by deployed daemon version without any in-product telemetry. Falls back to `https://raw.githubusercontent.com/kinthaiofficial/krouter/main/data/token_price_sub.json` when the primary errors out. Single source-of-truth file: the same `data/token_price_sub.json` is `go:embed`-ed into the installer for the offline-seed path, so the file the daemon fetches at runtime is byte-identical to what shipped with its binary. Schema validation guards against accidental price typos (negative values, zero `total_count`, `monthly_price_cny` > ¥100,000 are all rejected, leaving last-known-good rows intact). New `subscription_pricing_updated` SSE event fires when rows are actually written so the dashboard refetches `/internal/subscription/status` immediately. New `internal/subpricing` package; 16 tests cover happy path, 304 cache hit, primary→fallback failover, both-endpoints-down, schema rejections, versioned UA, and SSE callback wiring.
+
+### Fixed
+- **Test fix in `TestAgentAction_LegacyVerbsStillReachableUnderNewDispatch`**: previously asserted that POST `/internal/agents/openclaw/connect` returned `"agent not found"` to prove dispatch reached the handler. Failed on developer machines that have OpenClaw actually installed (the handler then succeeded with `{"ok":true}`). Switched to a guaranteed-not-installed agent name (`nonexistent-vendor-xyz`) so the assertion remains host-independent.
+
 ## [2.2.0] - 2026-05-23
 
 ### Added

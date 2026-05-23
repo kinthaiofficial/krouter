@@ -2,25 +2,22 @@ package install
 
 import (
 	"context"
-	_ "embed"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"time"
 
+	"github.com/kinthaiofficial/krouter/data"
 	"github.com/kinthaiofficial/krouter/internal/config"
 	"github.com/kinthaiofficial/krouter/internal/storage"
 )
 
-// subPricesSeedJSON is the source-of-truth subscription pricing data,
-// embedded into the installer binary at build time. Editing the JSON and
-// rebuilding the installer is the supported way to roll pricing updates —
-// no daemon rebuild required: the installer applies the new rows on next
-// install, and an existing daemon will pick them up on next read because
-// EffectiveCostUSD looks at the live DB.
-//
-//go:embed data/token_price_sub.json
-var subPricesSeedJSON []byte
+// subPricesSeedJSON aliases the canonical embedded copy held in the data
+// package. The source-of-truth file lives at data/token_price_sub.json in
+// the repo root so it can be served simultaneously by GitHub raw (see
+// internal/subpricing for the daemon's fetch loop) and by this embed —
+// same content, two distribution channels.
+var subPricesSeedJSON = data.SubPricesSeedJSON
 
 // subPricesFile mirrors data/token_price_sub.json so we can decode it.
 // Fields with zero JSON value are tolerated: pricing data we don't know

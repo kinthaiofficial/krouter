@@ -223,13 +223,16 @@ func TestAgentDelete_RemovesRow(t *testing.T) {
 func TestAgentAction_LegacyVerbsStillReachableUnderNewDispatch(t *testing.T) {
 	srv, _ := newTestServer(t)
 
-	// POST /internal/agents/openclaw/connect — still wired. No real OpenClaw is
-	// installed in the test environment, so the handler returns a JSON error body.
-	// We verify dispatch reached doAgentConnect (body contains "agent not found")
-	// rather than a routing-level 404 (which would have no JSON body).
+	// Verify dispatch reaches doAgentConnect rather than the mux's
+	// catch-all 404. We deliberately use an agent name that
+	// DetectInstalledAgents guarantees won't be found (versus "openclaw",
+	// which exists on developer machines and would cause the handler to
+	// attempt a real connect). The handler returns "agent not found" once
+	// detection comes back empty for this name; that JSON body proves
+	// dispatch reached the handler — what this test exists to assert.
 	w := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(w, authedReq(t, http.MethodPost,
-		"/internal/agents/openclaw/connect", ""))
+		"/internal/agents/nonexistent-vendor-xyz/connect", ""))
 	assert.Contains(t, w.Body.String(), "agent not found",
 		"connect verb must reach its handler, not a routing 404; got %d body=%s", w.Code, w.Body.String())
 }
