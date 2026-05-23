@@ -17,8 +17,8 @@ func TestOpenClawScanner_AgentMeta(t *testing.T) {
 	if s.DisplayName() == "" {
 		t.Errorf("DisplayName empty")
 	}
-	if !strings.HasSuffix(s.DefaultConfigPath(), "/.openclaw/openclaw.json") {
-		t.Errorf("DefaultConfigPath = %q, want suffix /.openclaw/openclaw.json", s.DefaultConfigPath())
+	if !strings.HasSuffix(s.DefaultConfigPath(), filepath.Join(".openclaw", "openclaw.json")) {
+		t.Errorf("DefaultConfigPath = %q, unexpected suffix", s.DefaultConfigPath())
 	}
 }
 

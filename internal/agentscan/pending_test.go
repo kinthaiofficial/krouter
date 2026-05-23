@@ -44,7 +44,9 @@ func pinPendingDir(t *testing.T) string {
 // selections.
 func TestPendingFileDir_StableAcrossEnvVarChanges(t *testing.T) {
 	fakeHome := t.TempDir()
+	// HOME covers Unix; USERPROFILE covers Windows (os.UserHomeDir precedence).
 	t.Setenv("HOME", fakeHome)
+	t.Setenv("USERPROFILE", fakeHome)
 	t.Setenv("KROUTER_CONFIG_DIR", "")
 
 	// Baseline (no extra env).
