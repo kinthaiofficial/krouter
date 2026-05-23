@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Nav rename: "Announcements" → "Notifications" / "通知"**: the existing announcements feature is now surfaced as Notifications in both English and Chinese. Page title and the empty-state copy follow the same change; storage and API paths are unchanged so this is a strict UI rename with no behaviour or DB impact.
+- **Collapsible sidebar**: a small toggle button at the bottom of the left sidebar shrinks it to an icon-only rail (56 px wide). Labels hide; the active nav item still highlights; the Notifications unread badge degrades to a tiny red dot at the icon's top-right corner. State is persisted in `localStorage` under `krouter:sidebar-collapsed` so the preference survives reloads. Smooth 200 ms width transition.
+- **Removed: bottom-bar `proxy :8402` footer and its divider line** from the sidebar. The version was the only useful bit there and it already sits beside "KRouter" in the header; the port number rarely changes after install and now lives only in the About page.
 
 ### Fixed
 - **Test fix in `TestAgentAction_LegacyVerbsStillReachableUnderNewDispatch`**: previously asserted that POST `/internal/agents/openclaw/connect` returned `"agent not found"` to prove dispatch reached the handler. Failed on developer machines that have OpenClaw actually installed (the handler then succeeded with `{"ok":true}`). Switched to a guaranteed-not-installed agent name (`nonexistent-vendor-xyz`) so the assertion remains host-independent.
