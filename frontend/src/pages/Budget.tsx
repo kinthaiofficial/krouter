@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, CheckCircle2, History, Wallet } from 'lucide-react'
@@ -25,14 +25,29 @@ export default function BudgetPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['settings'] }),
   })
 
-  // Live updates — invalidate budget data when a transition fires.
+  // Live updates — invalidate budget data when a transition fires. Debounced
+  // so a burst of events (e.g. 80% and 95% crossed in the same minute, or
+  // back-to-back broadcasts during a restart) collapses to a single refetch.
+  const refetchTimerRef = useRef<number | null>(null)
   useEffect(() => {
     const es = new EventSource('/internal/events', { withCredentials: true })
     es.addEventListener('budget_warning', () => {
-      qc.invalidateQueries({ queryKey: ['budget'] })
-      qc.invalidateQueries({ queryKey: ['budget', 'events'] })
+      if (refetchTimerRef.current !== null) {
+        window.clearTimeout(refetchTimerRef.current)
+      }
+      refetchTimerRef.current = window.setTimeout(() => {
+        qc.invalidateQueries({ queryKey: ['budget'] })
+        qc.invalidateQueries({ queryKey: ['budget', 'events'] })
+        refetchTimerRef.current = null
+      }, 500)
     })
-    return () => es.close()
+    return () => {
+      es.close()
+      if (refetchTimerRef.current !== null) {
+        window.clearTimeout(refetchTimerRef.current)
+        refetchTimerRef.current = null
+      }
+    }
   }, [qc])
 
   // Local input state so the user can type freely; we PATCH on blur/Enter.
@@ -43,15 +58,28 @@ export default function BudgetPage() {
   useEffect(() => { if (settings) setDailyDraft(String(dailyLimit)) }, [settings, dailyLimit])
   useEffect(() => { if (settings) setWeeklyDraft(String(weeklyLimit)) }, [settings, weeklyLimit])
 
+  // commitDaily / commitWeekly handle blur or Enter on the limit inputs.
+  // On invalid input (non-numeric, negative, etc.) we reset the draft back
+  // to the last known good value rather than silently dropping the save —
+  // otherwise the user sees their bad text sit in the box and has no idea
+  // why nothing was persisted.
   function commitDaily() {
     const v = parseFloat(dailyDraft)
-    if (Number.isFinite(v) && v >= 0 && v !== dailyLimit) {
+    if (!Number.isFinite(v) || v < 0) {
+      setDailyDraft(String(dailyLimit))
+      return
+    }
+    if (v !== dailyLimit) {
       save.mutate({ budget_warnings: { ...(settings?.budget_warnings ?? {}), daily: v } })
     }
   }
   function commitWeekly() {
     const v = parseFloat(weeklyDraft)
-    if (Number.isFinite(v) && v >= 0 && v !== weeklyLimit) {
+    if (!Number.isFinite(v) || v < 0) {
+      setWeeklyDraft(String(weeklyLimit))
+      return
+    }
+    if (v !== weeklyLimit) {
       save.mutate({ budget_warnings: { ...(settings?.budget_warnings ?? {}), weekly: v } })
     }
   }

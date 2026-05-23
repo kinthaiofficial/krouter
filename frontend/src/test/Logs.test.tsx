@@ -102,6 +102,29 @@ describe('Logs page', () => {
     })
   })
 
+  it('exposes a protocol dropdown option for every distinct protocol seen', async () => {
+    // The dropdown options must be derived from the data — adding a third
+    // protocol to the records (e.g. "gemini") makes a matching option appear
+    // without any UI code change.
+    lastRecords = [
+      makeRec({ id: 'r1', protocol: 'anthropic' }),
+      makeRec({ id: 'r2', protocol: 'openai' }),
+      makeRec({ id: 'r3', protocol: 'gemini' }),
+    ]
+    renderWithProviders(<Logs />)
+    await waitFor(() => screen.getAllByText(/glm-4.6/))
+
+    const selects = screen.getAllByRole('combobox') as HTMLSelectElement[]
+    const protocolSelect = selects.find((el) =>
+      Array.from(el.options).some((o) => o.value === 'anthropic'),
+    )
+    expect(protocolSelect).toBeTruthy()
+    const optionValues = Array.from(protocolSelect!.options).map((o) => o.value)
+    expect(optionValues).toContain('anthropic')
+    expect(optionValues).toContain('openai')
+    expect(optionValues).toContain('gemini')  // ← derived, not hardcoded
+  })
+
   it('protocol filter narrows by protocol field', async () => {
     lastRecords = [
       makeRec({ id: 'r1', protocol: 'anthropic', requested_model: 'sonnet', model: 'sonnet' }),

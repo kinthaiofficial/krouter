@@ -126,7 +126,22 @@ describe('<BudgetPage>', () => {
     })
   })
 
-  it('budget_warning SSE event invalidates the queries', async () => {
+  it('resets the daily limit draft when the user blurs with a negative value', async () => {
+    renderWithProviders(<BudgetPage />)
+    await waitFor(() => screen.getByDisplayValue('50'))
+    const inputs = screen.getAllByRole('spinbutton') as HTMLInputElement[]
+    const daily = inputs[0]
+
+    fireEvent.change(daily, { target: { value: '-10' } })
+    fireEvent.blur(daily)
+
+    // Draft snaps back to the last known good value (50) — no silent drop.
+    await waitFor(() => expect(daily.value).toBe('50'))
+    // No PATCH happened for the bad input.
+    expect(state.patches).toEqual([])
+  })
+
+  it('budget_warning SSE event invalidates the queries (debounced)', async () => {
     const mocks: MockEventSource[] = []
     const Original = MockEventSource
     class TrackingES extends Original {
@@ -138,16 +153,26 @@ describe('<BudgetPage>', () => {
     await waitFor(() => screen.getByDisplayValue('50'))
 
     const fetchCallsBefore = (fetch as ReturnType<typeof vi.fn>).mock.calls.length
+
+    // Fire a burst of three events back-to-back. The 500 ms debounce should
+    // collapse them into a single (budget + budget/events) refetch pair.
     act(() => {
-      // Simulate the SSE event firing.
-      for (const l of mocks[0].listeners['budget_warning'] ?? []) {
-        l({ data: '{}' } as MessageEvent)
+      for (let i = 0; i < 3; i++) {
+        for (const l of mocks[0].listeners['budget_warning'] ?? []) {
+          l({ data: '{}' } as MessageEvent)
+        }
       }
     })
 
     await waitFor(() => {
       const after = (fetch as ReturnType<typeof vi.fn>).mock.calls.length
       expect(after).toBeGreaterThan(fetchCallsBefore)
-    })
+    }, { timeout: 2000 })
+
+    // Bound the refetch count: at most one /internal/budget +
+    // one /internal/budget/events refetch from the burst, plus the
+    // settings call already issued at mount. We assert <= 4 new calls.
+    const newCalls = (fetch as ReturnType<typeof vi.fn>).mock.calls.length - fetchCallsBefore
+    expect(newCalls).toBeLessThanOrEqual(4)
   })
 })
