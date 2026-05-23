@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, waitFor, fireEvent } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import { renderWithProviders } from './helpers'
+import '../i18n'
 import Settings from '../pages/Settings'
 
 const mockSettings = {
   preset: 'balanced' as const,
   language: 'en',
-  notification_categories: { quota_warning: true, announcement_new: true, upgrade_available: false },
+  notification_categories: {},
   budget_warnings: { daily: 5.0, weekly: 20.0 },
 }
 
@@ -19,56 +20,46 @@ beforeEach(() => {
   }))
 })
 
-describe('Settings page', () => {
-  it('renders preset buttons', async () => {
+describe('Settings page (cleaned up)', () => {
+  it('renders the language selector', async () => {
     renderWithProviders(<Settings />)
     await waitFor(() => {
-      expect(screen.getByText('saver')).toBeInTheDocument()
-      expect(screen.getByText('balanced')).toBeInTheDocument()
-      expect(screen.getByText('quality')).toBeInTheDocument()
+      expect(screen.getByText(/Language|语言/i)).toBeInTheDocument()
     })
   })
 
-  it('highlights active preset', async () => {
-    renderWithProviders(<Settings />)
-    await waitFor(() => screen.getByText('balanced'))
-    const balanced = screen.getByRole('button', { name: 'balanced' })
-    expect(balanced.className).toContain('brand')
-  })
-
-  it('notification category toggles are rendered', async () => {
+  it('renders the Data Management section', async () => {
     renderWithProviders(<Settings />)
     await waitFor(() => {
-      expect(screen.getByText('Quota Warnings')).toBeInTheDocument()
-      expect(screen.getByText('New Announcements')).toBeInTheDocument()
-      expect(screen.getByText('Updates Available')).toBeInTheDocument()
+      expect(screen.getByText(/Data Management|数据管理/)).toBeInTheDocument()
     })
   })
 
-  it('upgrade_available is unchecked per mock settings', async () => {
+  it('no longer renders the Routing Preset section', async () => {
     renderWithProviders(<Settings />)
-    await waitFor(() => screen.getByText('Updates Available'))
-    const checkboxes = screen.getAllByRole('checkbox')
-    // 3rd checkbox is upgrade_available = false
-    expect(checkboxes[2]).not.toBeChecked()
+    await waitFor(() => screen.getByText(/Language|语言/))
+    // The saver/balanced/quality preset buttons should be absent.
+    expect(screen.queryByRole('button', { name: /^saver$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^quality$/i })).not.toBeInTheDocument()
   })
 
-  it('budget warning inputs are present', async () => {
+  it('no longer renders Desktop Notifications checkboxes', async () => {
     renderWithProviders(<Settings />)
-    await waitFor(() => {
-      expect(screen.getByText('Daily limit ($)')).toBeInTheDocument()
-      expect(screen.getByText('Weekly limit ($)')).toBeInTheDocument()
-    })
+    await waitFor(() => screen.getByText(/Language|语言/))
+    // The only checkboxes on the page should be zero now (data mgmt has none).
+    expect(screen.queryAllByRole('checkbox').length).toBe(0)
   })
 
-  it('clicking different preset calls PATCH', async () => {
+  it('no longer renders the Pricing Data section', async () => {
     renderWithProviders(<Settings />)
-    await waitFor(() => screen.getByText('saver'))
-    fireEvent.click(screen.getByRole('button', { name: 'saver' }))
-    await waitFor(() => {
-      const calls = (fetch as ReturnType<typeof vi.fn>).mock.calls
-      const patch = calls.find(([, opts]) => opts?.method === 'PATCH')
-      expect(patch).toBeTruthy()
-    })
+    await waitFor(() => screen.getByText(/Language|语言/))
+    expect(screen.queryByText(/Pricing Data|定价数据/)).not.toBeInTheDocument()
+  })
+
+  it('no longer renders the in-line Budget Limits section', async () => {
+    // Budget config moved to its own top-level page (#4).
+    renderWithProviders(<Settings />)
+    await waitFor(() => screen.getByText(/Language|语言/))
+    expect(screen.queryByText(/Budget Limits|预算限额/)).not.toBeInTheDocument()
   })
 })

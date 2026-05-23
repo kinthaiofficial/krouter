@@ -282,6 +282,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/internal/usage", auth(http.HandlerFunc(s.handleUsage)))
 	mux.Handle("/internal/settings", auth(http.HandlerFunc(s.handleSettings)))
 	mux.Handle("/internal/budget", auth(http.HandlerFunc(s.handleBudget)))
+	mux.Handle("/internal/budget/events", auth(http.HandlerFunc(s.handleBudgetEvents)))
 	mux.Handle("/internal/events", auth(http.HandlerFunc(s.handleEvents)))
 	mux.Handle("/internal/announcements/read", auth(http.HandlerFunc(s.handleAnnouncementRead)))
 	mux.Handle("/internal/announcements/dismiss", auth(http.HandlerFunc(s.handleAnnouncementDismiss)))
@@ -440,6 +441,54 @@ func (s *Server) handleBudget(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, resp)
+}
+
+// handleBudgetEvents handles GET /internal/budget/events?limit=N.
+// Returns recent budget threshold transitions (warning_80, warning_95,
+// blocked, unblocked) newest first, so the Budget page can render a
+// "what happened today" timeline. Capped at 500 server-side.
+func (s *Server) handleBudgetEvents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.store == nil {
+		writeJSON(w, []any{})
+		return
+	}
+
+	limit := 50
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	events, err := s.store.ListBudgetEvents(r.Context(), limit)
+	if err != nil {
+		http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
+		return
+	}
+
+	type row struct {
+		ID            int64   `json:"id"`
+		Timestamp     string  `json:"ts"`
+		EventType     string  `json:"event_type"`
+		DailyPercent  float64 `json:"daily_percent"`
+		DailyCostUSD  float64 `json:"daily_cost_usd"`
+		DailyLimitUSD float64 `json:"daily_limit_usd"`
+	}
+	out := make([]row, 0, len(events))
+	for _, e := range events {
+		out = append(out, row{
+			ID:            e.ID,
+			Timestamp:     e.Timestamp.Format(time.RFC3339),
+			EventType:     e.EventType,
+			DailyPercent:  e.DailyPercent,
+			DailyCostUSD:  e.DailyCostUSD,
+			DailyLimitUSD: e.DailyLimitUSD,
+		})
+	}
+	writeJSON(w, out)
 }
 
 // handleEvents handles GET /internal/events (Server-Sent Events).

@@ -6,6 +6,7 @@ import Router from './pages/Router'
 import Agents from './pages/Agents'
 import Logs from './pages/Logs'
 import Providers from './pages/Providers'
+import BudgetPage from './pages/Budget'
 import Settings from './pages/Settings'
 import Announcements from './pages/Announcements'
 import About from './pages/About'
@@ -27,6 +28,7 @@ export default function App() {
             <Route path="agents" element={<Agents />} />
             <Route path="logs" element={<Logs />} />
             <Route path="providers" element={<Providers />} />
+            <Route path="budget" element={<BudgetPage />} />
             <Route path="settings" element={<Settings />} />
             <Route path="announcements" element={<Announcements />} />
             <Route path="about" element={<About />} />

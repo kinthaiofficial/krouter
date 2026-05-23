@@ -63,6 +63,15 @@ export interface Budget {
   budget_blocked?: boolean
 }
 
+export interface BudgetEvent {
+  id: number
+  ts: string
+  event_type: 'warning_80' | 'warning_95' | 'blocked' | 'unblocked'
+  daily_percent: number
+  daily_cost_usd: number
+  daily_limit_usd: number
+}
+
 export interface QuotaItem {
   window: string
   tokens_used: number
@@ -258,6 +267,7 @@ export const api = {
   patchSettings: (changes: Partial<Settings>) => patchReq<Settings>('/internal/settings', changes),
   usage: () => get<Usage>('/internal/usage'),
   budget: () => get<Budget>('/internal/budget'),
+  budgetEvents: (limit = 50) => get<BudgetEvent[]>(`/internal/budget/events?limit=${limit}`),
   quota: () => get<QuotaItem[]>('/internal/quota'),
   logs: (n = 20, agent?: string) => get<LogRecord[]>(`/internal/logs?n=${n}${agent ? `&agent=${encodeURIComponent(agent)}` : ''}`),
   preset: () => get<{ preset: Preset }>('/internal/preset'),
