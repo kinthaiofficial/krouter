@@ -3,6 +3,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { Download } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api, type LogRecord } from '../api/client'
+import { DecisionRow } from '../components/RoutingDecision'
 
 const PAGE_SIZE = 50
 
@@ -22,6 +23,7 @@ export default function Logs() {
   const { t } = useTranslation()
   const [search, setSearch] = useState('')
   const [agentFilter, setAgentFilter] = useState('')
+  const [protocolFilter, setProtocolFilter] = useState('')
   const [page, setPage] = useState(0)
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
@@ -41,7 +43,9 @@ export default function Logs() {
   })
 
   // Initial log fetch — keyed by agentFilter and date range so it refetches on change.
-  const { data: fetchedLogs = [], isLoading } = useQuery({
+  // NOTE: do NOT default `data` to []; the new array reference each render
+  // would re-fire the seed-merge useEffect and create a setState loop.
+  const { data: fetchedLogs, isLoading } = useQuery({
     queryKey: ['logs', 'full', agentFilter, fromDate, toDate],
     queryFn: () => {
       if (fromDate && toDate) {
@@ -52,9 +56,10 @@ export default function Logs() {
     staleTime: fromDate && toDate ? 30_000 : Infinity,
   })
 
-  // Accumulator that starts from the fetched data and grows via SSE.
   const [liveLogs, setLiveLogs] = useState<LogRecord[]>([])
-  useEffect(() => { setLiveLogs(fetchedLogs) }, [fetchedLogs])
+  useEffect(() => {
+    if (fetchedLogs) setLiveLogs(fetchedLogs)
+  }, [fetchedLogs])
 
   // SSE — single stable connection; filter applied per-event via ref.
   useEffect(() => {
@@ -64,34 +69,55 @@ export default function Logs() {
         const rec = JSON.parse(e.data) as LogRecord
         const filter = agentFilterRef.current
         if (!filter || rec.agent === filter) {
-          setLiveLogs((prev) => [rec, ...prev].slice(0, 2000))
+          setLiveLogs((prev) => {
+            if (prev.some((r) => r.id === rec.id)) return prev
+            return [rec, ...prev].slice(0, 2000)
+          })
         }
       } catch { /* ignore malformed events */ }
     })
     return () => es.close()
-  }, []) // stable — no deps
+  }, [])
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return liveLogs
-    const q = search.toLowerCase()
-    return liveLogs.filter(
-      (r) =>
+    const q = search.trim().toLowerCase()
+    return liveLogs.filter((r) => {
+      if (protocolFilter && r.protocol !== protocolFilter) return false
+      if (!q) return true
+      return (
         r.model.toLowerCase().includes(q) ||
+        (r.requested_model ?? '').toLowerCase().includes(q) ||
         r.provider.toLowerCase().includes(q) ||
         (r.agent ?? '').toLowerCase().includes(q) ||
-        r.id.toLowerCase().includes(q),
-    )
-  }, [liveLogs, search])
+        r.id.toLowerCase().includes(q)
+      )
+    })
+  }, [liveLogs, search, protocolFilter])
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
   const page_ = Math.min(page, Math.max(0, totalPages - 1))
   const rows = filtered.slice(page_ * PAGE_SIZE, (page_ + 1) * PAGE_SIZE)
 
   function exportCSV() {
-    const header = 'id,time,agent,model,provider,input_tokens,output_tokens,cost_usd,latency_ms,status_code\n'
+    const header =
+      'id,time,agent,protocol,requested_model,routed_model,provider,input_tokens,output_tokens,cached_tokens,cost_usd,latency_ms,status_code\n'
     const body = filtered
       .map((r) =>
-        [r.id, r.ts, r.agent ?? '', r.model, r.provider, r.input_tokens, r.output_tokens, r.cost_usd, r.latency_ms, r.status_code].join(','),
+        [
+          r.id,
+          r.ts,
+          r.agent ?? '',
+          r.protocol,
+          r.requested_model ?? '',
+          r.model,
+          r.provider,
+          r.input_tokens,
+          r.output_tokens,
+          r.cached_tokens ?? 0,
+          r.cost_usd,
+          r.latency_ms,
+          r.status_code,
+        ].join(','),
       )
       .join('\n')
     const blob = new Blob([header + body], { type: 'text/csv' })
@@ -105,8 +131,11 @@ export default function Logs() {
 
   return (
     <div className="p-6 space-y-4 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">{t('logs.title')}</h1>
+      <div className="flex items-end justify-between">
+        <div>
+          <h1 className="text-lg font-semibold">{t('logs.title')}</h1>
+          <p className="text-xs text-gray-400 mt-0.5">{t('logs.subtitle')}</p>
+        </div>
         <button
           onClick={exportCSV}
           className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900 border border-gray-200 rounded-lg px-3 py-1.5"
@@ -138,6 +167,16 @@ export default function Logs() {
           </select>
         )}
 
+        <select
+          value={protocolFilter}
+          onChange={(e) => { setProtocolFilter(e.target.value); setPage(0) }}
+          className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white"
+        >
+          <option value="">{t('logs.all_protocols')}</option>
+          <option value="openai">OpenAI</option>
+          <option value="anthropic">Anthropic</option>
+        </select>
+
         <input
           type="date"
           value={fromDate}
@@ -152,7 +191,10 @@ export default function Logs() {
         />
 
         <span className="text-xs text-gray-400 ml-auto">
-          {t('logs.records_summary', { total: filtered.length, filtered: fromDate && toDate ? 'filtered' : 'live' })}
+          {t('logs.records_summary', {
+            total: filtered.length,
+            filtered: fromDate && toDate ? 'filtered' : 'live',
+          })}
         </span>
       </div>
 
@@ -162,32 +204,11 @@ export default function Logs() {
         ) : filtered.length === 0 ? (
           <div className="p-8 text-center text-sm text-gray-400">{t('logs.no_records')}</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="border-b border-gray-100">
-                <tr className="text-left text-xs text-gray-400">
-                  {[
-                    t('logs.col_time'),
-                    t('logs.col_agent'),
-                    t('logs.col_model'),
-                    t('logs.col_provider'),
-                    t('logs.col_in'),
-                    t('logs.col_out'),
-                    t('logs.col_cost'),
-                    t('logs.col_lat'),
-                    t('logs.col_status'),
-                  ].map((h) => (
-                    <th key={h} className="px-4 py-2 font-medium whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {rows.map((r) => (
-                  <LogRow key={r.id} r={r} />
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ul className="divide-y divide-gray-50">
+            {rows.map((r) => (
+              <DecisionRow key={r.id} r={r} />
+            ))}
+          </ul>
         )}
       </div>
 
@@ -214,26 +235,5 @@ export default function Logs() {
         </div>
       )}
     </div>
-  )
-}
-
-function LogRow({ r }: { r: LogRecord }) {
-  const ok = r.status_code >= 200 && r.status_code < 300
-  return (
-    <tr className="hover:bg-gray-50">
-      <td className="px-4 py-1.5 text-gray-400 text-xs whitespace-nowrap">{new Date(r.ts).toLocaleString()}</td>
-      <td className="px-4 py-1.5">{r.agent ?? '—'}</td>
-      <td className="px-4 py-1.5 font-mono text-xs">{r.model}</td>
-      <td className="px-4 py-1.5">{r.provider}</td>
-      <td className="px-4 py-1.5 text-xs text-right">{r.input_tokens.toLocaleString()}</td>
-      <td className="px-4 py-1.5 text-xs text-right">{r.output_tokens.toLocaleString()}</td>
-      <td className="px-4 py-1.5 text-xs text-right font-mono">${r.cost_usd.toFixed(4)}</td>
-      <td className="px-4 py-1.5 text-xs text-right">{r.latency_ms}ms</td>
-      <td className="px-4 py-1.5 text-xs">
-        <span className={ok ? 'text-green-600' : 'text-red-500'}>
-          {r.status_code}
-        </span>
-      </td>
-    </tr>
   )
 }

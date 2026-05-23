@@ -578,6 +578,7 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 		Model          string  `json:"model"`
 		InputTokens    int     `json:"input_tokens"`
 		OutputTokens   int     `json:"output_tokens"`
+		CachedTokens   int     `json:"cached_tokens"`
 		CostMicroUSD   int64   `json:"cost_micro_usd"`
 		CostUSD        float64 `json:"cost_usd"`
 		LatencyMS      int64   `json:"latency_ms"`
@@ -597,6 +598,7 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 			Model:          rec.Model,
 			InputTokens:    rec.InputTokens,
 			OutputTokens:   rec.OutputTokens,
+			CachedTokens:   rec.CachedTokens,
 			CostMicroUSD:   rec.CostMicroUSD,
 			CostUSD:        float64(rec.CostMicroUSD) / 1_000_000,
 			LatencyMS:      rec.LatencyMS,

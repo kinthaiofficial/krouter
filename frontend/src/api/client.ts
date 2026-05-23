@@ -81,6 +81,7 @@ export interface LogRecord {
   model: string
   input_tokens: number
   output_tokens: number
+  cached_tokens?: number
   cost_usd: number
   latency_ms: number
   status_code: number
