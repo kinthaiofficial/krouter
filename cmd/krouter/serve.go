@@ -26,6 +26,7 @@ import (
 	"github.com/kinthaiofficial/krouter/internal/remote"
 	"github.com/kinthaiofficial/krouter/internal/routing"
 	"github.com/kinthaiofficial/krouter/internal/storage"
+	"github.com/kinthaiofficial/krouter/internal/subpricing"
 	"github.com/kinthaiofficial/krouter/internal/upgrade"
 	"github.com/spf13/cobra"
 )
@@ -166,6 +167,15 @@ The daemon listens on two ports:
 			})
 			pricingSvc.StartSync(ctx, 24*time.Hour)
 
+			// Subscription pricing remote sync (spec/05 §11.4). Pulls
+			// data/token_price_sub.json from GitHub raw every 24h so users
+			// pick up vendor price changes without re-installing the binary.
+			// Falls back to the kinthai.ai mirror if GitHub is blocked.
+			subPricingSvc := subpricing.New(store, logger).
+				WithHTTPClient(&http.Client{Timeout: 30 * time.Second, Transport: bgTransport}).
+				WithVersion(Version)
+			go subPricingSvc.StartSync(ctx, 24*time.Hour)
+
 			// MiniMax subscription quota poller. OAuth token is resolved with
 			// inherited_endpoints.extras_json as the preferred source (populated
 			// by agentscan from the user's OpenClaw auth-profiles.json), with
@@ -235,6 +245,17 @@ The daemon listens on two ports:
 				agentscan.RunAll(ctx, store, logger)
 				apiSrv.Broadcast("subscription_unauthorized", map[string]any{
 					"provider": "minimax",
+				})
+			})
+			// Broadcast `subscription_pricing_updated` when the remote sync
+			// successfully writes new rows. Dashboard refetches /internal/
+			// subscription/status so users see fresh prices without a
+			// manual refresh. The sync loop is already running by this
+			// point; installing the callback now means the very first
+			// real update fires the broadcast.
+			subPricingSvc.WithUpdateCallback(func(count int) {
+				apiSrv.Broadcast("subscription_pricing_updated", map[string]any{
+					"count": count,
 				})
 			})
 			apiSrv.SetSSEDebug(proxySrv.GetLastSSECapture)
