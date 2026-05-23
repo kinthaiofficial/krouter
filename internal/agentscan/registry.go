@@ -7,12 +7,15 @@ package agentscan
 // append the new value here. No other change is required; krouter discovers
 // the new entry via this slice alone.
 //
-// Phase 1 of spec/04 ships only the two agents that have been validated
-// against real on-disk config schemas. Cursor / Cline / Codex / Hermes etc.
-// will be added in follow-up PRs once their config formats are confirmed.
+// Phase 1: OpenClaw and Claude Code (validated against real on-disk schemas).
+// Phase 2: Cursor, Hermes, OpenCode, Codex (config formats confirmed).
 var Scanners = []Scanner{
 	OpenClawScanner{},
 	ClaudeCodeScanner{},
+	CursorScanner{},
+	HermesScanner{},
+	OpenCodeScanner{},
+	CodexScanner{},
 }
 
 // Get returns the Scanner with the given AgentID, or nil if none is

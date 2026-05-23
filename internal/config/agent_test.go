@@ -572,3 +572,110 @@ func TestIsClaudeCodeConnected_False(t *testing.T) {
 func TestIsClaudeCodeConnected_MissingFile(t *testing.T) {
 	assert.False(t, config.IsClaudeCodeConnected("/tmp/nonexistent-rc-file"))
 }
+
+// ── OpenCode ──────────────────────────────────────────────────────────────────
+
+func TestConnectOpenCode_SetsBaseUrl(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "opencode.json")
+	require.NoError(t, os.WriteFile(cfg, []byte(`{"provider":"anthropic","apiKey":"sk-test"}`), 0644))
+
+	require.NoError(t, config.ConnectOpenCode(cfg))
+
+	data, _ := os.ReadFile(cfg)
+	var root map[string]any
+	require.NoError(t, json.Unmarshal(data, &root))
+
+	assert.Equal(t, "http://127.0.0.1:8402", root["baseUrl"])
+	assert.Equal(t, "anthropic", root["provider"])
+	assert.Equal(t, "sk-test", root["apiKey"])
+}
+
+func TestDisconnectOpenCode_RemovesBaseUrl(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "opencode.json")
+	connected := `{"provider":"anthropic","baseUrl":"http://127.0.0.1:8402","apiKey":"sk-test"}`
+	require.NoError(t, os.WriteFile(cfg, []byte(connected), 0644))
+
+	require.NoError(t, config.DisconnectOpenCode(cfg))
+
+	data, _ := os.ReadFile(cfg)
+	var root map[string]any
+	require.NoError(t, json.Unmarshal(data, &root))
+
+	assert.NotContains(t, root, "baseUrl")
+	assert.Equal(t, "anthropic", root["provider"])
+	assert.Equal(t, "sk-test", root["apiKey"])
+}
+
+// ── Codex ─────────────────────────────────────────────────────────────────────
+
+func TestConnectCodex_AddsKrouterProvider(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "config.toml")
+	initial := `model_provider = "my-openai"
+
+[model_providers.my-openai]
+name     = "My OpenAI"
+base_url = "https://api.openai.com/v1"
+env_key  = "OPENAI_API_KEY"
+wire_api = "chat"
+`
+	require.NoError(t, os.WriteFile(cfg, []byte(initial), 0644))
+
+	require.NoError(t, config.ConnectCodex(cfg))
+
+	data, _ := os.ReadFile(cfg)
+	var root map[string]any
+	_, err := toml.Decode(string(data), &root)
+	require.NoError(t, err)
+
+	assert.Equal(t, "krouter", root["model_provider"])
+
+	providers, _ := root["model_providers"].(map[string]any)
+	require.NotNil(t, providers)
+
+	krouter, _ := providers["krouter"].(map[string]any)
+	require.NotNil(t, krouter, "krouter provider entry must be created")
+	assert.Equal(t, "http://127.0.0.1:8402/v1", krouter["base_url"])
+	assert.Equal(t, "OPENAI_API_KEY", krouter["env_key"], "env_key inherited from previous provider")
+
+	// Original provider preserved.
+	orig, _ := providers["my-openai"].(map[string]any)
+	require.NotNil(t, orig)
+	assert.Equal(t, "https://api.openai.com/v1", orig["base_url"])
+}
+
+func TestDisconnectCodex_RemovesKrouterProvider(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "config.toml")
+	connected := `model_provider = "krouter"
+
+[model_providers.krouter]
+name     = "krouter"
+base_url = "http://127.0.0.1:8402/v1"
+env_key  = "OPENAI_API_KEY"
+wire_api = "chat"
+
+[model_providers.my-openai]
+name     = "My OpenAI"
+base_url = "https://api.openai.com/v1"
+env_key  = "OPENAI_API_KEY"
+wire_api = "chat"
+`
+	require.NoError(t, os.WriteFile(cfg, []byte(connected), 0644))
+
+	require.NoError(t, config.DisconnectCodex(cfg))
+
+	data, _ := os.ReadFile(cfg)
+	var root map[string]any
+	_, err := toml.Decode(string(data), &root)
+	require.NoError(t, err)
+
+	// model_provider should no longer be "krouter"
+	assert.NotEqual(t, "krouter", root["model_provider"])
+
+	providers, _ := root["model_providers"].(map[string]any)
+	assert.NotContains(t, providers, "krouter", "krouter entry must be removed")
+	assert.Contains(t, providers, "my-openai", "original provider must survive")
+}
