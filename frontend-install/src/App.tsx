@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import WelcomeStep from './pages/WelcomeStep'
 import DetectStep from './pages/DetectStep'
 import AgentPathsStep from './pages/AgentPathsStep'
@@ -10,12 +11,13 @@ import DoneStep from './pages/DoneStep'
 export type Step = 'welcome' | 'detect' | 'agents' | 'service' | 'shell' | 'budget' | 'done'
 
 const STEPS: Step[] = ['welcome', 'detect', 'agents', 'service', 'shell', 'budget', 'done']
-const LABELS = ['Welcome', 'Detect agents', 'Agent paths', 'Install service', 'Shell setup', 'Budget', 'Done']
 
 export default function App() {
+  const { t } = useTranslation()
   const [step, setStep] = useState<Step>('welcome')
   const stepIdx = STEPS.indexOf(step)
   const progressSteps = STEPS.slice(0, -1)
+  const LABELS = [t('progress.welcome'), t('progress.detect'), t('progress.agents'), t('progress.service'), t('progress.shell'), t('progress.budget'), t('progress.done')]
 
   return (
     <div className="min-h-screen bg-surface flex flex-col" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif' }}>
@@ -56,7 +58,7 @@ export default function App() {
               ))}
             </div>
             <p className="text-xs text-gray-400">
-              {LABELS[stepIdx]} — step {stepIdx + 1} of {progressSteps.length}
+              {LABELS[stepIdx]} — {t('progress.step', { current: stepIdx + 1, total: progressSteps.length })}
             </p>
           </div>
         )}

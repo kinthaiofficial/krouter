@@ -1,19 +1,21 @@
 import { Outlet, NavLink } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { LayoutDashboard, Bot, ScrollText, Cpu, Settings2, Bell, Info } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
 
-const nav = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/agents', label: 'Agents', icon: Bot },
-  { to: '/logs', label: 'Logs', icon: ScrollText },
-  { to: '/providers', label: 'Providers', icon: Cpu },
-  { to: '/settings', label: 'Settings', icon: Settings2 },
-  { to: '/announcements', label: 'Announcements', icon: Bell },
-  { to: '/about', label: 'About', icon: Info },
+const navItems = [
+  { to: '/', key: 'dashboard', icon: LayoutDashboard, end: true },
+  { to: '/agents', key: 'agents', icon: Bot },
+  { to: '/logs', key: 'logs', icon: ScrollText },
+  { to: '/providers', key: 'providers', icon: Cpu },
+  { to: '/settings', key: 'settings', icon: Settings2 },
+  { to: '/announcements', key: 'announcements', icon: Bell },
+  { to: '/about', key: 'about', icon: Info },
 ]
 
 export default function Layout() {
+  const { t } = useTranslation()
   const { data: status } = useQuery({ queryKey: ['status'], queryFn: api.status })
   const { data: annCount } = useQuery({
     queryKey: ['announcements', 'count'],
@@ -36,7 +38,7 @@ export default function Layout() {
           </div>
         </div>
         <nav className="flex-1 px-3 py-3 space-y-0.5">
-          {nav.map(({ to, label, icon: Icon, end }) => (
+          {navItems.map(({ to, key, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}
@@ -51,8 +53,8 @@ export default function Layout() {
               }
             >
               <Icon size={16} />
-              <span>{label}</span>
-              {label === 'Announcements' && (annCount?.unread ?? 0) > 0 && (
+              <span>{t(`nav.${key}`)}</span>
+              {key === 'announcements' && (annCount?.unread ?? 0) > 0 && (
                 <span className="ml-auto text-xs bg-red-500 text-white rounded-full px-1.5 py-0.5 leading-none">
                   {annCount!.unread}
                 </span>
@@ -62,9 +64,9 @@ export default function Layout() {
         </nav>
         <div className="px-5 py-3 border-t border-border text-xs text-gray-400">
           {status ? (
-            <span>proxy :{status.proxy_port}</span>
+            <span>{t('nav.proxy_port', { port: status.proxy_port })}</span>
           ) : (
-            <span>connecting…</span>
+            <span>{t('nav.connecting')}</span>
           )}
         </div>
       </aside>

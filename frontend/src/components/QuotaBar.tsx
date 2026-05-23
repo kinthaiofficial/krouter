@@ -1,13 +1,8 @@
+import { useTranslation } from 'react-i18next'
 import type { QuotaItem } from '../api/client'
 
 interface Props {
   quota: QuotaItem
-}
-
-const windowLabels: Record<string, string> = {
-  '5h': '5-Hour Window',
-  weekly: 'Weekly Window',
-  opus: 'Opus Tokens',
 }
 
 // Rough token limits per window type (Anthropic Pro plan).
@@ -18,6 +13,14 @@ const windowLimits: Record<string, number> = {
 }
 
 export default function QuotaBar({ quota }: Props) {
+  const { t } = useTranslation()
+
+  const windowLabels: Record<string, string> = {
+    '5h': t('quota.window_5h'),
+    weekly: t('quota.window_weekly'),
+    opus: t('quota.opus_tokens'),
+  }
+
   const limit = windowLimits[quota.window] ?? 1
   const pct = Math.min(100, (quota.tokens_used / limit) * 100)
   const color = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-yellow-500' : 'bg-brand'

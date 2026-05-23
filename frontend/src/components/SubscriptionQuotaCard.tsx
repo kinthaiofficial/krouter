@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { RefreshCw, Zap, AlertCircle, AlertTriangle } from 'lucide-react'
 import {
@@ -22,6 +23,7 @@ interface ExhaustEvent {
 // OAuth credential we show a hint pointing back to the Agents page; when no
 // providers are configured the card collapses to nothing.
 export default function SubscriptionQuotaCard() {
+  const { t } = useTranslation()
   const qc = useQueryClient()
   const { data, isLoading } = useQuery({
     queryKey: ['subscription-status'],
@@ -85,17 +87,16 @@ export default function SubscriptionQuotaCard() {
               {exhaust.provider} {exhaust.tier} quota exhausted
             </p>
             <p className="text-[11px] text-amber-700 mt-0.5">
-              Routing has fallen back to per-token vendors until the window
-              resets at {new Date(exhaust.window_end).toLocaleString()}.
+              {t('subscription.exhausted_banner', { time: new Date(exhaust.window_end).toLocaleString() })}
             </p>
           </div>
           <button
             type="button"
             onClick={() => setExhaust(null)}
-            aria-label="Dismiss"
+            aria-label={t('subscription.dismiss')}
             className="text-amber-700 hover:text-amber-900 text-[11px] underline underline-offset-2"
           >
-            Dismiss
+            {t('subscription.dismiss')}
           </button>
         </div>
       )}
@@ -103,7 +104,7 @@ export default function SubscriptionQuotaCard() {
       <header className="flex items-baseline justify-between mb-4">
         <div className="flex items-center gap-2">
           <Zap className="w-4 h-4 text-amber-500" />
-          <h2 className="text-sm font-semibold">Subscription Quota</h2>
+          <h2 className="text-sm font-semibold">{t('subscription.title')}</h2>
         </div>
         <button
           type="button"
@@ -114,7 +115,7 @@ export default function SubscriptionQuotaCard() {
           <RefreshCw
             className={`w-3.5 h-3.5 ${refresh.isPending ? 'animate-spin' : ''}`}
           />
-          Refresh
+          {t('subscription.refresh')}
         </button>
       </header>
 
@@ -128,6 +129,7 @@ export default function SubscriptionQuotaCard() {
 }
 
 function ProviderSection({ p }: { p: SubscriptionProvider }) {
+  const { t } = useTranslation()
   return (
     <div>
       <div className="flex items-baseline gap-2 mb-2">
@@ -139,18 +141,18 @@ function ProviderSection({ p }: { p: SubscriptionProvider }) {
         )}
         {!p.oauth_present && (
           <span className="inline-flex items-center gap-1 text-[11px] text-amber-700 bg-amber-50 rounded-full px-2 py-0.5">
-            <AlertCircle className="w-3 h-3" /> Static key — no quota data
+            <AlertCircle className="w-3 h-3" /> {t('subscription.static_key')}
           </span>
         )}
         {p.last_polled_at && (
           <span className="text-[11px] text-gray-400 ml-auto">
-            polled {relativeTime(p.last_polled_at)}
+            {t('subscription.polled', { time: relativeTime(p.last_polled_at) })}
           </span>
         )}
       </div>
 
       {p.tiers.length === 0 ? (
-        <p className="text-xs text-gray-400">No tier data yet.</p>
+        <p className="text-xs text-gray-400">{t('subscription.no_tier')}</p>
       ) : (
         <ul className="space-y-2">
           {p.tiers.map((t) => (
@@ -163,6 +165,7 @@ function ProviderSection({ p }: { p: SubscriptionProvider }) {
 }
 
 function TierRow({ tier }: { tier: SubscriptionTier }) {
+  const { t } = useTranslation()
   const pct = tier.total > 0 ? Math.min(100, (tier.used / tier.total) * 100) : 0
   const remaining = tier.remaining
   const lowQuota = tier.total > 0 && remaining < tier.total * 0.1
@@ -173,11 +176,11 @@ function TierRow({ tier }: { tier: SubscriptionTier }) {
         <p className="text-xs font-mono text-gray-700">
           {tier.tier_name}
           {tier.highspeed && (
-            <span className="ml-1 text-[10px] text-orange-600">highspeed</span>
+            <span className="ml-1 text-[10px] text-orange-600">{t('subscription.highspeed')}</span>
           )}
         </p>
         <p className="text-xs text-gray-500">
-          {remaining.toLocaleString()} / {tier.total.toLocaleString()} left
+          {remaining.toLocaleString()} / {tier.total.toLocaleString()} {t('subscription.left')}
         </p>
       </div>
       <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
@@ -188,7 +191,7 @@ function TierRow({ tier }: { tier: SubscriptionTier }) {
       </div>
       <div className="flex items-baseline justify-between mt-1">
         <p className="text-[11px] text-gray-400">
-          {formatResetIn(tier.seconds_to_reset)}
+          {formatResetIn(tier.seconds_to_reset, t)}
         </p>
         {tier.monthly_price_usd > 0 && (
           <p className="text-[11px] text-gray-400">
@@ -203,16 +206,16 @@ function TierRow({ tier }: { tier: SubscriptionTier }) {
   )
 }
 
-function formatResetIn(seconds: number): string {
-  if (seconds <= 0) return 'window closed'
-  if (seconds < 60) return `resets in ${seconds}s`
+function formatResetIn(seconds: number, t: (key: string, opts?: Record<string, unknown>) => string): string {
+  if (seconds <= 0) return t('subscription.window_closed')
+  if (seconds < 60) return t('subscription.resets_in', { time: `${seconds}s` })
   const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `resets in ${minutes}m`
+  if (minutes < 60) return t('subscription.resets_in', { time: `${minutes}m` })
   const hours = Math.floor(minutes / 60)
   const mins = minutes % 60
-  if (hours < 24) return `resets in ${hours}h ${mins}m`
+  if (hours < 24) return t('subscription.resets_in', { time: `${hours}h ${mins}m` })
   const days = Math.floor(hours / 24)
-  return `resets in ${days}d ${hours % 24}h`
+  return t('subscription.resets_in', { time: `${days}d ${hours % 24}h` })
 }
 
 function relativeTime(rfc3339: string): string {

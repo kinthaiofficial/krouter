@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { Download } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { api, type LogRecord } from '../api/client'
 
 const PAGE_SIZE = 50
@@ -18,6 +19,7 @@ const AGENT_LABELS: Record<string, string> = {
 }
 
 export default function Logs() {
+  const { t } = useTranslation()
   const [search, setSearch] = useState('')
   const [agentFilter, setAgentFilter] = useState('')
   const [page, setPage] = useState(0)
@@ -104,20 +106,20 @@ export default function Logs() {
   return (
     <div className="p-6 space-y-4 max-w-6xl mx-auto">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Request Logs</h1>
+        <h1 className="text-lg font-semibold">{t('logs.title')}</h1>
         <button
           onClick={exportCSV}
           className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900 border border-gray-200 rounded-lg px-3 py-1.5"
         >
           <Download size={14} />
-          Export CSV
+          {t('logs.export_csv')}
         </button>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
         <input
           type="search"
-          placeholder="Search by model, provider, agent…"
+          placeholder={t('logs.search_placeholder')}
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(0) }}
           className="w-full max-w-xs border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -129,7 +131,7 @@ export default function Logs() {
             onChange={(e) => { setAgentFilter(e.target.value); setPage(0) }}
             className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white"
           >
-            <option value="">All agents</option>
+            <option value="">{t('logs.all_agents')}</option>
             {agentsRaw.map((a) => (
               <option key={a.name} value={a.name}>{a.label}</option>
             ))}
@@ -150,21 +152,31 @@ export default function Logs() {
         />
 
         <span className="text-xs text-gray-400 ml-auto">
-          {filtered.length} records · {fromDate && toDate ? 'filtered' : 'live'}
+          {t('logs.records_summary', { total: filtered.length, filtered: fromDate && toDate ? 'filtered' : 'live' })}
         </span>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {isLoading ? (
-          <div className="p-8 text-center text-sm text-gray-400">Loading…</div>
+          <div className="p-8 text-center text-sm text-gray-400">{t('common.loading')}</div>
         ) : filtered.length === 0 ? (
-          <div className="p-8 text-center text-sm text-gray-400">No records found.</div>
+          <div className="p-8 text-center text-sm text-gray-400">{t('logs.no_records')}</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="border-b border-gray-100">
                 <tr className="text-left text-xs text-gray-400">
-                  {['Time', 'Agent', 'Model', 'Provider', 'In', 'Out', 'Cost', 'Lat', 'Status'].map((h) => (
+                  {[
+                    t('logs.col_time'),
+                    t('logs.col_agent'),
+                    t('logs.col_model'),
+                    t('logs.col_provider'),
+                    t('logs.col_in'),
+                    t('logs.col_out'),
+                    t('logs.col_cost'),
+                    t('logs.col_lat'),
+                    t('logs.col_status'),
+                  ].map((h) => (
                     <th key={h} className="px-4 py-2 font-medium whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -188,7 +200,7 @@ export default function Logs() {
               onClick={() => setPage(page_ - 1)}
               className="px-3 py-1 rounded border border-gray-200 disabled:opacity-40"
             >
-              Prev
+              {t('logs.prev')}
             </button>
             <span className="px-2 py-1">{page_ + 1} / {totalPages}</span>
             <button
@@ -196,7 +208,7 @@ export default function Logs() {
               onClick={() => setPage(page_ + 1)}
               className="px-3 py-1 rounded border border-gray-200 disabled:opacity-40"
             >
-              Next
+              {t('logs.next')}
             </button>
           </div>
         </div>

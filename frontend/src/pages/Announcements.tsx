@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ExternalLink, CheckCheck, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 interface Announcement {
   id: string
@@ -40,6 +41,7 @@ async function dismissAnn(id: string) {
 }
 
 export default function Announcements() {
+  const { t } = useTranslation()
   const qc = useQueryClient()
   const { data: items = [], isLoading } = useQuery({
     queryKey: ['announcements'],
@@ -66,14 +68,14 @@ export default function Announcements() {
 
   return (
     <div className="p-6 space-y-4 max-w-2xl mx-auto">
-      <h1 className="text-lg font-semibold">Announcements</h1>
+      <h1 className="text-lg font-semibold">{t('announcements.title')}</h1>
 
       {isLoading ? (
-        <p className="text-sm text-gray-400">Loading…</p>
+        <p className="text-sm text-gray-400">{t('announcements.loading')}</p>
       ) : items.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
           <p className="text-3xl mb-2">🎉</p>
-          <p className="text-sm">No announcements</p>
+          <p className="text-sm">{t('announcements.none')}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -95,10 +97,10 @@ export default function Announcements() {
                       {ann.title[lang] ?? ann.title.en ?? ''}
                     </p>
                     {!ann.read_at && (
-                      <span className="text-xs bg-blue-100 text-blue-600 px-1.5 rounded">New</span>
+                      <span className="text-xs bg-blue-100 text-blue-600 px-1.5 rounded">{t('announcements.badge_new')}</span>
                     )}
                     {ann.priority === 'critical' && (
-                      <span className="text-xs bg-red-100 text-red-600 px-1.5 rounded">Critical</span>
+                      <span className="text-xs bg-red-100 text-red-600 px-1.5 rounded">{t('announcements.badge_critical')}</span>
                     )}
                   </div>
                   <p className="text-xs text-gray-500">
@@ -124,7 +126,7 @@ export default function Announcements() {
                     <button
                       onClick={() => read.mutate(ann.id)}
                       className="p-1.5 text-gray-400 hover:text-green-600"
-                      title="Mark as read"
+                      title={t('announcements.mark_read')}
                     >
                       <CheckCheck size={14} />
                     </button>
@@ -132,7 +134,7 @@ export default function Announcements() {
                   <button
                     onClick={() => dismiss.mutate(ann.id)}
                     className="p-1.5 text-gray-400 hover:text-red-500"
-                    title="Dismiss"
+                    title={t('announcements.dismiss')}
                   >
                     <X size={14} />
                   </button>

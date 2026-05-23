@@ -1,8 +1,10 @@
 import { useQuery, useMutation } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
 import { RefreshCw, ExternalLink } from 'lucide-react'
 
 export default function About() {
+  const { t } = useTranslation()
   const { data: status } = useQuery({ queryKey: ['status'], queryFn: api.status })
   const { data: updateStatus } = useQuery({
     queryKey: ['update-status'],
@@ -21,11 +23,11 @@ export default function About() {
 
   return (
     <div className="p-6 space-y-5 max-w-lg mx-auto">
-      <h1 className="text-lg font-semibold">About</h1>
+      <h1 className="text-lg font-semibold">{t('about.title')}</h1>
 
       {/* Version info */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
-        <h2 className="text-sm font-medium text-gray-500">Version</h2>
+        <h2 className="text-sm font-medium text-gray-500">{t('about.version')}</h2>
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xl font-bold font-mono">{status?.version ?? '…'}</p>
@@ -33,18 +35,18 @@ export default function About() {
           </div>
           {hasUpdate && (
             <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-lg">
-              Update available: {updateStatus!.latest}
+              {t('about.update_available')}: {updateStatus!.latest}
             </span>
           )}
         </div>
         {status && (
           <div className="grid grid-cols-2 gap-2 text-xs text-gray-500 pt-1 border-t border-gray-100">
-            <span>Uptime: {formatUptime(status.uptime_seconds)}</span>
-            <span>PID: {status.pid}</span>
-            <span>Proxy port: {status.proxy_port}</span>
-            <span>API port: {status.mgmt_port}</span>
+            <span>{t('about.uptime')}: {formatUptime(status.uptime_seconds)}</span>
+            <span>{t('about.pid')}: {status.pid}</span>
+            <span>{t('about.proxy_port')}: {status.proxy_port}</span>
+            <span>{t('about.api_port')}: {status.mgmt_port}</span>
             {status.build_time && status.build_time !== 'unknown' && (
-              <span className="col-span-2">Built: {status.build_time}</span>
+              <span className="col-span-2">{t('about.built')}: {status.build_time}</span>
             )}
           </div>
         )}
@@ -53,11 +55,11 @@ export default function About() {
       {/* Update section */}
       {hasUpdate && (
         <div className="bg-yellow-50 rounded-xl border border-yellow-200 p-5 space-y-3">
-          <h2 className="text-sm font-medium">New version available</h2>
+          <h2 className="text-sm font-medium">{t('about.update_available')}</h2>
           <p className="text-sm text-gray-600">
             Version <strong>{updateStatus!.latest}</strong> is ready to install.
             {updateStatus!.is_critical && (
-              <span className="ml-1 text-red-600 font-medium">Critical update.</span>
+              <span className="ml-1 text-red-600 font-medium">{t('about.critical_update')}.</span>
             )}
           </p>
           <div className="flex gap-2">
@@ -67,7 +69,7 @@ export default function About() {
               className="flex items-center gap-1.5 bg-brand hover:bg-brand-dark text-white text-sm rounded-lg px-4 py-2 disabled:opacity-50"
             >
               <RefreshCw size={14} className={applyUpdate.isPending ? 'animate-spin' : ''} />
-              {applyUpdate.isSuccess ? 'Restarting…' : 'Apply Update'}
+              {applyUpdate.isSuccess ? t('about.restarting') : t('about.apply_update')}
             </button>
             {updateStatus!.release_notes_url && (
               <a
@@ -77,19 +79,19 @@ export default function About() {
                 className="flex items-center gap-1.5 border border-gray-200 text-sm rounded-lg px-4 py-2 text-gray-600 hover:text-gray-900"
               >
                 <ExternalLink size={14} />
-                Release Notes
+                {t('about.release_notes')}
               </a>
             )}
           </div>
           {applyUpdate.isError && (
-            <p className="text-xs text-red-500">Failed to apply update. Please try again.</p>
+            <p className="text-xs text-red-500">{t('about.update_failed')}</p>
           )}
         </div>
       )}
 
       {/* Links */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-2">
-        <h2 className="text-sm font-medium text-gray-500">Resources</h2>
+        <h2 className="text-sm font-medium text-gray-500">{t('about.resources')}</h2>
         <a
           href="https://kinthai.ai"
           target="_blank"

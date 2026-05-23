@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export default function DoneStep({ maxAttempts = 40, pollIntervalMs = 1500 }: Props) {
+  const { t } = useTranslation()
   const [launching, setLaunching] = useState(false)
   const [error, setError] = useState('')
 
@@ -30,7 +32,7 @@ export default function DoneStep({ maxAttempts = 40, pollIntervalMs = 1500 }: Pr
         await new Promise(r => setTimeout(r, pollIntervalMs))
       }
       if (!stopped) {
-        setError('KRouter took too long to start. Open http://127.0.0.1:8403/krouter/ manually.')
+        setError(t('done.timeout'))
         setLaunching(false)
       }
     }
@@ -53,9 +55,9 @@ export default function DoneStep({ maxAttempts = 40, pollIntervalMs = 1500 }: Pr
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
         </svg>
       </div>
-      <h2 className="text-2xl font-bold text-gray-900 mb-2 tracking-tight">All set!</h2>
+      <h2 className="text-2xl font-bold text-gray-900 mb-2 tracking-tight">{t('done.title')}</h2>
       <p className="text-gray-500 mb-6 leading-relaxed">
-        KRouter is running in the background. Your AI agents are now routing through the proxy and saving you tokens.
+        {t('done.detail')}
       </p>
 
       {launching ? (
@@ -64,14 +66,14 @@ export default function DoneStep({ maxAttempts = 40, pollIntervalMs = 1500 }: Pr
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
           </svg>
-          <p className="text-sm text-gray-500">Starting KRouter daemon…</p>
+          <p className="text-sm text-gray-500">{t('done.launching')}</p>
         </div>
       ) : (
         <button
           onClick={handleOpen}
           className="w-full bg-brand hover:bg-brand-dark text-white font-semibold py-3 px-6 rounded-xl transition-colors text-center"
         >
-          Open KRouter Dashboard →
+          {t('done.open')}
         </button>
       )}
 
@@ -79,7 +81,7 @@ export default function DoneStep({ maxAttempts = 40, pollIntervalMs = 1500 }: Pr
         <p className="text-red-500 text-sm mt-4">{error}</p>
       )}
       <p className="text-xs text-gray-400 mt-4">
-        You can close this window at any time.
+        {t('done.dismiss')}
       </p>
     </div>
   )

@@ -1,22 +1,24 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { api, type Settings as ISettings, type Preset, type PricingStatus } from '../api/client'
+import i18n, { storeLang, settingsLangToI18n } from '../i18n'
 
 const PRESETS: Preset[] = ['saver', 'balanced', 'quality']
 
 const NOTIFICATION_CATEGORIES = [
-  { key: 'quota_warning', label: 'Quota Warnings' },
-  { key: 'announcement_new', label: 'New Announcements' },
-  { key: 'upgrade_available', label: 'Updates Available' },
-  { key: 'free_credit', label: 'Free Credits' },
-  { key: 'provider_news', label: 'Provider News' },
-  { key: 'tip', label: 'Tips & Suggestions' },
-  { key: 'critical_warning', label: 'Critical Warnings' },
+  { key: 'quota_warning', labelKey: 'settings.notif_quota_warning' },
+  { key: 'announcement_new', labelKey: 'settings.notif_announcement' },
+  { key: 'upgrade_available', labelKey: 'settings.notif_upgrade' },
+  { key: 'free_credit', labelKey: 'settings.notif_free_credit' },
+  { key: 'provider_news', labelKey: 'settings.notif_provider_news' },
+  { key: 'tip', labelKey: 'settings.notif_tip' },
+  { key: 'critical_warning', labelKey: 'settings.notif_critical' },
 ]
 
 const BUDGET_THRESHOLDS = [
-  { key: 'daily', label: 'Daily limit (USD)' },
-  { key: 'weekly', label: 'Weekly limit (USD)' },
+  { key: 'daily', labelKey: 'settings.budget_daily' },
+  { key: 'weekly', labelKey: 'settings.budget_weekly' },
 ]
 
 function fmtUSD(n: number) {
@@ -35,6 +37,7 @@ function fmtSyncTime(iso: string) {
 }
 
 export default function Settings() {
+  const { t } = useTranslation()
   const qc = useQueryClient()
   const { data: settings, isLoading } = useQuery({
     queryKey: ['settings'],
@@ -64,15 +67,24 @@ export default function Settings() {
     mutationFn: api.uninstall,
   })
 
-  if (isLoading || !settings) return <div className="p-6 text-sm text-gray-400">Loading…</div>
+  // Sync settings.language to i18n on first load
+  useEffect(() => {
+    if (settings?.language) {
+      const lang = settingsLangToI18n(settings.language)
+      storeLang(lang)
+      i18n.changeLanguage(lang)
+    }
+  }, [settings?.language])
+
+  if (isLoading || !settings) return <div className="p-6 text-sm text-gray-400">{t('common.loading')}</div>
 
   return (
     <div className="p-6 space-y-6 max-w-xl mx-auto">
-      <h1 className="text-lg font-semibold">Settings</h1>
+      <h1 className="text-lg font-semibold">{t('settings.title')}</h1>
 
       {/* Preset */}
       <section className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
-        <h2 className="text-sm font-medium">Routing Preset</h2>
+        <h2 className="text-sm font-medium">{t('settings.routing_preset')}</h2>
         <div className="flex gap-2">
           {PRESETS.map((p) => (
             <button
@@ -93,22 +105,28 @@ export default function Settings() {
 
       {/* Language */}
       <section className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
-        <h2 className="text-sm font-medium">Language</h2>
+        <h2 className="text-sm font-medium">{t('settings.language')}</h2>
         <select
           value={settings.language}
-          onChange={(e) => save.mutate({ language: e.target.value })}
+          onChange={(e) => {
+            const newLang = e.target.value
+            const i18nLang = settingsLangToI18n(newLang)
+            storeLang(i18nLang)
+            i18n.changeLanguage(i18nLang)
+            save.mutate({ language: newLang })
+          }}
           className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white"
         >
-          <option value="en">English</option>
-          <option value="zh-CN">中文</option>
+          <option value="en">{t('settings.lang_en')}</option>
+          <option value="zh-CN">{t('settings.lang_zh')}</option>
         </select>
       </section>
 
       {/* Desktop notifications */}
       <section className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
-        <h2 className="text-sm font-medium">Desktop Notifications</h2>
+        <h2 className="text-sm font-medium">{t('settings.notifications')}</h2>
         <div className="space-y-2">
-          {NOTIFICATION_CATEGORIES.map(({ key, label }) => (
+          {NOTIFICATION_CATEGORIES.map(({ key, labelKey }) => (
             <label key={key} className="flex items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"
@@ -123,7 +141,7 @@ export default function Settings() {
                 }
                 className="w-4 h-4 rounded accent-blue-500"
               />
-              <span className="text-sm">{label}</span>
+              <span className="text-sm">{t(labelKey)}</span>
             </label>
           ))}
         </div>
@@ -131,12 +149,12 @@ export default function Settings() {
 
       {/* Budget limits */}
       <section className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
-        <h2 className="text-sm font-medium">Budget Limits</h2>
-        <p className="text-xs text-gray-500">Requests are blocked when the limit is reached. Set to 0 to disable. Currency is always USD.</p>
+        <h2 className="text-sm font-medium">{t('settings.budget_limits')}</h2>
+        <p className="text-xs text-gray-500">{t('settings.budget_detail')}</p>
         <div className="space-y-3">
-          {BUDGET_THRESHOLDS.map(({ key, label }) => (
+          {BUDGET_THRESHOLDS.map(({ key, labelKey }) => (
             <div key={key} className="flex items-center gap-3">
-              <label className="text-sm w-36">{label}</label>
+              <label className="text-sm w-36">{t(labelKey)}</label>
               <input
                 type="number"
                 min={0}
@@ -160,7 +178,7 @@ export default function Settings() {
       {/* Pricing */}
       <section className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium">Pricing Data</h2>
+          <h2 className="text-sm font-medium">{t('settings.pricing_data')}</h2>
           {pricing && (
             <span className={[
               'text-xs px-2 py-0.5 rounded-full font-medium',
@@ -168,7 +186,9 @@ export default function Settings() {
               pricing.source === 'cache' ? 'bg-yellow-100 text-yellow-700' :
               'bg-gray-100 text-gray-500',
             ].join(' ')}>
-              {pricing.source}
+              {pricing.source === 'live' ? t('settings.pricing_source_live') :
+               pricing.source === 'cache' ? t('settings.pricing_source_cache') :
+               pricing.source}
             </span>
           )}
         </div>
@@ -176,27 +196,27 @@ export default function Settings() {
         {pricing ? (
           <>
             <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
-              <span className="text-gray-500">Last synced</span>
+              <span className="text-gray-500">{t('settings.last_synced')}</span>
               <span className="font-mono text-xs">{fmtSyncTime(pricing.last_sync_at)}</span>
-              <span className="text-gray-500">Models tracked</span>
+              <span className="text-gray-500">{t('settings.models_tracked')}</span>
               <span>{pricing.model_count.toLocaleString()}</span>
-              <span className="text-gray-500">Cost this month</span>
+              <span className="text-gray-500">{t('settings.cost_this_month')}</span>
               <span>{fmtUSD(pricing.cost_this_month_usd)}</span>
-              <span className="text-gray-500">Saved this month</span>
+              <span className="text-gray-500">{t('settings.saved_this_month')}</span>
               <span className="text-green-600 font-medium">{fmtUSD(pricing.saved_this_month_usd)}</span>
             </div>
 
             {pricing.top_models.length > 0 && (
               <div className="space-y-1">
-                <p className="text-xs text-gray-400 uppercase tracking-wide">Top models (30 days)</p>
+                <p className="text-xs text-gray-400 uppercase tracking-wide">{t('settings.top_models')}</p>
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="text-gray-400 border-b border-gray-100">
-                      <th className="text-left py-1 font-normal">Model</th>
-                      <th className="text-right py-1 font-normal">Reqs</th>
-                      <th className="text-right py-1 font-normal">Cost</th>
-                      <th className="text-right py-1 font-normal">In/M</th>
-                      <th className="text-right py-1 font-normal">Out/M</th>
+                      <th className="text-left py-1 font-normal">{t('settings.col_model')}</th>
+                      <th className="text-right py-1 font-normal">{t('settings.col_requests')}</th>
+                      <th className="text-right py-1 font-normal">{t('settings.col_cost')}</th>
+                      <th className="text-right py-1 font-normal">{t('settings.col_in')}</th>
+                      <th className="text-right py-1 font-normal">{t('settings.col_out')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -215,17 +235,17 @@ export default function Settings() {
             )}
           </>
         ) : (
-          <p className="text-sm text-gray-400">Loading…</p>
+          <p className="text-sm text-gray-400">{t('common.loading')}</p>
         )}
       </section>
 
       {/* Data Management */}
       <section className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-        <h2 className="text-sm font-medium">Data Management</h2>
+        <h2 className="text-sm font-medium">{t('settings.data_management')}</h2>
 
         {/* Export logs */}
         <div className="space-y-2">
-          <p className="text-xs text-gray-500">Export request logs as CSV by date range.</p>
+          <p className="text-xs text-gray-500">{t('settings.export_detail')}</p>
           <div className="flex items-center gap-2 flex-wrap">
             <input
               type="date"
@@ -233,7 +253,7 @@ export default function Settings() {
               onChange={(e) => setExportFrom(e.target.value)}
               className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white"
             />
-            <span className="text-sm text-gray-400">to</span>
+            <span className="text-sm text-gray-400">{t('settings.date_to')}</span>
             <input
               type="date"
               value={exportTo}
@@ -251,7 +271,7 @@ export default function Settings() {
                   : 'border-gray-100 text-gray-300 cursor-not-allowed',
               ].join(' ')}
             >
-              Export CSV
+              {t('settings.export_csv')}
             </a>
           </div>
         </div>
@@ -259,47 +279,47 @@ export default function Settings() {
         {/* Reset data */}
         <div className="flex items-center justify-between pt-2 border-t border-gray-50">
           <div>
-            <p className="text-sm font-medium text-gray-700">Reset All Data</p>
-            <p className="text-xs text-gray-400">Delete all request history from the local database.</p>
+            <p className="text-sm font-medium text-gray-700">{t('settings.reset_data')}</p>
+            <p className="text-xs text-gray-400">{t('settings.reset_detail')}</p>
           </div>
           <button
             onClick={() => {
-              if (window.confirm('Delete all request history? This cannot be undone.')) {
+              if (window.confirm(t('settings.reset_confirm'))) {
                 resetData.mutate()
               }
             }}
             disabled={resetData.isPending}
             className="text-sm text-red-600 border border-red-200 rounded-lg px-3 py-1.5 hover:bg-red-50 disabled:opacity-40"
           >
-            {resetData.isPending ? 'Resetting…' : 'Reset Data'}
+            {resetData.isPending ? t('settings.resetting') : t('settings.reset_data')}
           </button>
         </div>
 
         {/* Uninstall */}
         <div className="flex items-center justify-between pt-2 border-t border-gray-50">
           <div>
-            <p className="text-sm font-medium text-gray-700">Uninstall</p>
-            <p className="text-xs text-gray-400">Disconnect all agents. Run <code className="font-mono text-xs">krouter uninstall</code> to remove service files.</p>
+            <p className="text-sm font-medium text-gray-700">{t('settings.uninstall')}</p>
+            <p className="text-xs text-gray-400">{t('settings.uninstall_detail')}</p>
           </div>
           <button
             onClick={() => {
-              if (window.confirm('Disconnect all agents? You can reconnect them later.')) {
+              if (window.confirm(t('settings.uninstall_confirm'))) {
                 uninstall.mutate()
               }
             }}
             disabled={uninstall.isPending}
             className="text-sm text-red-600 border border-red-200 rounded-lg px-3 py-1.5 hover:bg-red-50 disabled:opacity-40"
           >
-            {uninstall.isPending ? 'Disconnecting…' : 'Uninstall'}
+            {uninstall.isPending ? t('settings.disconnecting') : t('settings.uninstall')}
           </button>
         </div>
         {(resetData.isError || uninstall.isError) && (
-          <p className="text-sm text-red-500">Operation failed. Please try again.</p>
+          <p className="text-sm text-red-500">{t('settings.op_failed')}</p>
         )}
       </section>
 
       {save.isError && (
-        <p className="text-sm text-red-500">Failed to save settings. Please try again.</p>
+        <p className="text-sm text-red-500">{t('settings.save_failed')}</p>
       )}
     </div>
   )

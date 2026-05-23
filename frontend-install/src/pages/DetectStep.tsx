@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api, AgentInfo } from '../api/client'
 
 interface Props { onNext: () => void }
@@ -11,6 +12,7 @@ const AGENT_LABELS: Record<string, string> = {
 }
 
 export default function DetectStep({ onNext }: Props) {
+  const { t } = useTranslation()
   const [agents, setAgents] = useState<AgentInfo[] | null>(null)
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState('')
@@ -42,27 +44,26 @@ export default function DetectStep({ onNext }: Props) {
 
   return (
     <div>
-      <h2 className="text-xl font-bold text-gray-900 mb-1 tracking-tight">Detected AI agents</h2>
+      <h2 className="text-xl font-bold text-gray-900 mb-1 tracking-tight">{t('detect.title')}</h2>
       <p className="text-sm text-gray-500 mb-6">
-        KRouter will patch these agent configs to route through the proxy.
+        {t('detect.detail')}
       </p>
 
       {agents === null && !error && (
-        <p className="text-gray-400 text-sm animate-pulse mb-6">Scanning…</p>
+        <p className="text-gray-400 text-sm animate-pulse mb-6">{t('detect.scanning')}</p>
       )}
 
       {noAgents && (
         <div className="rounded-xl bg-amber-50 border border-amber-100 p-4 text-sm text-amber-800 mb-6 space-y-2">
-          <p className="font-medium">No compatible agents found.</p>
+          <p className="font-medium">{t('detect.none_title')}</p>
           <p className="text-amber-600 text-xs leading-relaxed">
-            KRouter works with OpenClaw, Claude Code, Cursor, Hermes, and more.
-            Install one of these agents first, then re-run the wizard.
+            {t('detect.none_detail')}
           </p>
           <button
             onClick={scan}
             className="text-xs text-amber-700 underline underline-offset-2 hover:text-amber-900 transition-colors"
           >
-            Retry scan
+            {t('detect.retry')}
           </button>
         </div>
       )}
@@ -94,7 +95,7 @@ export default function DetectStep({ onNext }: Props) {
             className="flex-1 border border-border text-gray-600 font-medium py-2.5 px-4 rounded-xl hover:bg-surface transition-colors text-sm"
             disabled={connecting}
           >
-            Skip
+            {t('detect.skip')}
           </button>
         )}
         {!noAgents && (
@@ -103,7 +104,7 @@ export default function DetectStep({ onNext }: Props) {
             disabled={connecting || agents === null}
             className="flex-1 bg-brand hover:bg-brand-dark disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-2.5 px-4 rounded-xl transition-colors"
           >
-            {connecting ? 'Connecting…' : 'Connect & Continue'}
+            {connecting ? t('detect.connecting') : t('detect.connect_continue')}
           </button>
         )}
       </div>

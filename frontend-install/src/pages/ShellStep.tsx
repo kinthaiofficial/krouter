@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
 
 interface Props {
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export default function ShellStep({ onNext, maxAttempts = 40, pollIntervalMs = 1500 }: Props) {
+  const { t } = useTranslation()
   const [running, setRunning] = useState(false)
   const [done, setDone] = useState(false)
   const [error, setError] = useState('')
@@ -34,7 +36,7 @@ export default function ShellStep({ onNext, maxAttempts = 40, pollIntervalMs = 1
         await new Promise(r => setTimeout(r, pollIntervalMs))
       }
       if (!stopped) {
-        setError('KRouter took too long to start. Open http://127.0.0.1:8403/krouter/ manually.')
+        setError(t('done.timeout'))
         setLaunching(false)
       }
     }
@@ -64,22 +66,20 @@ export default function ShellStep({ onNext, maxAttempts = 40, pollIntervalMs = 1
 
   return (
     <div>
-      <h2 className="text-xl font-bold text-gray-900 mb-1 tracking-tight">Shell integration</h2>
+      <h2 className="text-xl font-bold text-gray-900 mb-1 tracking-tight">{t('shell.title')}</h2>
       <p className="text-sm text-gray-500 mb-6">
-        Adds{' '}
-        <code className="bg-surface px-1.5 py-0.5 rounded-md text-xs font-mono">eval "$(krouter shell-init)"</code>{' '}
-        to your shell RC so <code className="bg-surface px-1.5 py-0.5 rounded-md text-xs font-mono">ANTHROPIC_BASE_URL</code> is set automatically.
+        {t('shell.detail')}
       </p>
 
       {done ? (
         <div className="rounded-xl bg-brand-light border border-brand/20 p-4 text-sm text-gray-700 mb-6 flex items-center gap-2">
           <span className="text-brand font-bold">✓</span>
-          Shell integration applied. Restart your terminal to activate.
+          {t('shell.done')}
         </div>
       ) : (
         <div className="rounded-xl bg-surface border border-border p-4 text-sm text-gray-600 mb-6">
-          <p>Appends a marker block to <code className="font-mono text-xs">~/.zshrc</code> (or bash / fish equivalent).</p>
-          <p className="mt-1 text-gray-400 text-xs">Idempotent — safe to run multiple times.</p>
+          <p>{t('shell.step_rc')}</p>
+          <p className="mt-1 text-gray-400 text-xs">{t('shell.step_idempotent')}</p>
         </div>
       )}
 
@@ -91,7 +91,7 @@ export default function ShellStep({ onNext, maxAttempts = 40, pollIntervalMs = 1
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
           </svg>
-          <p className="text-sm text-gray-500">Starting KRouter daemon…</p>
+          <p className="text-sm text-gray-500">{t('done.launching')}</p>
         </div>
       ) : !done ? (
         <div className="flex gap-3">
@@ -100,14 +100,14 @@ export default function ShellStep({ onNext, maxAttempts = 40, pollIntervalMs = 1
             className="flex-1 border border-border text-gray-600 font-medium py-2.5 px-4 rounded-xl hover:bg-surface transition-colors text-sm"
             disabled={running}
           >
-            Skip
+            {t('shell.skip')}
           </button>
           <button
             onClick={handleApply}
             disabled={running}
             className="flex-1 bg-brand hover:bg-brand-dark disabled:opacity-50 text-white font-semibold py-2.5 px-4 rounded-xl transition-colors"
           >
-            {running ? 'Applying…' : 'Apply'}
+            {running ? t('shell.applying') : t('shell.apply')}
           </button>
         </div>
       ) : (
@@ -115,7 +115,7 @@ export default function ShellStep({ onNext, maxAttempts = 40, pollIntervalMs = 1
           onClick={handleOpenDashboard}
           className="w-full bg-brand hover:bg-brand-dark text-white font-semibold py-3 px-4 rounded-xl transition-colors"
         >
-          Open KRouter Dashboard →
+          {t('done.open')}
         </button>
       )}
     </div>

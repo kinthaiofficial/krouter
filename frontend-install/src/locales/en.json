@@ -1,0 +1,83 @@
+{
+  "progress": {
+    "welcome": "Welcome",
+    "detect": "Detect agents",
+    "agents": "Agent paths",
+    "service": "Install service",
+    "shell": "Shell setup",
+    "budget": "Budget",
+    "done": "Done",
+    "step": "step {{current}} of {{total}}"
+  },
+  "welcome": {
+    "headline": "Stop overpaying for AI tokens",
+    "description": "KRouter's smart routing picks the cheapest capable provider for every request — automatically saving you money on each call.",
+    "feature_local": "Runs entirely on your machine — no cloud uploads, no data collection",
+    "feature_keys": "API keys never written to disk — forwarded directly at request time",
+    "feature_nollm": "No LLM calls of its own — just routes between the providers you already use",
+    "feature_auto": "This wizard handles the setup automatically. Takes about 30 seconds.",
+    "get_started": "Get Started"
+  },
+  "detect": {
+    "title": "Detected AI agents",
+    "detail": "KRouter will patch these agent configs to route through the proxy.",
+    "scanning": "Scanning…",
+    "none_title": "No compatible agents found",
+    "none_detail": "KRouter works with OpenClaw, Claude Code, Cursor, Hermes, and more. Install one of these agents first, then re-run the wizard.",
+    "retry": "Retry scan",
+    "skip": "Skip",
+    "connect_continue": "Connect & Continue",
+    "connecting": "Connecting…"
+  },
+  "agentPaths": {
+    "title": "Agent Paths",
+    "detail": "Pick which AI agents KRouter should inherit vendor endpoints and API keys from. The daemon scans these configs every time it starts.",
+    "loading": "Loading…",
+    "scanning": "Scanning…",
+    "preview": "Preview",
+    "no_vendors": "No vendors found in this config",
+    "vendors_found_one": "{{count}} vendor found",
+    "vendors_found_other": "{{count}} vendors found",
+    "select_one": "Select at least one agent to continue",
+    "continue": "Continue with {{count}} agent(s)",
+    "saving": "Saving…"
+  },
+  "service": {
+    "title": "Install daemon",
+    "detail": "KRouter will be copied to ~/.local/bin/krouter and registered as a user service so it starts automatically.",
+    "done": "Daemon installed and service registered",
+    "step_copy": "Copy binary → ~/.local/bin/krouter",
+    "step_register": "Register service (systemd / LaunchAgent)",
+    "step_start": "Enable and start the service",
+    "install": "Install",
+    "installing": "Installing…",
+    "continue": "Continue →"
+  },
+  "shell": {
+    "title": "Shell integration",
+    "detail": "Adds eval \"$(krouter shell-init)\" to your shell RC so ANTHROPIC_BASE_URL is set automatically.",
+    "done": "Shell integration applied. Restart your terminal to activate.",
+    "step_rc": "Appends a marker block to ~/.zshrc (or bash / fish equivalent)",
+    "step_idempotent": "Idempotent — safe to run multiple times",
+    "skip": "Skip",
+    "apply": "Apply",
+    "applying": "Applying…"
+  },
+  "budget": {
+    "title": "Daily Budget",
+    "detail": "KRouter will block requests once your daily spending reaches this limit. Set to 0 to disable. You can change this anytime in Settings.",
+    "unit": "USD / day",
+    "note": "Default: $50 USD. All costs are displayed in USD regardless of region.",
+    "continue": "Continue →",
+    "saving": "Saving…",
+    "failed": "Failed to save budget setting. Please try again."
+  },
+  "done": {
+    "title": "All set!",
+    "detail": "KRouter is running in the background. Your AI agents are now routing through the proxy and saving you tokens.",
+    "launching": "Starting KRouter daemon…",
+    "timeout": "KRouter took too long to start. Open http://127.0.0.1:8403/krouter/ manually.",
+    "open": "Open KRouter Dashboard →",
+    "dismiss": "You can close this window at any time."
+  }
+}

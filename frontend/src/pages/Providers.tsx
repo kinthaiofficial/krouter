@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle, XCircle, AlertCircle, Plus, Trash2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { api, type ProviderInfo, type AddProviderBody } from '../api/client'
 
 export default function Providers() {
+  const { t } = useTranslation()
   const [showAdd, setShowAdd] = useState(false)
   const { data: providers = [], isLoading, isError } = useQuery<ProviderInfo[]>({
     queryKey: ['providers'],
@@ -17,7 +19,7 @@ export default function Providers() {
   return (
     <div className="p-6 space-y-6 max-w-3xl mx-auto">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Providers</h1>
+        <h1 className="text-lg font-semibold">{t('providers.title')}</h1>
         <button
           onClick={() => setShowAdd(true)}
           className="flex items-center gap-1.5 text-sm border border-gray-200 rounded-lg px-3 py-1.5 hover:border-blue-400 hover:text-blue-600"
@@ -29,20 +31,20 @@ export default function Providers() {
 
       <div className="space-y-2">
         {isLoading ? (
-          <p className="text-sm text-gray-400">Loading…</p>
+          <p className="text-sm text-gray-400">{t('common.loading')}</p>
         ) : isError ? (
           <p className="text-sm text-red-500">Failed to load providers. Is the daemon running?</p>
         ) : (
           <>
             {active.length > 0 && (
               <div className="space-y-2">
-                <p className="text-xs text-gray-400 uppercase tracking-wide">Active</p>
+                <p className="text-xs text-gray-400 uppercase tracking-wide">{t('providers.active')}</p>
                 {active.map((p) => <ActiveCard key={p.name} provider={p} />)}
               </div>
             )}
             {inactive.length > 0 && (
               <div className="space-y-2 mt-4">
-                <p className="text-xs text-gray-400 uppercase tracking-wide">Not configured</p>
+                <p className="text-xs text-gray-400 uppercase tracking-wide">{t('providers.not_configured')}</p>
                 {inactive.map((p) => <InactiveCard key={p.name} provider={p} />)}
               </div>
             )}
@@ -56,6 +58,7 @@ export default function Providers() {
 }
 
 function ActiveCard({ provider: p }: { provider: ProviderInfo }) {
+  const { t } = useTranslation()
   const pct = Math.round(p.success_rate * 100)
   const healthy = p.consecutive_failures === 0 && p.available
   const [testResult, setTestResult] = useState<{ latency_ms: number; status_code: number; ok: boolean } | null>(null)
@@ -90,19 +93,19 @@ function ActiveCard({ provider: p }: { provider: ProviderInfo }) {
       {(p.requests_today > 0 || p.latency_p50_ms > 0) && (
         <div className="text-right shrink-0">
           <p className="text-sm font-mono">{p.requests_today}</p>
-          <p className="text-xs text-gray-400">today</p>
+          <p className="text-xs text-gray-400">{t('providers.success_today')}</p>
         </div>
       )}
       {p.latency_p50_ms > 0 && (
         <div className="text-right shrink-0">
           <p className="text-sm font-mono">{p.latency_p50_ms}ms</p>
-          <p className="text-xs text-gray-400">p50 lat</p>
+          <p className="text-xs text-gray-400">{t('providers.p50_lat')}</p>
         </div>
       )}
       {p.consecutive_failures > 0 && (
         <div className="text-right shrink-0">
           <p className="text-sm text-red-500">{p.consecutive_failures}</p>
-          <p className="text-xs text-gray-400">failures</p>
+          <p className="text-xs text-gray-400">{t('providers.failures')}</p>
         </div>
       )}
       <div className="shrink-0 flex flex-col items-end gap-1">
@@ -111,7 +114,7 @@ function ActiveCard({ provider: p }: { provider: ProviderInfo }) {
           disabled={test.isPending}
           className="text-xs border border-gray-200 rounded-lg px-2.5 py-1 hover:border-blue-400 hover:text-blue-600 disabled:opacity-40"
         >
-          {test.isPending ? 'Testing…' : 'Test'}
+          {test.isPending ? t('providers.testing') : t('providers.test')}
         </button>
         {testResult && (
           <span className={`text-xs font-mono ${testResult.ok ? 'text-green-600' : 'text-red-500'}`}>

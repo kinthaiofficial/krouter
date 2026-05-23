@@ -1,0 +1,83 @@
+{
+  "progress": {
+    "welcome": "欢迎",
+    "detect": "检测 Agent",
+    "agents": "Agent 路径",
+    "service": "安装服务",
+    "shell": "Shell 配置",
+    "budget": "预算设置",
+    "done": "完成",
+    "step": "第 {{current}} 步，共 {{total}} 步"
+  },
+  "welcome": {
+    "headline": "告别 AI Token 浪费",
+    "description": "KRouter 智能路由为每个请求选择最便宜的可用 Provider，自动帮你省钱。",
+    "feature_local": "完全本地运行 — 不上传数据，不收集信息",
+    "feature_keys": "API Key 不写入磁盘 — 请求时直接转发",
+    "feature_nollm": "自身不调用 LLM — 仅在你已有的 Provider 间路由",
+    "feature_auto": "向导自动完成全部配置，约需 30 秒。",
+    "get_started": "开始配置"
+  },
+  "detect": {
+    "title": "检测到的 AI Agent",
+    "detail": "KRouter 将修改这些 Agent 的配置，使请求通过代理路由。",
+    "scanning": "扫描中…",
+    "none_title": "未找到兼容的 Agent",
+    "none_detail": "KRouter 支持 OpenClaw、Claude Code、Cursor、Hermes 等。请先安装其中一个 Agent，再重新运行向导。",
+    "retry": "重新扫描",
+    "skip": "跳过",
+    "connect_continue": "连接并继续",
+    "connecting": "连接中…"
+  },
+  "agentPaths": {
+    "title": "Agent 路径",
+    "detail": "选择 KRouter 应从哪些 AI Agent 继承 Provider 端点和 API Key。守护进程每次启动时会扫描这些配置。",
+    "loading": "加载中…",
+    "scanning": "扫描中…",
+    "preview": "预览",
+    "no_vendors": "该配置中未找到 Provider",
+    "vendors_found_one": "找到 {{count}} 个 Provider",
+    "vendors_found_other": "找到 {{count}} 个 Provider",
+    "select_one": "请至少选择一个 Agent 才能继续",
+    "continue": "继续（已选 {{count}} 个）",
+    "saving": "保存中…"
+  },
+  "service": {
+    "title": "安装守护进程",
+    "detail": "KRouter 将被复制到 ~/.local/bin/krouter 并注册为用户服务，随系统自动启动。",
+    "done": "守护进程已安装并注册服务",
+    "step_copy": "复制二进制文件 → ~/.local/bin/krouter",
+    "step_register": "注册服务（systemd / LaunchAgent）",
+    "step_start": "启用并启动服务",
+    "install": "安装",
+    "installing": "安装中…",
+    "continue": "继续 →"
+  },
+  "shell": {
+    "title": "Shell 集成",
+    "detail": "将 eval \"$(krouter shell-init)\" 添加到 Shell 配置文件，自动设置 ANTHROPIC_BASE_URL。",
+    "done": "Shell 集成已应用。重启终端后生效。",
+    "step_rc": "在 ~/.zshrc（或 bash / fish 对应文件）中追加标记块",
+    "step_idempotent": "幂等操作 — 重复运行安全",
+    "skip": "跳过",
+    "apply": "应用",
+    "applying": "应用中…"
+  },
+  "budget": {
+    "title": "每日预算",
+    "detail": "当日消费达到限额后，KRouter 将拦截后续请求。设为 0 表示不限制，可在设置中随时修改。",
+    "unit": "USD / 天",
+    "note": "默认：$50 USD。费用统一以 USD 显示，与地区无关。",
+    "continue": "继续 →",
+    "saving": "保存中…",
+    "failed": "保存预算设置失败，请重试。"
+  },
+  "done": {
+    "title": "配置完成！",
+    "detail": "KRouter 正在后台运行，AI Agent 的请求已通过代理路由，帮你节省 Token 费用。",
+    "launching": "正在启动 KRouter 守护进程…",
+    "timeout": "KRouter 启动超时，请手动打开 http://127.0.0.1:8403/krouter/",
+    "open": "打开 KRouter 仪表盘 →",
+    "dismiss": "可随时关闭此窗口。"
+  }
+}

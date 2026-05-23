@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link2, Link2Off, RefreshCw, ChevronDown, ChevronUp, TerminalSquare, RotateCcw, History } from 'lucide-react'
 import { api, type BackupInfo, type AgentDiff } from '../api/client'
@@ -39,33 +40,34 @@ function DiffModal({ diff, onConfirm, onCancel, loading }: {
   onCancel: () => void
   loading: boolean
 }) {
+  const { t } = useTranslation()
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
         <div className="p-5 border-b border-gray-100">
-          <h2 className="font-semibold text-sm">Preview Changes</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Review the config changes before connecting.</p>
+          <h2 className="font-semibold text-sm">{t('agents.preview_changes')}</h2>
+          <p className="text-xs text-gray-400 mt-0.5">{t('agents.preview_detail')}</p>
         </div>
         <div className="flex-1 overflow-auto p-5 grid grid-cols-2 gap-4 min-h-0">
           <div>
-            <p className="text-xs text-gray-400 mb-1 font-medium">Before</p>
+            <p className="text-xs text-gray-400 mb-1 font-medium">{t('agents.before')}</p>
             <pre className="text-xs bg-red-50 border border-red-100 rounded-lg p-3 overflow-auto max-h-64 whitespace-pre-wrap">{diff.before}</pre>
           </div>
           <div>
-            <p className="text-xs text-gray-400 mb-1 font-medium">After</p>
+            <p className="text-xs text-gray-400 mb-1 font-medium">{t('agents.after')}</p>
             <pre className="text-xs bg-green-50 border border-green-100 rounded-lg p-3 overflow-auto max-h-64 whitespace-pre-wrap">{diff.after}</pre>
           </div>
         </div>
         <div className="p-5 border-t border-gray-100 flex justify-end gap-3">
           <button onClick={onCancel} className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50">
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             onClick={onConfirm}
             disabled={loading}
             className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
-            {loading ? 'Connecting…' : 'Confirm Connect'}
+            {loading ? t('agents.connecting') : t('agents.confirm_connect')}
           </button>
         </div>
       </div>
@@ -74,6 +76,7 @@ function DiffModal({ diff, onConfirm, onCancel, loading }: {
 }
 
 function BackupsPanel({ agentName }: { agentName: string }) {
+  const { t } = useTranslation()
   const qc = useQueryClient()
   const { data: backups = [], isLoading } = useQuery<BackupInfo[]>({
     queryKey: ['agent-backups', agentName],
@@ -88,8 +91,8 @@ function BackupsPanel({ agentName }: { agentName: string }) {
     },
   })
 
-  if (isLoading) return <p className="text-xs text-gray-400 py-2">Loading backups…</p>
-  if (backups.length === 0) return <p className="text-xs text-gray-400 py-2">No backups found.</p>
+  if (isLoading) return <p className="text-xs text-gray-400 py-2">{t('agents.backups_loading')}</p>
+  if (backups.length === 0) return <p className="text-xs text-gray-400 py-2">{t('agents.backups_empty')}</p>
 
   return (
     <div className="space-y-1">
@@ -101,18 +104,18 @@ function BackupsPanel({ agentName }: { agentName: string }) {
           <span className="text-gray-400">{b.size_kb > 0 ? `${b.size_kb} KB` : '< 1 KB'}</span>
           <button
             onClick={() => {
-              if (window.confirm(`Restore backup from ${new Date(b.created_at).toLocaleString()}?`)) {
+              if (window.confirm(t('agents.restore_confirm', { date: new Date(b.created_at).toLocaleString() }))) {
                 restore.mutate(b.filename)
               }
             }}
             disabled={restore.isPending}
             className="text-blue-600 hover:text-blue-800 disabled:opacity-40 font-medium"
           >
-            Restore
+            {t('agents.restore')}
           </button>
         </div>
       ))}
-      {restore.isError && <p className="text-xs text-red-500">Restore failed. Please try again.</p>}
+      {restore.isError && <p className="text-xs text-red-500">{t('agents.restore_failed')}</p>}
     </div>
   )
 }
@@ -125,6 +128,7 @@ const AGENT_LABELS: Record<string, string> = {
 }
 
 export default function Agents() {
+  const { t } = useTranslation()
   const qc = useQueryClient()
   const [expandedLogs, setExpandedLogs] = useState<string | null>(null)
 
@@ -141,24 +145,24 @@ export default function Agents() {
   return (
     <div className="p-6 space-y-6 max-w-3xl mx-auto">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Agents</h1>
+        <h1 className="text-lg font-semibold">{t('agents.title')}</h1>
         <button
           onClick={() => { refetch(); qc.invalidateQueries({ queryKey: ['agents'] }) }}
           className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 px-3 py-1.5 rounded-lg hover:bg-surface transition-colors"
         >
           <RefreshCw size={14} />
-          Re-detect
+          {t('agents.re_detect')}
         </button>
       </div>
 
       <AgentInheritanceSection />
 
       {isLoading ? (
-        <p className="text-sm text-gray-400">Detecting agents…</p>
+        <p className="text-sm text-gray-400">{t('agents.detecting')}</p>
       ) : agents.length === 0 ? (
         <div className="bg-gray-50 rounded-xl border border-dashed border-gray-200 p-8 text-center space-y-1">
-          <p className="text-sm text-gray-400">No supported AI agents detected.</p>
-          <p className="text-xs text-gray-400">KRouter supports OpenClaw, Claude Code, Cursor, and Hermes.</p>
+          <p className="text-sm text-gray-400">{t('agents.none_detected')}</p>
+          <p className="text-xs text-gray-400">{t('agents.none_detail')}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -188,6 +192,7 @@ function AgentCard({
   onToggleLogs: () => void
   onMutationSuccess: () => void
 }) {
+  const { t } = useTranslation()
   const label = AGENT_LABELS[a.name] ?? a.name
   const [showDiff, setShowDiff] = useState(false)
   const [pendingDiff, setPendingDiff] = useState<AgentDiff | null>(null)
@@ -254,7 +259,7 @@ function AgentCard({
                 'text-xs px-1.5 py-0.5 rounded-full font-medium',
                 a.connected ? 'bg-brand-light text-brand' : 'bg-gray-100 text-gray-400',
               ].join(' ')}>
-                {a.connected ? 'Connected' : 'Not connected'}
+                {a.connected ? t('agents.connected') : t('agents.not_connected')}
               </span>
             </div>
             {a.config_path && (
@@ -277,7 +282,7 @@ function AgentCard({
                 disabled={isBusy}
                 className="text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50 transition-colors font-medium"
               >
-                {disconnectMutation.isPending ? 'Disconnecting…' : 'Disconnect'}
+                {disconnectMutation.isPending ? t('agents.disconnecting') : t('agents.disconnect')}
               </button>
             ) : (
               <button
@@ -291,7 +296,7 @@ function AgentCard({
                 disabled={isBusy}
                 className="text-xs px-3 py-1.5 rounded-lg bg-brand-light text-brand hover:bg-green-100 disabled:opacity-50 transition-colors font-medium"
               >
-                {getDiff.isPending ? 'Loading…' : connectMutation.isPending ? 'Connecting…' : 'Connect'}
+                {getDiff.isPending ? t('agents.loading') : connectMutation.isPending ? t('agents.connecting') : t('agents.connect')}
               </button>
             )}
           </div>
@@ -306,29 +311,29 @@ function AgentCard({
         {connectMutation.isSuccess && a.name === 'claude-code' && (
           <div className="mt-2 ml-7 flex items-center gap-2 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
             <TerminalSquare size={12} className="shrink-0" />
-            Open a new terminal for the env vars to take effect.
+            {t('agents.new_terminal_hint')}
           </div>
         )}
         {connectMutation.isSuccess && (a.name === 'openclaw' || a.name === 'cursor') && (
           <div className="mt-2 ml-7 flex items-center gap-2 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
             <RotateCcw size={12} className="shrink-0" />
-            Restart {label} to apply the new routing config.
+            {t('agents.restart_hint', { label })}
           </div>
         )}
 
         <div className="mt-3 flex items-center gap-4 text-xs text-gray-500 border-t border-gray-100 pt-3">
           <div>
             <span className="font-medium text-gray-900">{a.stats.requests_today}</span>
-            {' '}requests today
+            {' '}{t('agents.requests_today')}
           </div>
           <div>
             <span className="font-medium text-gray-900">${a.stats.cost_today_usd.toFixed(4)}</span>
-            {' '}cost
+            {' '}{t('agents.cost')}
           </div>
           {a.stats.savings_today_usd > 0.000001 && (
             <div>
               <span className="font-medium text-brand">${a.stats.savings_today_usd.toFixed(4)}</span>
-              {' '}saved
+              {' '}{t('agents.saved')}
             </div>
           )}
           <button
@@ -336,7 +341,7 @@ function AgentCard({
             className="ml-auto flex items-center gap-1 hover:text-gray-900 transition-colors"
           >
             {logsExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-            {logsExpanded ? 'Hide logs' : 'Show logs'}
+            {logsExpanded ? t('agents.hide_logs') : t('agents.show_logs')}
           </button>
         </div>
       </div>
@@ -344,20 +349,20 @@ function AgentCard({
       {logsExpanded && (
         <div className="border-t border-gray-100 bg-gray-50 px-4 py-3">
           {logsLoading ? (
-            <p className="text-xs text-gray-400">Loading logs…</p>
+            <p className="text-xs text-gray-400">{t('agents.logs_loading')}</p>
           ) : logs.length === 0 ? (
-            <p className="text-xs text-gray-400">No requests logged for this agent yet.</p>
+            <p className="text-xs text-gray-400">{t('agents.logs_empty')}</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="text-gray-400 text-left">
-                    <th className="pb-2 font-medium w-24">Time</th>
-                    <th className="pb-2 font-medium">Model</th>
-                    <th className="pb-2 font-medium">Provider</th>
-                    <th className="pb-2 font-medium text-right">Tokens</th>
-                    <th className="pb-2 font-medium text-right">Cost</th>
-                    <th className="pb-2 font-medium text-right">Latency</th>
+                    <th className="pb-2 font-medium w-24">{t('agents.col_time')}</th>
+                    <th className="pb-2 font-medium">{t('agents.col_model')}</th>
+                    <th className="pb-2 font-medium">{t('agents.col_provider')}</th>
+                    <th className="pb-2 font-medium text-right">{t('agents.col_tokens')}</th>
+                    <th className="pb-2 font-medium text-right">{t('agents.col_cost')}</th>
+                    <th className="pb-2 font-medium text-right">{t('agents.col_latency')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -411,7 +416,7 @@ function AgentCard({
               className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700"
             >
               <History size={13} />
-              Backups
+              {t('agents.backups')}
               {showBackups ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
             </button>
             {showBackups && (

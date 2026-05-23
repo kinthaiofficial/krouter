@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { Preset } from '../api/client'
 
 interface Props {
@@ -6,15 +7,16 @@ interface Props {
   onSelect: (preset: Preset) => void
 }
 
-const presets: { value: Preset; label: string; description: string }[] = [
-  { value: 'saver', label: 'Saver', description: 'Cheapest available models' },
-  { value: 'balanced', label: 'Balanced', description: 'Quality vs cost tradeoff' },
-  { value: 'quality', label: 'Quality', description: 'Best available models' },
-]
-
 export default function PresetSwitcher({ current, onSelect }: Props) {
+  const { t } = useTranslation()
   const [optimistic, setOptimistic] = useState<Preset | null>(null)
   const display = optimistic ?? current
+
+  const presets: { value: Preset; label: string; description: string }[] = [
+    { value: 'saver', label: t('preset.saver'), description: t('preset.saver_desc') },
+    { value: 'balanced', label: t('preset.balanced'), description: t('preset.balanced_desc') },
+    { value: 'quality', label: t('preset.quality'), description: t('preset.quality_desc') },
+  ]
 
   useEffect(() => {
     setOptimistic(null)
@@ -28,7 +30,7 @@ export default function PresetSwitcher({ current, onSelect }: Props) {
 
   return (
     <div className="bg-white rounded-xl border border-border p-5">
-      <h2 className="text-sm font-medium text-gray-500 mb-3">Routing Preset</h2>
+      <h2 className="text-sm font-medium text-gray-500 mb-3">{t('preset.title')}</h2>
       <div className="flex gap-2">
         {presets.map((p) => (
           <button

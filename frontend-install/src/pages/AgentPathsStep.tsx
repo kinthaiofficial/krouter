@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   api,
   type SupportedAgent,
@@ -28,6 +29,7 @@ interface RowState {
 // select at least one agent to continue. Wizard installs are pointless without
 // at least one upstream vendor.
 export default function AgentPathsStep({ onNext }: Props) {
+  const { t } = useTranslation()
   const [supported, setSupported] = useState<SupportedAgent[] | null>(null)
   const [rows, setRows] = useState<Record<string, RowState>>({})
   const [saving, setSaving] = useState(false)
@@ -89,7 +91,7 @@ export default function AgentPathsStep({ onNext }: Props) {
   if (loadErr) {
     return (
       <div>
-        <h2 className="text-xl font-bold text-gray-900 mb-1 tracking-tight">Agent Paths</h2>
+        <h2 className="text-xl font-bold text-gray-900 mb-1 tracking-tight">{t('agentPaths.title')}</h2>
         <p className="text-red-500 text-sm">{loadErr}</p>
       </div>
     )
@@ -97,18 +99,17 @@ export default function AgentPathsStep({ onNext }: Props) {
   if (supported === null) {
     return (
       <div>
-        <h2 className="text-xl font-bold text-gray-900 mb-1 tracking-tight">Agent Paths</h2>
-        <p className="text-gray-400 text-sm animate-pulse">Loading…</p>
+        <h2 className="text-xl font-bold text-gray-900 mb-1 tracking-tight">{t('agentPaths.title')}</h2>
+        <p className="text-gray-400 text-sm animate-pulse">{t('agentPaths.loading')}</p>
       </div>
     )
   }
 
   return (
     <div>
-      <h2 className="text-xl font-bold text-gray-900 mb-1 tracking-tight">Agent Paths</h2>
+      <h2 className="text-xl font-bold text-gray-900 mb-1 tracking-tight">{t('agentPaths.title')}</h2>
       <p className="text-sm text-gray-500 mb-6">
-        Pick which AI agents KRouter should inherit vendor endpoints and API keys
-        from. The daemon scans these configs every time it starts.
+        {t('agentPaths.detail')}
       </p>
 
       <ul className="divide-y divide-border mb-6">
@@ -140,7 +141,7 @@ export default function AgentPathsStep({ onNext }: Props) {
                       disabled={row.previewLoading}
                       className="text-xs px-2.5 py-1 rounded border border-border hover:bg-surface disabled:opacity-50"
                     >
-                      {row.previewLoading ? 'Scanning…' : 'Preview'}
+                      {row.previewLoading ? t('agentPaths.scanning') : t('agentPaths.preview')}
                     </button>
                   </div>
 
@@ -150,8 +151,8 @@ export default function AgentPathsStep({ onNext }: Props) {
                   {row.preview && !row.preview.error && (
                     <p className="text-xs text-gray-500 mt-1">
                       {row.preview.endpoints.length === 0
-                        ? 'No vendors found in this config.'
-                        : `${row.preview.endpoints.length} vendor${row.preview.endpoints.length === 1 ? '' : 's'} found: ${row.preview.endpoints.map((e) => e.provider).join(', ')}`}
+                        ? t('agentPaths.no_vendors')
+                        : `${t('agentPaths.vendors_found', { count: row.preview.endpoints.length })}: ${row.preview.endpoints.map((e) => e.provider).join(', ')}`}
                     </p>
                   )}
                 </div>
@@ -166,9 +167,9 @@ export default function AgentPathsStep({ onNext }: Props) {
         disabled={saving || enabledCount === 0}
         className="w-full bg-brand hover:bg-brand-dark disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-2.5 px-4 rounded-xl transition-colors"
       >
-        {saving ? 'Saving…' : enabledCount === 0
-          ? 'Select at least one agent to continue'
-          : `Continue with ${enabledCount} agent${enabledCount === 1 ? '' : 's'}`}
+        {saving ? t('agentPaths.saving') : enabledCount === 0
+          ? t('agentPaths.select_one')
+          : t('agentPaths.continue', { count: enabledCount })}
       </button>
     </div>
   )
