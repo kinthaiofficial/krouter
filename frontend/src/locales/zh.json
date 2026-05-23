@@ -98,9 +98,11 @@
   },
   "logs": {
     "title": "请求日志",
+    "subtitle": "搜索并查看每一条路由决策",
     "export_csv": "导出 CSV",
-    "search_placeholder": "按模型、Provider、Agent 搜索…",
+    "search_placeholder": "按模型、Provider、Agent、ID 搜索…",
     "all_agents": "全部 Agent",
+    "all_protocols": "全部协议",
     "records_summary": "共 {{total}} 条 · {{filtered}} 条筛选 / 实时",
     "no_records": "暂无记录",
     "col_time": "时间",

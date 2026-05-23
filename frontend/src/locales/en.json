@@ -98,9 +98,11 @@
   },
   "logs": {
     "title": "Request Logs",
+    "subtitle": "Search and inspect every routing decision",
     "export_csv": "Export CSV",
-    "search_placeholder": "Search by model, provider, agent…",
+    "search_placeholder": "Search by model, provider, agent, ID…",
     "all_agents": "All agents",
+    "all_protocols": "All protocols",
     "records_summary": "{{total}} records · {{filtered}} filtered / live",
     "no_records": "No records found",
     "col_time": "Time",

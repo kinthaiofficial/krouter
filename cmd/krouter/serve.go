@@ -336,6 +336,7 @@ The daemon listens on two ports:
 					"model":           rec.Model,
 					"input_tokens":    rec.InputTokens,
 					"output_tokens":   rec.OutputTokens,
+					"cached_tokens":   rec.CachedTokens,
 					"cost_micro_usd":  rec.CostMicroUSD,
 					"cost_usd":        float64(rec.CostMicroUSD) / 1_000_000,
 					"latency_ms":      rec.LatencyMS,
