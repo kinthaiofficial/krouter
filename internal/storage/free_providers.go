@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"time"
 )
@@ -28,7 +29,31 @@ type FreeProvider struct {
 	Active              bool
 	LastVerified        string  // ISO date
 	Notes               string
-	UpdatedAt           time.Time
+
+	// AdditionalProtocols carries dual-/multi-protocol vendors. When this
+	// catalog entry's primary `Protocol` is e.g. "openai" but the vendor
+	// also exposes an Anthropic-compatible endpoint (OpenRouter, GLM,
+	// Moonshot, …), the entry lists the alternate protocol(s) here so
+	// routing's free-first path can find a candidate for anthropic-
+	// protocol requests too. spec/00 §B2 (same-protocol routing) is
+	// preserved: each entry below has its own `Protocol` and is matched
+	// independently against the request's protocol.
+	//
+	// Empty slice means the provider speaks only the primary protocol.
+	AdditionalProtocols []FreeProviderProtocol
+
+	UpdatedAt time.Time
+}
+
+// FreeProviderProtocol describes one alternate-protocol endpoint a free
+// provider exposes. Each entry has its own krouter_provider_name because
+// the user must configure that as a separate provider entry inside their
+// AI agent (e.g. OpenClaw needs both `openrouter` and `openrouter-anthropic`
+// rows, same API key, different baseURL) so inheritance can pick both up.
+type FreeProviderProtocol struct {
+	Protocol            string `json:"protocol"`
+	KrouterProviderName string `json:"krouter_provider_name"`
+	KeySetupHint        string `json:"key_setup_hint"`
 }
 
 // UpsertFreeProvider inserts or replaces a row in free_provider_state.
@@ -37,32 +62,47 @@ func (s *Store) UpsertFreeProvider(ctx context.Context, p FreeProvider) error {
 	const q = `INSERT INTO free_provider_state
 		(id, display_name, krouter_provider_name, protocol, region, free_type,
 		 free_summary, free_quota_usd, validity, conditions, signup_url,
-		 key_setup_hint, active, last_verified, notes, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 key_setup_hint, active, last_verified, notes,
+		 additional_protocols_json, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
-			display_name           = excluded.display_name,
-			krouter_provider_name  = excluded.krouter_provider_name,
-			protocol               = excluded.protocol,
-			region                 = excluded.region,
-			free_type              = excluded.free_type,
-			free_summary           = excluded.free_summary,
-			free_quota_usd         = excluded.free_quota_usd,
-			validity               = excluded.validity,
-			conditions             = excluded.conditions,
-			signup_url             = excluded.signup_url,
-			key_setup_hint         = excluded.key_setup_hint,
-			active                 = excluded.active,
-			last_verified          = excluded.last_verified,
-			notes                  = excluded.notes,
-			updated_at             = excluded.updated_at`
+			display_name              = excluded.display_name,
+			krouter_provider_name     = excluded.krouter_provider_name,
+			protocol                  = excluded.protocol,
+			region                    = excluded.region,
+			free_type                 = excluded.free_type,
+			free_summary              = excluded.free_summary,
+			free_quota_usd            = excluded.free_quota_usd,
+			validity                  = excluded.validity,
+			conditions                = excluded.conditions,
+			signup_url                = excluded.signup_url,
+			key_setup_hint            = excluded.key_setup_hint,
+			active                    = excluded.active,
+			last_verified             = excluded.last_verified,
+			notes                     = excluded.notes,
+			additional_protocols_json = excluded.additional_protocols_json,
+			updated_at                = excluded.updated_at`
 	active := 0
 	if p.Active {
 		active = 1
 	}
+	// Serialise the additional protocols once; an empty slice round-trips
+	// to "[]" so the DB column is never NULL and the loaded slice is
+	// always non-nil (json.Marshal of nil-slice still emits "null", so
+	// we coerce to empty slice).
+	addBytes := []byte("[]")
+	if len(p.AdditionalProtocols) > 0 {
+		var err error
+		addBytes, err = json.Marshal(p.AdditionalProtocols)
+		if err != nil {
+			return err
+		}
+	}
 	_, err := s.db.ExecContext(ctx, q,
 		p.ID, p.DisplayName, p.KrouterProviderName, p.Protocol, p.Region, p.FreeType,
 		p.FreeSummary, p.FreeQuotaUSD, p.Validity, p.Conditions, p.SignupURL,
-		p.KeySetupHint, active, p.LastVerified, p.Notes, p.UpdatedAt.UnixMilli(),
+		p.KeySetupHint, active, p.LastVerified, p.Notes,
+		string(addBytes), p.UpdatedAt.UnixMilli(),
 	)
 	return err
 }
@@ -73,7 +113,8 @@ func (s *Store) UpsertFreeProvider(ctx context.Context, p FreeProvider) error {
 func (s *Store) ListFreeProviders(ctx context.Context, activeOnly bool) ([]FreeProvider, error) {
 	q := `SELECT id, display_name, krouter_provider_name, protocol, region, free_type,
 		         free_summary, free_quota_usd, validity, conditions, signup_url,
-		         key_setup_hint, active, last_verified, notes, updated_at
+		         key_setup_hint, active, last_verified, notes,
+		         additional_protocols_json, updated_at
 		  FROM free_provider_state`
 	if activeOnly {
 		q += ` WHERE active = 1`
@@ -90,42 +131,87 @@ func (s *Store) ListFreeProviders(ctx context.Context, activeOnly bool) ([]FreeP
 		var p FreeProvider
 		var active int
 		var updatedAtMS int64
+		var addJSON string
 		if err := rows.Scan(
 			&p.ID, &p.DisplayName, &p.KrouterProviderName, &p.Protocol, &p.Region, &p.FreeType,
 			&p.FreeSummary, &p.FreeQuotaUSD, &p.Validity, &p.Conditions, &p.SignupURL,
-			&p.KeySetupHint, &active, &p.LastVerified, &p.Notes, &updatedAtMS,
+			&p.KeySetupHint, &active, &p.LastVerified, &p.Notes,
+			&addJSON, &updatedAtMS,
 		); err != nil {
 			return nil, err
 		}
 		p.Active = active != 0
 		p.UpdatedAt = time.UnixMilli(updatedAtMS).UTC()
+		// Decode additional_protocols. A malformed JSON column should not
+		// kill the whole list; we leave the slice empty and continue.
+		if addJSON != "" && addJSON != "[]" {
+			_ = json.Unmarshal([]byte(addJSON), &p.AdditionalProtocols)
+		}
 		out = append(out, p)
 	}
 	return out, rows.Err()
 }
 
-// FreeProviderKrouterNames returns the set of `krouter_provider_name`s
-// across all active rows. Used by routing to decide whether an inherited
-// provider qualifies as a free-credit candidate (cheap O(N) lookup —
-// fewer than 30 rows expected).
+// FreeProviderKrouterNames returns the union set of every
+// `krouter_provider_name` declared as free-credit across active rows,
+// flattening both the primary protocol column and the
+// additional_protocols JSON. Used by the API handler's "is this inherited
+// provider on the free catalog?" join. For protocol-aware routing
+// lookups use FreeProviderKrouterNamesByProtocol.
 func (s *Store) FreeProviderKrouterNames(ctx context.Context) (map[string]struct{}, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT krouter_provider_name FROM free_provider_state WHERE active = 1`)
+	rows, err := s.ListFreeProviders(ctx, true)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
 	out := map[string]struct{}{}
-	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
-			return nil, err
+	for _, p := range rows {
+		if p.KrouterProviderName != "" {
+			out[p.KrouterProviderName] = struct{}{}
 		}
-		if name != "" {
-			out[name] = struct{}{}
+		for _, ap := range p.AdditionalProtocols {
+			if ap.KrouterProviderName != "" {
+				out[ap.KrouterProviderName] = struct{}{}
+			}
 		}
 	}
-	return out, rows.Err()
+	return out, nil
+}
+
+// FreeProviderKrouterNamesByProtocol returns a map from protocol →
+// set-of-krouter-names. The routing engine's per-protocol decision path
+// uses this to keep spec/00 §B2 (same-protocol routing) intact: an
+// anthropic-protocol request only considers the anthropic-side
+// krouter_provider_name even if the same vendor has an openai entry
+// alongside it.
+//
+// Example return for the current catalog:
+//
+//	{
+//	  "openai":    {"deepseek": {}, "groq": {}, "openrouter": {}, "zai": {}, ...},
+//	  "anthropic": {"openrouter-anthropic": {}, "zai-anthropic": {}, "moonshot-anthropic": {}},
+//	}
+func (s *Store) FreeProviderKrouterNamesByProtocol(ctx context.Context) (map[string]map[string]struct{}, error) {
+	rows, err := s.ListFreeProviders(ctx, true)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]map[string]struct{}{}
+	add := func(proto, name string) {
+		if proto == "" || name == "" {
+			return
+		}
+		if out[proto] == nil {
+			out[proto] = map[string]struct{}{}
+		}
+		out[proto][name] = struct{}{}
+	}
+	for _, p := range rows {
+		add(p.Protocol, p.KrouterProviderName)
+		for _, ap := range p.AdditionalProtocols {
+			add(ap.Protocol, ap.KrouterProviderName)
+		}
+	}
+	return out, nil
 }
 
 // ── provider_exhausted_until ───────────────────────────────────────────────

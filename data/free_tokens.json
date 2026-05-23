@@ -35,7 +35,14 @@
       "key_setup_hint": "在 agent 里配置 zai (或 zhipu / glm) provider 的 API key",
       "active": true,
       "last_verified": "2026-05-23",
-      "notes": "GLM-4-Flash 模型完全免费 (无 token 上限,有 rate limit)"
+      "notes": "GLM-4-Flash 模型完全免费 (无 token 上限,有 rate limit)",
+      "additional_protocols": [
+        {
+          "protocol": "anthropic",
+          "krouter_provider_name": "zai-anthropic",
+          "key_setup_hint": "智谱也提供 Anthropic 兼容 endpoint (用于 Claude Code 等)。在 agent 里再加一个 anthropic provider,命名为 zai-anthropic, baseURL 填 https://open.bigmodel.cn/api/anthropic, 同一个 key — 让 Claude Code 等 Anthropic 协议客户端也享有免费 routing。请去官网核对 endpoint URL 是否变更。"
+        }
+      ]
     },
     {
       "id": "moonshot",
@@ -52,7 +59,14 @@
       "key_setup_hint": "agent 的 moonshot provider API key",
       "active": true,
       "last_verified": "2026-05-23",
-      "notes": "支持 128k 超长上下文"
+      "notes": "支持 128k 超长上下文",
+      "additional_protocols": [
+        {
+          "protocol": "anthropic",
+          "krouter_provider_name": "moonshot-anthropic",
+          "key_setup_hint": "Moonshot 历史上为 Claude Code 提供过 Anthropic 兼容 endpoint。在 agent 里加一个 anthropic provider 命名 moonshot-anthropic, 同一个 key, baseURL 请去官网最新文档核对 (可能为 https://api.moonshot.cn/anthropic 或类似路径)。"
+        }
+      ]
     },
     {
       "id": "qwen-dashscope",
@@ -171,7 +185,14 @@
       "key_setup_hint": "agent 的 openrouter provider 填入 sk-or-v1- 开头的 key;model 名带 :free 后缀",
       "active": true,
       "last_verified": "2026-05-23",
-      "notes": "一个 key 用所有 vendor,免费 model 有 rate limit (20 req/min 共享)"
+      "notes": "一个 key 用所有 vendor,免费 model 有 rate limit (20 req/min 共享)",
+      "additional_protocols": [
+        {
+          "protocol": "anthropic",
+          "krouter_provider_name": "openrouter-anthropic",
+          "key_setup_hint": "OpenRouter 同时支持 Anthropic 兼容 endpoint (/v1/messages 路径)。在 agent 里再加一个 anthropic provider 命名 openrouter-anthropic, baseURL https://openrouter.ai/api/v1, 同一个 sk-or-v1- key — Claude Code 等 Anthropic 协议客户端也可享有免费 routing。"
+        }
+      ]
     },
     {
       "id": "google-ai-studio",

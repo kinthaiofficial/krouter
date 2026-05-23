@@ -217,6 +217,14 @@ export interface SubscriptionProvider {
 
 // ─── Free token providers (spec/06) ────────────────────────────────────────
 
+export interface FreeProviderProtocolAlternate {
+  protocol: string
+  krouter_provider_name: string
+  key_setup_hint?: string
+  user_configured: boolean
+  source_agent?: string
+}
+
 export interface FreeProvider {
   id: string
   display_name: string
@@ -237,6 +245,10 @@ export interface FreeProvider {
   exhausted?: boolean
   exhausted_until?: string
   exhausted_reason?: string
+  // Empty / undefined when the provider speaks only the primary protocol.
+  // Populated for vendors like OpenRouter / GLM / Moonshot that expose
+  // an additional Anthropic-compatible endpoint on the same key.
+  additional_protocols?: FreeProviderProtocolAlternate[]
 }
 
 export const api = {
