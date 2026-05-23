@@ -5,6 +5,20 @@ All notable changes to krouter will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-05-23
+
+### Added
+- **Daily budget hard stop**: routing engine now checks `DailyPercent >= 1.0` before selecting a provider. When the limit is reached, `Decision.BudgetExceeded` is set and the proxy returns HTTP 429 — Anthropic-protocol callers receive `{"type":"error","error":{"type":"rate_limit_error",...}}`, OpenAI-protocol callers receive `{"error":{"type":"insufficient_quota",...}}`. Requests are blocked until the spend counter resets at midnight UTC.
+- **Budget monitor goroutine**: `monitorBudget` runs a 60 s ticker in `serve.go` and broadcasts SSE events (`budget_warning`) at 80%, 95%, and 100% of the daily limit. Each threshold fires at most once per day (dedup via last-fired timestamp).
+- **Dashboard budget bar**: new `BudgetBar` component shows a live spend-vs-limit progress bar that turns yellow at 80%, red at 95%, and adds a "Blocked" badge with an unblock hint when spending is stopped.
+- **Install wizard budget step**: new `BudgetStep` page added between "Shell" and "Done". Defaults to $50/day; calls `POST /api/install/set-budget` on the install server so the limit is written to `settings.json` before the daemon starts for the first time.
+- **Default $50/day limit**: `applyDefaults` in `internal/config/manager.go` sets `budget_warnings["daily"] = 50` when the key is absent, so out-of-the-box installs are protected without requiring the wizard step.
+- **UI localization (English / Chinese)**: all user-visible strings in the dashboard and install wizard are extracted to `frontend/src/locales/{en,zh}.json` and `frontend-install/src/locales/{en,zh}.json` using `react-i18next`. Language is detected from `navigator.language` during install and from `localStorage` thereafter; the Settings page lets users switch at any time and syncs the choice to `settings.json` immediately.
+
+### Changed
+- `GET /internal/budget` response now includes `daily_limit_usd`, `daily_percent_used`, and `budget_blocked` when a daily limit is configured.
+- Currency display unified to USD across both English and Chinese locales — no per-locale currency formatting.
+
 ## [2.1.0] - 2026-05-22
 
 ### Fixed
