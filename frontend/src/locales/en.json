@@ -27,7 +27,9 @@
     "announcements": "Notifications",
     "about": "About",
     "connecting": "connecting…",
-    "proxy_port": "proxy :{{port}}"
+    "proxy_port": "proxy :{{port}}",
+    "collapse": "Collapse",
+    "expand": "Expand"
   },
   "dashboard": {
     "title": "Dashboard",
