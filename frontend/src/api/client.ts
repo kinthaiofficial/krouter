@@ -136,6 +136,7 @@ export interface ProviderInfo {
   display_name: string
   protocol: string
   base_url: string
+  path_prefix?: string
   is_builtin: boolean
   available: boolean
   configured: boolean
@@ -146,6 +147,21 @@ export interface ProviderInfo {
   cost_today_usd: number
   latency_p50_ms: number
   latency_p95_ms: number
+  // Lifetime totals (across all rows in the requests table).
+  requests_total: number
+  input_tokens_total: number
+  output_tokens_total: number
+  cached_tokens_total: number
+  cost_total_usd: number
+  // Model catalog count for the provider (display chip).
+  model_count: number
+}
+
+export interface ProviderModelRow {
+  model_id: string
+  input_per_mtok: number
+  output_per_mtok: number
+  max_tokens: number
 }
 
 export interface AddProviderBody {
@@ -276,6 +292,7 @@ export const api = {
   dashboardStats: () => get<DashboardStats>('/internal/dashboard/stats'),
   providers: () => get<ProviderInfo[]>('/internal/providers'),
   testProvider: (name: string) => post<ProviderTestResult>(`/internal/providers/${encodeURIComponent(name)}/test`),
+  providerModels: (name: string) => get<ProviderModelRow[]>(`/internal/providers/${encodeURIComponent(name)}/models`),
   agentBackups: (name: string) => get<BackupInfo[]>(`/internal/agents/${encodeURIComponent(name)}/backups`),
   agentDiff: (name: string) => post<AgentDiff>(`/internal/agents/${encodeURIComponent(name)}/diff`),
   agentRestore: (name: string, filename: string) => post<{ ok: boolean }>(`/internal/agents/${encodeURIComponent(name)}/restore`, { filename }),
