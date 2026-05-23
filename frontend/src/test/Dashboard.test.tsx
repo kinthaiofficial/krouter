@@ -21,13 +21,22 @@ const mockLogs = [
 ]
 const mockPreset = { preset: 'balanced' as const }
 
+const mockDashStats = {
+  agents_connected: 2,
+  weekly: { requests: 100, cost_usd: 1.23, savings_usd: 0.45 },
+  providers: [],
+}
+
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
     const body = url.includes('/budget') ? mockBudget
       : url.includes('/quota') ? mockQuota
       : url.includes('/logs') ? mockLogs
       : url.includes('/preset') ? mockPreset
-      : {}
+      : url.includes('/dashboard/stats') ? mockDashStats
+      : url.includes('/free-providers') ? []
+      : url.includes('/subscription') ? []
+      : { unread: 0 }
     return Promise.resolve({
       ok: true,
       status: 200,
