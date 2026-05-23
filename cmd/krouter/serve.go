@@ -494,8 +494,11 @@ func (q *quotaSource) CurrentQuota(ctx context.Context) routing.QuotaState {
 }
 
 // monitorBudget fires SSE events when daily/weekly spend crosses 80%, 95%, or
-// 100% of the configured limit. Runs every 60 seconds; tracks the previously
-// fired threshold level to avoid repeated notifications within the same day.
+// 100% of the configured limit, and persists each transition to
+// budget_events so the new Budget page can render the timeline even
+// after the SSE consumer disconnected. Runs every 60 seconds; tracks
+// the previously fired threshold level to avoid repeated notifications
+// within the same day.
 func monitorBudget(ctx context.Context, qs *quotaSource, broadcast func(string, any)) {
 	var lastThreshold float64
 	ticker := time.NewTicker(60 * time.Second)
@@ -518,15 +521,58 @@ func monitorBudget(ctx context.Context, qs *quotaSource, broadcast func(string, 
 					"threshold":      newThreshold,
 					"blocked":        newThreshold >= 1.0,
 				})
+				qs.recordBudgetEvent(ctx, eventTypeForThreshold(newThreshold), state.DailyPercent)
 			}
 			// Reset when a new day/week brings usage back below the first threshold,
-			// so we re-notify if spending climbs again.
+			// so we re-notify if spending climbs again. We also record an
+			// "unblocked" event so the timeline shows the recovery edge.
 			if newThreshold < lastThreshold && maxPct < 0.80 {
+				if lastThreshold >= 1.0 {
+					qs.recordBudgetEvent(ctx, storage.BudgetEventUnblocked, state.DailyPercent)
+				}
 				newThreshold = 0
 			}
 			lastThreshold = newThreshold
 		}
 	}
+}
+
+// eventTypeForThreshold maps the threshold tier to the storage event-type
+// string used by budget_events rows. Keeps the broadcast / DB vocab in
+// one place.
+func eventTypeForThreshold(threshold float64) string {
+	switch {
+	case threshold >= 1.0:
+		return storage.BudgetEventBlocked
+	case threshold >= 0.95:
+		return storage.BudgetEventWarning95
+	case threshold >= 0.80:
+		return storage.BudgetEventWarning80
+	default:
+		return "" // shouldn't happen — monitor only calls this on rising edges
+	}
+}
+
+// recordBudgetEvent persists one budget_events row. Best-effort: a DB
+// error here would not be actionable from the goroutine, so we log
+// nothing and continue — the SSE broadcast already reached live clients.
+func (q *quotaSource) recordBudgetEvent(ctx context.Context, eventType string, dailyPercent float64) {
+	if eventType == "" {
+		return
+	}
+	s := q.settings.Get()
+	dailyLimit := s.BudgetWarnings["daily"]
+	// Derive cost from percent × limit (state.DailyPercent already
+	// reflects current spend / limit). When limit is 0 we know percent
+	// is 0 too, so cost stays 0 and the event row remains coherent.
+	dailyCost := dailyPercent * dailyLimit
+	_ = q.store.InsertBudgetEvent(ctx, storage.BudgetEvent{
+		Timestamp:     time.Now().UTC(),
+		EventType:     eventType,
+		DailyPercent:  dailyPercent,
+		DailyCostUSD:  dailyCost,
+		DailyLimitUSD: dailyLimit,
+	})
 }
 
 // budgetThresholdLevel maps a spend percentage to the highest crossed tier
