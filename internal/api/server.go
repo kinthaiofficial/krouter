@@ -46,6 +46,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"log/slog"
 	"sort"
 	"strconv"
 	"strings"
@@ -1106,9 +1107,22 @@ func (s *Server) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"no update available"}`, http.StatusConflict)
 		return
 	}
-	// Apply runs in background; binary replacement terminates the process.
+	// Apply runs in background. On success, broadcast an SSE event so the
+	// dashboard shows "Restarting…", then exec the new binary in place of
+	// the current process (Unix) or spawn-and-exit (Windows).
 	go func() {
-		_ = s.upgrade.Apply(context.Background(), nil)
+		if err := s.upgrade.Apply(context.Background(), nil); err != nil {
+			slog.Error("upgrade: apply failed", "err", err)
+			s.Broadcast("update_apply_failed", map[string]string{"error": err.Error()})
+			return
+		}
+		s.Broadcast("update_restarting", map[string]string{})
+		// Give the SSE event a moment to flush to connected clients before
+		// the process image is replaced.
+		time.Sleep(300 * time.Millisecond)
+		if err := upgrade.Restart(); err != nil {
+			slog.Error("upgrade: restart failed", "err", err)
+		}
 	}()
 	writeJSON(w, map[string]string{"status": "applying"})
 }

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Apply Update now actually restarts the daemon**: after successfully replacing the binary on disk, the daemon broadcasts an `update_restarting` SSE event (so the dashboard shows "Restarting…"), waits 300 ms for the event to flush, then uses `syscall.Exec` (Unix) / spawn-and-exit (Windows) to replace the running process with the new binary. Previously the process kept running indefinitely, reporting the old version.
+
 ## [2.3.1] - 2026-05-24
 
 ### Added
