@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Free LLM credits promoted from a Dashboard card to a top-level nav item**: the catalogue now lives at `/krouter/free-tokens` with its own page header, subtitle, and proper empty-state — sidebar entry "Free tokens" / "免费 Token" sits between Dashboard and Router with the Gift icon. The old `FreeProvidersCard` component (and its standalone test) are removed; the Dashboard's per-section block is replaced by a one-line comment pointing at the new page. Rationale: the catalogue's discovery / dual-protocol explainer / configured-vs-available split is a substantial feature that deserves a peer-level surface, not a Dashboard sub-card.
+
 ### Fixed
 - **Apply Update now actually restarts the daemon**: after successfully replacing the binary on disk, the daemon broadcasts an `update_restarting` SSE event (so the dashboard shows "Restarting…"), waits 300 ms for the event to flush, then uses `syscall.Exec` (Unix) / spawn-and-exit (Windows) to replace the running process with the new binary. Previously the process kept running indefinitely, reporting the old version.
 

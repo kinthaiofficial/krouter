@@ -6,7 +6,6 @@ import { api, type LogRecord, type Preset, type DashboardStats } from '../api/cl
 import PresetSwitcher from '../components/PresetSwitcher'
 import QuotaBar from '../components/QuotaBar'
 import SubscriptionQuotaCard from '../components/SubscriptionQuotaCard'
-import FreeProvidersCard from '../components/FreeProvidersCard'
 
 const PROVIDER_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4']
 
@@ -164,8 +163,9 @@ export default function Dashboard() {
       {/* Subscription quota — collapses to nothing when no providers polled. */}
       <SubscriptionQuotaCard />
 
-      {/* Free LLM credits — catalog of providers offering free tokens. */}
-      <FreeProvidersCard />
+      {/* Free LLM credits — moved to its own top-level page (`/free-tokens`)
+          in PR α. Dashboard no longer renders the inline card; users reach
+          the catalogue via the sidebar item between Dashboard and Router. */}
 
       {/* Recent requests */}
       <div className="bg-white rounded-xl border border-gray-200 p-5">
