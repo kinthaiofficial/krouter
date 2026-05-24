@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Provider models endpoint always returned `[]` (regression from v2.3.0)**: `GET /internal/providers/{name}/models` was reading from `model_catalog`, which the daemon never populates from the LiteLLM sync flow — so every Provider card in the dashboard showed "No models catalogued yet" universally, including for builtin providers like `anthropic` and `minimax` that clearly have pricing on file. Fix: read from `token_price_api` (where the LiteLLM sync actually writes), filter by `provider == name`, return rows sorted by `model_id` for stable order, and surface `cached_input_per_mtok` in the response too. The providers-list `model_count` field had the same root cause and is now derived from a new `CountPricesByProvider()` query that returns the grouped count in a single SQL trip.
+
 ## [2.3.0] - 2026-05-23
 
 ### Added
