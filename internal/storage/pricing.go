@@ -74,6 +74,29 @@ func (s *Store) GetAllPrices(ctx context.Context) ([]PriceCacheEntry, error) {
 	return out, rows.Err()
 }
 
+// CountPricesByProvider returns a map[provider]count, one entry per
+// distinct provider seen in token_price_api. Used by the providers
+// list endpoint to fill `model_count` cheaply (~16 providers × 1 row
+// = trivial vs. fetching all 2k pricing rows per request).
+func (s *Store) CountPricesByProvider(ctx context.Context) (map[string]int, error) {
+	const q = `SELECT provider, COUNT(*) FROM token_price_api GROUP BY provider`
+	rows, err := s.db.QueryContext(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := make(map[string]int)
+	for rows.Next() {
+		var p string
+		var n int
+		if err := rows.Scan(&p, &n); err != nil {
+			return nil, err
+		}
+		out[p] = n
+	}
+	return out, rows.Err()
+}
+
 // GetSyncMeta returns a value from token_price_api_meta. Returns "" when absent.
 func (s *Store) GetSyncMeta(ctx context.Context, key string) (string, error) {
 	const q = `SELECT COALESCE(value,'') FROM token_price_api_meta WHERE key = ?`

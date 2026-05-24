@@ -101,6 +101,31 @@ func TestSyncMeta_GetSet(t *testing.T) {
 	assert.Equal(t, `"abc123"`, v)
 }
 
+func TestCountPricesByProvider(t *testing.T) {
+	s := openMigratedStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	seed := []storage.PriceCacheEntry{
+		{ModelID: "claude-haiku-4-5", Provider: "anthropic", UpdatedAt: now},
+		{ModelID: "claude-sonnet-4-5", Provider: "anthropic", UpdatedAt: now},
+		{ModelID: "claude-opus-4", Provider: "anthropic", UpdatedAt: now},
+		{ModelID: "gpt-4o", Provider: "openai", UpdatedAt: now},
+		{ModelID: "gpt-4o-mini", Provider: "openai", UpdatedAt: now},
+		{ModelID: "glm-4.6", Provider: "zai", UpdatedAt: now},
+	}
+	for _, e := range seed {
+		require.NoError(t, s.UpsertPrice(ctx, e))
+	}
+
+	counts, err := s.CountPricesByProvider(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 3, counts["anthropic"])
+	assert.Equal(t, 2, counts["openai"])
+	assert.Equal(t, 1, counts["zai"])
+	assert.Equal(t, 0, counts["does-not-exist"], "missing keys read as zero")
+}
+
 func TestSumCostMicroUSD(t *testing.T) {
 	s := openMigratedStore(t)
 	ctx := context.Background()

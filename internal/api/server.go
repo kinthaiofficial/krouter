@@ -1146,6 +1146,15 @@ func (s *Server) doListProviders(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	// Model count per provider from token_price_api (~2k rows total,
+	// grouped by provider so the response is one tiny map regardless
+	// of how many providers are registered).
+	modelCounts := make(map[string]int)
+	if s.store != nil {
+		if mc, err := s.store.CountPricesByProvider(r.Context()); err == nil {
+			modelCounts = mc
+		}
+	}
 
 	var out []providerInfoJSON
 	if s.registry != nil {
@@ -1178,9 +1187,7 @@ func (s *Server) doListProviders(w http.ResponseWriter, r *http.Request) {
 					info.CachedTokensTotal = tot.CachedTokens
 					info.CostTotalUSD = float64(tot.CostMicroUSD) / 1_000_000
 				}
-				if models, err := s.store.GetModelsByLiteLLMProvider(r.Context(), p.Name()); err == nil {
-					info.ModelCount = len(models)
-				}
+				info.ModelCount = modelCounts[p.Name()]
 			}
 			if configured && s.store != nil {
 				if ps, err := s.store.GetProviderStatus(r.Context(), p.Name()); err == nil && ps != nil {
@@ -1796,6 +1803,16 @@ func (s *Server) handleProviderAction(w http.ResponseWriter, r *http.Request) {
 // Returns the catalogued models for the given provider with their
 // per-million-token pricing — used by the Providers dashboard page
 // to render an inline price table when the user expands a card.
+//
+// Reads from token_price_api (the LiteLLM-synced pricing cache —
+// ~2k rows refreshed daily). The earlier implementation read from
+// `model_catalog`, which the daemon never populates from the normal
+// pricing-sync flow, so every provider showed "No models catalogued
+// yet" — see fix for the PR #24 regression.
+//
+// Filtering: token_price_api.provider stores the LiteLLM vendor
+// string (e.g. "anthropic", "openai", "gemini"), which for the
+// builtin providers matches provider_config.name 1:1.
 func (s *Server) handleProviderModels(w http.ResponseWriter, r *http.Request, providerName string) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -1805,28 +1822,34 @@ func (s *Server) handleProviderModels(w http.ResponseWriter, r *http.Request, pr
 		writeJSON(w, []any{})
 		return
 	}
-	all, err := s.store.GetAllModelCatalog(r.Context())
+	prices, err := s.store.GetAllPrices(r.Context())
 	if err != nil {
 		http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
 		return
 	}
-	entries := all[providerName]
 
 	type row struct {
-		ModelID     string  `json:"model_id"`
-		InputPerMTok  float64 `json:"input_per_mtok"`
-		OutputPerMTok float64 `json:"output_per_mtok"`
-		MaxTokens     int     `json:"max_tokens"`
+		ModelID             string  `json:"model_id"`
+		InputPerMTok        float64 `json:"input_per_mtok"`
+		OutputPerMTok       float64 `json:"output_per_mtok"`
+		CachedInputPerMTok  float64 `json:"cached_input_per_mtok"`
+		MaxTokens           int     `json:"max_tokens"`
 	}
-	out := make([]row, 0, len(entries))
-	for _, e := range entries {
+	out := make([]row, 0)
+	for _, e := range prices {
+		if e.Provider != providerName {
+			continue
+		}
 		out = append(out, row{
-			ModelID:       e.ModelID,
-			InputPerMTok:  e.InputCostPerToken * 1_000_000,
-			OutputPerMTok: e.OutputCostPerToken * 1_000_000,
-			MaxTokens:     e.MaxTokens,
+			ModelID:            e.ModelID,
+			InputPerMTok:       e.InputCostPerToken * 1_000_000,
+			OutputPerMTok:      e.OutputCostPerToken * 1_000_000,
+			CachedInputPerMTok: e.CachedInputCostPerToken * 1_000_000,
+			MaxTokens:          e.MaxTokens,
 		})
 	}
+	// Stable order so the UI doesn't flicker between refreshes.
+	sort.Slice(out, func(i, j int) bool { return out[i].ModelID < out[j].ModelID })
 	writeJSON(w, out)
 }
 
