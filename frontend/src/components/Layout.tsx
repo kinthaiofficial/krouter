@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
+import { storeLang } from '../i18n'
 
 // Layout was originally a left sidebar but the narrower viewport sizes
 // (≤ 1280 px) left the content column too cramped on dense pages like
@@ -39,8 +40,15 @@ const navItems = [
 ]
 
 export default function Layout() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { data: status } = useQuery({ queryKey: ['status'], queryFn: api.status })
+
+  function toggleLang() {
+    const next = i18n.language === 'zh' ? 'en' : 'zh'
+    i18n.changeLanguage(next)
+    storeLang(next)
+  }
+
   const { data: annCount } = useQuery({
     queryKey: ['announcements', 'count'],
     queryFn: () => fetch('/internal/announcements/count', { credentials: 'include' })
@@ -63,7 +71,7 @@ export default function Layout() {
           </div>
 
           {/* Nav items — wrap to a second row on narrow viewports. */}
-          <nav className="flex items-center gap-0.5 flex-wrap">
+          <nav className="flex items-center gap-0.5 flex-wrap flex-1">
             {navItems.map(({ to, key, icon: Icon, end }) => {
               const badge =
                 key === 'announcements' && (annCount?.unread ?? 0) > 0
@@ -94,6 +102,16 @@ export default function Layout() {
               )
             })}
           </nav>
+
+          {/* Language toggle — top-right of header */}
+          <button
+            type="button"
+            onClick={toggleLang}
+            className="shrink-0 ml-auto text-xs font-medium text-gray-500 hover:text-gray-900 px-2 py-1 rounded-md hover:bg-surface transition-colors"
+            title={i18n.language === 'zh' ? 'Switch to English' : '切换为中文'}
+          >
+            {i18n.language === 'zh' ? 'EN' : '中'}
+          </button>
         </div>
       </header>
 

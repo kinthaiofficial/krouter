@@ -57,7 +57,7 @@ export default function About() {
         <div className="bg-yellow-50 rounded-xl border border-yellow-200 p-5 space-y-3">
           <h2 className="text-sm font-medium">{t('about.update_available')}</h2>
           <p className="text-sm text-gray-600">
-            Version <strong>{updateStatus!.latest}</strong> is ready to install.
+            {t('about.update_ready', { version: updateStatus!.latest })}
             {updateStatus!.is_critical && (
               <span className="ml-1 text-red-600 font-medium">{t('about.critical_update')}.</span>
             )}

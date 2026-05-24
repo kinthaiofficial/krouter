@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Gift, ExternalLink, Check, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react'
+import { Gift, ExternalLink, Check, AlertTriangle, ChevronDown, ChevronUp, Info } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api, type FreeProvider } from '../api/client'
 
@@ -64,9 +64,12 @@ export default function FreeTokens() {
             <p className="text-[12px] text-gray-600 leading-relaxed">
               {t('freeTokens.howto_line1')}
             </p>
-            <p className="text-[11px] text-gray-500 leading-relaxed border-l-2 border-gray-100 pl-2">
-              {t('freeTokens.howto_line2')}
-            </p>
+            <div className="flex gap-2 border-l-2 border-gray-100 pl-2">
+              <Info className="w-3.5 h-3.5 text-indigo-400 mt-0.5 shrink-0" />
+              <p className="text-[11px] text-gray-500 leading-relaxed">
+                {t('freeTokens.howto_line2')}
+              </p>
+            </div>
           </section>
 
           {/* Available (not yet configured) — primary CTA. */}
@@ -124,6 +127,13 @@ function EmptyState({ t }: { t: ReturnType<typeof useTranslation>['t'] }) {
 }
 
 function ProviderRow({ p }: { p: FreeProvider }) {
+  const { t } = useTranslation()
+
+  const freeTypeLabel =
+    p.free_type === 'trial_credit' ? t('freeTokens.free_type_trial')
+    : p.free_type === 'daily_quota' ? t('freeTokens.free_type_daily')
+    : t('freeTokens.free_type_tier')
+
   return (
     <li className="border border-border rounded-lg p-3">
       <div className="flex items-start gap-3">
@@ -136,26 +146,26 @@ function ProviderRow({ p }: { p: FreeProvider }) {
                 ? 'bg-red-50 text-red-700'
                 : 'bg-blue-50 text-blue-700'
             }`}>
-              {p.region === 'china' ? '国内' : "INT'L"}
+              {p.region === 'china' ? t('freeTokens.region_china') : t('freeTokens.region_intl')}
             </span>
 
             <span className="text-[10px] font-medium rounded-full px-1.5 py-0.5 bg-gray-100 text-gray-600">
-              {p.free_type === 'trial_credit' ? '试用赠送'
-                : p.free_type === 'daily_quota' ? '永久免费'
-                : '免费层'}
+              {freeTypeLabel}
             </span>
 
             {p.user_configured && (
               <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-700 bg-emerald-50 rounded-full px-1.5 py-0.5">
                 <Check className="w-3 h-3" />
-                {p.source_agent ? `via ${p.source_agent}` : 'configured'}
+                {p.source_agent
+                  ? t('freeTokens.configured_via', { agent: p.source_agent })
+                  : t('freeTokens.configured_badge')}
               </span>
             )}
 
             {p.exhausted && (
               <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-amber-700 bg-amber-50 rounded-full px-1.5 py-0.5">
                 <AlertTriangle className="w-3 h-3" />
-                exhausted
+                {t('freeTokens.exhausted_badge')}
               </span>
             )}
           </div>
@@ -163,8 +173,8 @@ function ProviderRow({ p }: { p: FreeProvider }) {
           <p className="text-[12px] text-gray-600 leading-snug">{p.free_summary}</p>
 
           <div className="mt-1 text-[11px] text-gray-400 flex gap-3 flex-wrap">
-            <span>有效期: {p.validity || 'unknown'}</span>
-            <span>申请条件: {p.conditions || 'unknown'}</span>
+            <span>{t('freeTokens.validity_label')} {p.validity || '—'}</span>
+            <span>{t('freeTokens.conditions_label')} {p.conditions || '—'}</span>
           </div>
 
           {p.notes && (
@@ -178,8 +188,11 @@ function ProviderRow({ p }: { p: FreeProvider }) {
               Anthropic-protocol clients can also benefit. */}
           {p.additional_protocols && p.additional_protocols.length > 0 && (
             <div className="mt-2 rounded-md border border-indigo-100 bg-indigo-50 p-2">
-              <p className="text-[11px] font-medium text-indigo-900 mb-1">
-                💡 也支持 {p.additional_protocols.map((a) => a.protocol).join(' / ')} 协议
+              <p className="text-[11px] font-medium text-indigo-900 mb-1 flex items-center gap-1">
+                <Info className="w-3 h-3 text-indigo-500" />
+                {t('freeTokens.dual_protocol_hint', {
+                  protocols: p.additional_protocols.map((a) => a.protocol).join(' / '),
+                })}
               </p>
               <ul className="space-y-1.5">
                 {p.additional_protocols.map((a) => (
@@ -191,10 +204,12 @@ function ProviderRow({ p }: { p: FreeProvider }) {
                       {a.user_configured ? (
                         <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-700 bg-emerald-50 rounded-full px-1.5 py-0.5">
                           <Check className="w-3 h-3" />
-                          {a.source_agent ? `via ${a.source_agent}` : 'configured'}
+                          {a.source_agent
+                            ? t('freeTokens.configured_via', { agent: a.source_agent })
+                            : t('freeTokens.configured_badge')}
                         </span>
                       ) : (
-                        <span className="text-[10px] text-indigo-500">未配置</span>
+                        <span className="text-[10px] text-indigo-500">{t('freeTokens.not_configured')}</span>
                       )}
                     </div>
                     {a.key_setup_hint && (
@@ -208,9 +223,11 @@ function ProviderRow({ p }: { p: FreeProvider }) {
             </div>
           )}
 
-          <p className="text-[10px] text-gray-300 mt-1">
-            信息核对于 {p.last_verified || 'unknown'} — 政策可能已更新, 请以官网为准
-          </p>
+          {p.last_verified && (
+            <p className="text-[10px] text-gray-300 mt-1">
+              {t('freeTokens.verified_at', { date: p.last_verified })}
+            </p>
+          )}
         </div>
 
         <a
@@ -219,7 +236,7 @@ function ProviderRow({ p }: { p: FreeProvider }) {
           rel="noreferrer noopener"
           className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-brand text-white hover:bg-brand-dark transition-colors whitespace-nowrap"
         >
-          {p.user_configured ? '官网' : '去申请'}
+          {p.user_configured ? t('freeTokens.visit_site') : t('freeTokens.apply')}
           <ExternalLink className="w-3 h-3" />
         </a>
       </div>

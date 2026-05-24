@@ -33,6 +33,7 @@
   },
   "dashboard": {
     "title": "Dashboard",
+    "quota": "Quota",
     "today": "Today",
     "requests": "requests",
     "saved": "saved",
@@ -191,9 +192,24 @@
     "empty_title": "No free providers loaded yet",
     "empty_hint": "Once the daemon's free-tokens sync completes you'll see the catalogue here.",
     "howto_line1": "Apply at the signup link, paste the API key into your AI agent (OpenClaw / Claude Code / etc.). krouter detects the new key via agent inheritance and automatically prefers free providers until their quota runs out.",
-    "howto_line2": "协议约束 (spec/00 §B2): 免费路由必须同协议匹配。表中绝大多数 provider 是 OpenAI 协议 — Cursor/Cline/Codex 等 OpenAI 协议客户端立即享有免费 routing, 而 Claude Code 等 Anthropic 协议客户端只有在 provider 同时支持 Anthropic endpoint (例如 OpenRouter / GLM / Moonshot) 时才有效。下方双协议 provider 旁会显示 \"也支持 Anthropic 协议\" 提示。",
+    "howto_line2": "Protocol constraint (spec/00 §B2): free routing requires a protocol match. Most providers in this list use the OpenAI protocol — clients like Cursor, Cline, and Codex benefit immediately. Anthropic-protocol clients (Claude Code, etc.) can only use a provider if it also exposes an Anthropic endpoint (e.g. OpenRouter, GLM, Moonshot). Dual-protocol providers are marked below.",
     "section_available": "Available — {{n}} to claim",
-    "section_configured": "{{n}} already configured"
+    "section_configured": "{{n}} already configured",
+    "region_china": "China",
+    "region_intl": "INT'L",
+    "free_type_trial": "Trial credit",
+    "free_type_daily": "Free daily",
+    "free_type_tier": "Free tier",
+    "configured_badge": "Configured",
+    "configured_via": "via {{agent}}",
+    "exhausted_badge": "Exhausted",
+    "validity_label": "Valid:",
+    "conditions_label": "Requirements:",
+    "dual_protocol_hint": "Also supports {{protocols}} protocol",
+    "not_configured": "Not set up",
+    "visit_site": "Website",
+    "apply": "Apply now",
+    "verified_at": "Last verified {{date}} — check official site for current policy"
   },
   "providers": {
     "title": "Providers",
@@ -314,6 +330,7 @@
     "apply_update": "Apply Update",
     "restarting": "Restarting…",
     "update_failed": "Failed to apply update. Please try again.",
+    "update_ready": "Version {{version}} is ready to install.",
     "release_notes": "Release Notes",
     "resources": "Resources"
   },

@@ -154,7 +154,7 @@ export default function Dashboard() {
       {/* Quota bars */}
       {quotas && quotas.length > 0 && (
         <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-          <h2 className="text-sm font-medium text-gray-500">Quota</h2>
+          <h2 className="text-sm font-medium text-gray-500">{t('dashboard.quota')}</h2>
           {quotas.map((q) => <QuotaBar key={q.window} quota={q} />)}
         </div>
       )}
