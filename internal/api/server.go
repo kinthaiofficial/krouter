@@ -1431,6 +1431,8 @@ func (s *Server) handleAgentAction(w http.ResponseWriter, r *http.Request) {
 		s.doAgentBackups(w, r, name)
 	case "restore":
 		s.doAgentRestore(w, r, name)
+	case "sub-agents":
+		s.doAgentSubAgents(w, r, name)
 	default:
 		// Inheritance verbs (rescan / enable / disable) are dispatched from a
 		// neighbouring file so this switch stays focused on the v2.0.47 verbs.
@@ -1584,6 +1586,42 @@ func (s *Server) doAgentBackups(w http.ResponseWriter, r *http.Request, name str
 		return
 	}
 	writeJSON(w, config.ListBackups(found.ConfigPath))
+}
+
+// doAgentSubAgents handles GET /internal/agents/{name}/sub-agents.
+// Returns the per-sub-agent profile breakdown for agents that support
+// it (currently only OpenClaw). For agents without a sub-agent concept
+// the endpoint returns an empty list — UI then renders the existing
+// single-card layout.
+//
+// This endpoint deliberately does NOT touch `inherited_endpoints` or
+// the routing path; it's a read-only file-system scan that lets the
+// dashboard surface "this OpenClaw install has 4 sub-agents and here
+// are their per-sub provider configs". Secrets stay on the daemon —
+// the response includes `has_api_key` booleans, not the raw keys.
+func (s *Server) doAgentSubAgents(w http.ResponseWriter, r *http.Request, name string) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	switch name {
+	case "openclaw":
+		home, err := os.UserHomeDir()
+		if err != nil {
+			http.Error(w, `{"error":"home dir unavailable"}`, http.StatusInternalServerError)
+			return
+		}
+		subs, err := agentscan.ListOpenClawSubAgents(home + "/.openclaw")
+		if err != nil {
+			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, subs)
+	default:
+		// Agents without sub-agent support — empty list keeps the
+		// frontend's "iterate the response" code simple.
+		writeJSON(w, []any{})
+	}
 }
 
 // doAgentRestore handles POST /internal/agents/{name}/restore

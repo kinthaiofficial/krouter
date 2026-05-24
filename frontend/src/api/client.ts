@@ -202,6 +202,28 @@ export interface AgentDiff {
   after: string
 }
 
+// OpenClaw and other multi-agent tools may host multiple named profiles
+// under a single install. Each sub-agent gets its own provider config —
+// the dashboard surfaces them as a nested list under the main agent card.
+export interface AgentSubAgent {
+  id: string
+  display_name?: string
+  primary_model?: string
+  workspace?: string
+  agent_dir?: string
+  providers?: AgentSubAgentProvider[]
+  has_oauth?: boolean
+}
+
+export interface AgentSubAgentProvider {
+  provider: string
+  base_url?: string
+  protocol?: string
+  models?: string[]
+  primary_model?: string
+  has_api_key?: boolean
+}
+
 // ─── Agent inheritance (spec/04) ──────────────────────────────────────────
 
 export interface SupportedAgent {
@@ -304,6 +326,7 @@ export const api = {
   testProvider: (name: string) => post<ProviderTestResult>(`/internal/providers/${encodeURIComponent(name)}/test`),
   providerModels: (name: string) => get<ProviderModelRow[]>(`/internal/providers/${encodeURIComponent(name)}/models`),
   agentBackups: (name: string) => get<BackupInfo[]>(`/internal/agents/${encodeURIComponent(name)}/backups`),
+  agentSubAgents: (name: string) => get<AgentSubAgent[]>(`/internal/agents/${encodeURIComponent(name)}/sub-agents`),
   agentDiff: (name: string) => post<AgentDiff>(`/internal/agents/${encodeURIComponent(name)}/diff`),
   agentRestore: (name: string, filename: string) => post<{ ok: boolean }>(`/internal/agents/${encodeURIComponent(name)}/restore`, { filename }),
   logsInRange: (from: string, to: string, agent?: string) =>
