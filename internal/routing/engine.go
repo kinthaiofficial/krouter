@@ -70,8 +70,23 @@ const saverAnthropicModel = "claude-haiku-4-5-20251001"
 // saverOpenAIModel is the cheapest OpenAI-protocol model used by the Saver preset.
 const saverOpenAIModel = "deepseek-chat"
 
-// fallbackModel is used when the requested model is not in SupportedModels under Balanced preset.
-const fallbackModel = "claude-haiku-4-5-20251001"
+// fallbackModelFor returns the per-protocol model name to use when the
+// requested model isn't in the chosen provider's SupportedModels list.
+//
+// Previously a single anthropic-only constant (`claude-haiku-4-5-20251001`)
+// was used for both protocols, so an OpenAI-protocol request with an
+// unknown model (e.g. `baidu/cobuddy:free`) ended up sent to an OpenAI
+// provider like mistral or groq carrying an Anthropic model name —
+// the upstream rejected with HTTP 401 / 400. We now pick a protocol-
+// appropriate cheap default (saverOpenAIModel / saverAnthropicModel)
+// so the upstream at least has a fighting chance of recognising the
+// model id.
+func fallbackModelFor(proto providers.Protocol) string {
+	if proto == providers.ProtocolAnthropic {
+		return saverAnthropicModel
+	}
+	return saverOpenAIModel
+}
 
 // Request is the routing engine input, derived from the incoming agent request.
 type Request struct {
@@ -500,7 +515,7 @@ func (e *Engine) decideBalanced(req Request) Decision {
 	reason := fmt.Sprintf("Balanced: honoring requested model %s via %s", model, provider.Name())
 
 	if !modelSupported(provider.SupportedModels(), model) {
-		model = fallbackModel
+		model = fallbackModelFor(proto)
 		reason = fmt.Sprintf("Balanced: requested model %q not recognised, using %s", req.RequestedModel, model)
 	}
 
@@ -660,7 +675,7 @@ func (e *Engine) decideQuality(req Request) Decision {
 		model = "claude-sonnet-4-6"
 		reason = "Quality: Opus 24h 用量已达上限，降级到 sonnet"
 	} else if !modelSupported(provider.SupportedModels(), model) {
-		model = fallbackModel
+		model = fallbackModelFor(proto)
 		reason = fmt.Sprintf("Quality: requested model %q not recognised, using %s", req.RequestedModel, model)
 	}
 

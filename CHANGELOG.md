@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Routing fallback now respects the request protocol**: when an OpenAI-protocol request named an unknown model (e.g. `baidu/cobuddy:free`), Balanced and Quality presets fell back to a hard-coded `claude-haiku-4-5-20251001` — an Anthropic-only model name — and sent it to an OpenAI provider (mistral / groq / etc.). The upstream rejected with HTTP 401 / 400 because the model id wasn't theirs to serve. Fix: new `fallbackModelFor(protocol)` returns `saverOpenAIModel` (`deepseek-chat`) for OpenAI and `saverAnthropicModel` (`claude-haiku-4-5-20251001`) for Anthropic. The two call sites in `decideBalanced` and `decideQuality` use it. Adds 2 regression tests using a multi-provider registry that exercise the openai unknown-model path end-to-end.
+
 ## [2.3.7] - 2026-05-25
 
 ### Changed
