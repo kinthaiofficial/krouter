@@ -4,6 +4,7 @@ import { Download } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api, type LogRecord } from '../api/client'
 import { DecisionRow } from '../components/RoutingDecision'
+import { PageHeader } from '../components/ui'
 
 const PAGE_SIZE = 50
 
@@ -144,19 +145,19 @@ export default function Logs() {
 
   return (
     <div className="p-6 space-y-4 max-w-6xl mx-auto">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">{t('logs.title')}</h1>
-          <p className="text-xs text-gray-500 mt-0.5">{t('logs.subtitle')}</p>
-        </div>
-        <button
-          onClick={exportCSV}
-          className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900 border border-gray-200 rounded-lg px-3 py-1.5"
-        >
-          <Download size={14} />
-          {t('logs.export_csv')}
-        </button>
-      </div>
+      <PageHeader
+        title={t('logs.title')}
+        subtitle={t('logs.subtitle')}
+        right={
+          <button
+            onClick={exportCSV}
+            className="flex items-center gap-1.5 text-sm font-medium text-muted hover:text-ink border border-line-strong bg-card rounded-lg px-3 py-1.5 transition-colors"
+          >
+            <Download size={14} />
+            {t('logs.export_csv')}
+          </button>
+        }
+      />
 
       <div className="flex items-center gap-3 flex-wrap">
         <input
@@ -164,7 +165,7 @@ export default function Logs() {
           placeholder={t('logs.search_placeholder')}
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(0) }}
-          className="w-full max-w-xs border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full max-w-xs border border-line-strong rounded-lg px-3 py-1.5 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand"
         />
 
         {agentsRaw.length > 0 && (

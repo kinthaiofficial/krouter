@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { api, type Settings as ISettings } from '../api/client'
 import i18n, { storeLang, settingsLangToI18n } from '../i18n'
+import { PageHeader } from '../components/ui'
 
 export default function Settings() {
   const { t } = useTranslation()
@@ -42,7 +43,7 @@ export default function Settings() {
 
   return (
     <div className="p-6 space-y-6 max-w-xl mx-auto">
-      <h1 className="text-lg font-semibold">{t('settings.title')}</h1>
+      <PageHeader title={t('settings.title')} />
 
       {/* Language */}
       <section className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">

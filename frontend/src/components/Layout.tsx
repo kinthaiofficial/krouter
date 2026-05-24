@@ -46,21 +46,29 @@ export default function Layout() {
   const unread = annCount?.unread ?? 0
 
   return (
-    <div className="min-h-screen bg-surface text-gray-900">
+    <div className="min-h-screen bg-surface text-ink">
       {/* Top nav */}
-      <header className="sticky top-0 z-10 bg-white border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 py-2 flex items-center gap-2 flex-wrap">
+      <header className="sticky top-0 z-10 bg-surface/85 backdrop-blur border-b border-line">
+        <div className="max-w-6xl mx-auto px-6 h-14 flex items-center gap-3 flex-wrap">
           {/* Brand + version */}
-          <div className="flex items-center gap-2 shrink-0 mr-2">
-            <img src="/krouter/favicon.svg" alt="" className="w-6 h-6 shrink-0" />
-            <span className="font-bold text-sm text-gray-900">KRouter</span>
+          <div className="flex items-center gap-2 shrink-0">
+            <img src="/krouter/favicon.svg" alt="" className="w-6 h-6 shrink-0 rounded-md" />
+            <span className="font-bold text-[15px] tracking-tight text-ink">KRouter</span>
             {status && (
-              <span className="text-xs text-gray-400">{status.version}</span>
+              <span className="text-[11px] font-mono text-faint">{status.version}</span>
             )}
           </div>
 
+          {/* LIVE indicator — daemon reachable */}
+          {status && (
+            <span className="flex items-center gap-1.5 text-xs font-semibold text-brand-ink shrink-0">
+              <span className="w-[7px] h-[7px] rounded-full bg-brand shadow-[0_0_0_3px_var(--color-brand-soft)]" />
+              LIVE
+            </span>
+          )}
+
           {/* Main nav — text only, no icons; wraps on narrow viewports. */}
-          <nav className="flex items-center gap-0.5 flex-wrap flex-1">
+          <nav className="flex items-center gap-px flex-wrap flex-1 ml-1">
             {navItems.map(({ to, key, end }) => (
               <NavLink
                 key={to}
@@ -68,10 +76,10 @@ export default function Layout() {
                 end={end}
                 className={({ isActive }) =>
                   [
-                    'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                    'px-3 py-1.5 rounded-md text-[13px] transition-colors',
                     isActive
-                      ? 'bg-brand-light text-brand'
-                      : 'text-gray-500 hover:bg-surface hover:text-gray-900',
+                      ? 'bg-gray-100 text-ink font-semibold'
+                      : 'text-muted hover:bg-gray-100 hover:text-ink font-medium',
                   ].join(' ')
                 }
               >
@@ -86,7 +94,7 @@ export default function Layout() {
             <button
               type="button"
               onClick={toggleLang}
-              className="text-xs font-medium text-gray-500 hover:text-gray-900 px-2 py-1 rounded-md hover:bg-surface transition-colors"
+              className="w-[30px] h-[30px] grid place-items-center text-xs font-semibold text-muted hover:text-ink border border-line-strong rounded-lg bg-card transition-colors"
               title={i18n.language === 'zh' ? 'Switch to English' : '切换为中文'}
             >
               {i18n.language === 'zh' ? 'EN' : '中'}
@@ -97,17 +105,17 @@ export default function Layout() {
               to="/announcements"
               className={({ isActive }) =>
                 [
-                  'relative p-1.5 rounded-md transition-colors',
+                  'relative w-[30px] h-[30px] grid place-items-center rounded-lg border transition-colors',
                   isActive
-                    ? 'bg-brand-light text-brand'
-                    : 'text-gray-500 hover:bg-surface hover:text-gray-900',
+                    ? 'bg-brand-soft text-brand-ink border-brand-soft'
+                    : 'text-muted hover:text-ink bg-card border-line-strong',
                 ].join(' ')
               }
               title={t('nav.announcements')}
             >
-              <Bell size={16} />
+              <Bell size={15} />
               {unread > 0 && (
-                <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-red-500 rounded-full" />
+                <span className="absolute top-1 right-1 w-[7px] h-[7px] bg-red-500 rounded-full ring-2 ring-card" />
               )}
             </NavLink>
 
@@ -116,15 +124,15 @@ export default function Layout() {
               to="/settings"
               className={({ isActive }) =>
                 [
-                  'p-1.5 rounded-md transition-colors',
+                  'w-[30px] h-[30px] grid place-items-center rounded-lg border transition-colors',
                   isActive
-                    ? 'bg-brand-light text-brand'
-                    : 'text-gray-500 hover:bg-surface hover:text-gray-900',
+                    ? 'bg-brand-soft text-brand-ink border-brand-soft'
+                    : 'text-muted hover:text-ink bg-card border-line-strong',
                 ].join(' ')
               }
               title={t('nav.settings')}
             >
-              <Settings2 size={16} />
+              <Settings2 size={15} />
             </NavLink>
           </div>
         </div>

@@ -35,8 +35,8 @@ export default function FreeTokens() {
     <div className="p-6 space-y-4 max-w-4xl mx-auto" data-testid="free-tokens-page">
       <div className="flex items-end justify-between flex-wrap gap-2">
         <div>
-          <h1 className="text-lg font-semibold flex items-center gap-2">
-            <Gift className="w-4 h-4 text-emerald-500" />
+          <h1 className="text-lg font-bold tracking-tight flex items-center gap-2">
+            <Gift className="w-4 h-4 text-brand" />
             {t('freeTokens.title')}
           </h1>
           <p className="text-xs text-gray-500 mt-0.5">{t('freeTokens.subtitle')}</p>

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ExternalLink, CheckCheck, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { PageHeader } from '../components/ui'
 
 interface Announcement {
   id: string
@@ -68,7 +69,7 @@ export default function Announcements() {
 
   return (
     <div className="p-6 space-y-4 max-w-2xl mx-auto">
-      <h1 className="text-lg font-semibold">{t('announcements.title')}</h1>
+      <PageHeader title={t('announcements.title')} />
 
       {isLoading ? (
         <p className="text-sm text-gray-400">{t('announcements.loading')}</p>

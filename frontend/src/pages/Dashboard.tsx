@@ -5,12 +5,14 @@ import { useTranslation } from 'react-i18next'
 import { api, type LogRecord, type Preset, type DashboardStats } from '../api/client'
 import PresetSwitcher from '../components/PresetSwitcher'
 import QuotaBar from '../components/QuotaBar'
+import { Panel, Badge, StatusDot } from '../components/ui'
 
-const PROVIDER_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4']
+const PROVIDER_COLORS = ['#0fa46a', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#06b6d4']
 
 export default function Dashboard() {
   const { t } = useTranslation()
   const qc = useQueryClient()
+  const { data: status } = useQuery({ queryKey: ['status'], queryFn: api.status })
   const { data: budget } = useQuery({ queryKey: ['budget'], queryFn: api.budget })
   const { data: quotas } = useQuery({ queryKey: ['quota'], queryFn: api.quota })
   const { data: logsData } = useQuery({ queryKey: ['logs'], queryFn: () => api.logs(20) })
@@ -54,25 +56,48 @@ export default function Dashboard() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['preset'] }),
   })
 
-  return (
-    <div className="p-6 space-y-5 max-w-5xl mx-auto">
-      <h1 className="text-lg font-semibold">{t('dashboard.title')}</h1>
+  const savings = budget?.savings_today_usd ?? 0
+  const cost = budget?.cost_today_usd ?? 0
+  const savedPct = savings + cost > 0 ? Math.round((savings / (savings + cost)) * 100) : 0
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+  return (
+    <div className="p-6 max-w-6xl mx-auto">
+      {/* Head */}
+      <div className="flex items-baseline justify-between gap-4 mb-4 flex-wrap">
+        <h1 className="text-lg font-bold tracking-tight">{t('dashboard.title')}</h1>
+        <span className="text-xs text-faint font-mono tabular-nums">
+          {dashStats ? `${dashStats.agents_connected} agents` : ''}
+          {status ? ` · :${status.proxy_port}` : ''}
+        </span>
+      </div>
+
+      {/* KPI strip — today, real numbers only */}
+      <div className="grid grid-cols-2 md:grid-cols-4 bg-card border border-line rounded-xl overflow-hidden mb-4">
+        <Kpi rail="#767c89" label={t('dashboard.requests')} value={String(budget?.requests_today ?? 0)} />
+        <Kpi rail="#0fa46a" label={t('dashboard.saved')} value={`$${savings.toFixed(3)}`} accent />
+        <Kpi rail="#3b82f6" label={t('dashboard.spent')} value={`$${cost.toFixed(3)}`} />
+        <Kpi rail="#f59e0b" label={t('dashboard.saved_label')} value={`${savedPct}%`} />
+      </div>
+
+      {/* Preset + provider distribution */}
+      <div className="grid md:grid-cols-[300px_1fr] gap-4 items-start">
         <PresetSwitcher
           current={presetData?.preset ?? 'balanced'}
           onSelect={(p) => setPreset.mutate(p)}
         />
 
-        {/* Today stats */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-2 border-l-[3px] border-l-brand">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500">{t('dashboard.today')}</h2>
-          <div className="flex gap-6 pt-1">
-            <Stat label={t('dashboard.requests')} value={String(budget?.requests_today ?? 0)} />
-            <Stat label={t('dashboard.saved')} value={`$${(budget?.savings_today_usd ?? 0).toFixed(3)}`} accent="green" />
-            <Stat label={t('dashboard.spent')} value={`$${(budget?.cost_today_usd ?? 0).toFixed(3)}`} />
-          </div>
-        </div>
+        {dashStats && dashStats.providers.length > 0 ? (
+          <Panel
+            title={t('dashboard.provider_distribution')}
+            right={<Badge>{t('dashboard.agents_connected', { count: dashStats.agents_connected })}</Badge>}
+          >
+            <ProviderDist providers={dashStats.providers} />
+          </Panel>
+        ) : (
+          <Panel title={t('dashboard.provider_distribution')}>
+            <p className="text-sm text-faint">{t('dashboard.no_requests')}</p>
+          </Panel>
+        )}
       </div>
 
       {budget?.daily_limit_usd && (
@@ -85,94 +110,80 @@ export default function Dashboard() {
       )}
 
       {dashStats && (
-        <section className="bg-white rounded-xl border border-gray-200 p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500">{t('dashboard.this_week')}</h2>
-            <span className="text-xs text-gray-500">
-              {t('dashboard.agents_connected', { count: dashStats.agents_connected })}
-            </span>
+        <Panel className="mt-4" title={t('dashboard.this_week')}>
+          <div className="grid grid-cols-3 divide-x divide-line">
+            <WeekStat value={dashStats.weekly.requests.toLocaleString()} label={t('dashboard.requests_label')} />
+            <WeekStat value={`$${dashStats.weekly.cost_usd.toFixed(3)}`} label={t('dashboard.spent_label')} />
+            <WeekStat value={`$${dashStats.weekly.savings_usd.toFixed(3)}`} label={t('dashboard.saved_label')} accent />
           </div>
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <p className="text-2xl font-bold tabular-nums">{dashStats.weekly.requests.toLocaleString()}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{t('dashboard.requests_label')}</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold tabular-nums">${dashStats.weekly.cost_usd.toFixed(3)}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{t('dashboard.spent_label')}</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold tabular-nums text-emerald-600">${dashStats.weekly.savings_usd.toFixed(3)}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{t('dashboard.saved_label')}</p>
-            </div>
-          </div>
-        </section>
+        </Panel>
       )}
 
-      {dashStats && dashStats.providers.length > 0 && (
-        <section className="bg-white rounded-xl border border-gray-200 p-5">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-4">{t('dashboard.provider_distribution')}</h2>
-          <div className="flex items-center gap-6">
-            <div className="w-32 h-32 shrink-0">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={dashStats.providers}
-                    dataKey="requests"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={28}
-                    outerRadius={52}
-                  >
-                    {dashStats.providers.map((p, i) => (
-                      <Cell key={p.name} fill={PROVIDER_COLORS[i % PROVIDER_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value) => [`${String(value)} requests`, '']}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="flex-1 space-y-1.5">
-              {dashStats.providers.map((p, i) => (
-                <div key={p.name} className="flex items-center gap-2 text-sm">
-                  <span
-                    className="w-2.5 h-2.5 rounded-full shrink-0"
-                    style={{ background: PROVIDER_COLORS[i % PROVIDER_COLORS.length] }}
-                  />
-                  <span className="flex-1 capitalize">{p.name}</span>
-                  <span className="tabular-nums text-gray-500">{p.requests}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* Quota bars */}
       {quotas && quotas.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-          <h2 className="text-sm font-medium text-gray-500">{t('dashboard.quota')}</h2>
-          {quotas.map((q) => <QuotaBar key={q.window} quota={q} />)}
-        </div>
+        <Panel className="mt-4" title={t('dashboard.quota')}>
+          <div className="space-y-4">
+            {quotas.map((q) => <QuotaBar key={q.window} quota={q} />)}
+          </div>
+        </Panel>
       )}
-
-      {/* Subscription quota — moved into the Providers page (PR β). Each
-          subscription-based provider (MiniMax, …) is now identified on
-          its Provider card with a "SUBSCRIPTION" badge; expanding the card
-          reveals the per-scenario tier list with used/total + %-bar. */}
-
-      {/* Free LLM credits — moved to its own top-level page (`/free-tokens`)
-          in PR α. Dashboard no longer renders the inline card; users reach
-          the catalogue via the sidebar item between Dashboard and Router. */}
 
       {/* Recent requests */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-4">{t('dashboard.recent_requests')}</h2>
+      <Panel className="mt-4" title={t('dashboard.recent_requests')} right={<Badge tone="subtle">{t('router.live')}</Badge>} flush>
         <RequestTable logs={recentLogs} />
+      </Panel>
+    </div>
+  )
+}
+
+function Kpi({ rail, label, value, accent }: { rail: string; label: string; value: string; accent?: boolean }) {
+  return (
+    <div className="relative px-4 py-4 border-r border-b border-line last:border-r-0 md:border-b-0 [&:nth-child(2)]:border-r-0 md:[&:nth-child(2)]:border-r [&:nth-child(3)]:border-b-0">
+      <span className="absolute left-0 top-3.5 bottom-3.5 w-[3px] rounded-r" style={{ background: rail }} />
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-faint">{label}</p>
+      <p className={['text-2xl font-bold tabular-nums mt-1.5 font-mono', accent ? 'text-brand-ink' : 'text-ink'].join(' ')}>
+        {value}
+      </p>
+    </div>
+  )
+}
+
+function ProviderDist({ providers }: { providers: { name: string; requests: number }[] }) {
+  const max = Math.max(...providers.map((p) => p.requests), 1)
+  return (
+    <div className="flex items-center gap-6">
+      <div className="w-28 h-28 shrink-0">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie data={providers} dataKey="requests" nameKey="name" cx="50%" cy="50%" innerRadius={26} outerRadius={50}>
+              {providers.map((p, i) => (
+                <Cell key={p.name} fill={PROVIDER_COLORS[i % PROVIDER_COLORS.length]} />
+              ))}
+            </Pie>
+            <Tooltip formatter={(value) => [`${String(value)} requests`, '']} />
+          </PieChart>
+        </ResponsiveContainer>
       </div>
+      <div className="flex-1 space-y-2.5">
+        {providers.map((p, i) => (
+          <div key={p.name} className="flex items-center gap-3 text-sm">
+            <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: PROVIDER_COLORS[i % PROVIDER_COLORS.length] }} />
+            <span className="flex-1 capitalize font-medium">{p.name}</span>
+            <span className="w-24 h-1.5 bg-gray-100 rounded-full overflow-hidden hidden sm:block">
+              <span className="block h-full rounded-full" style={{ width: `${(p.requests / max) * 100}%`, background: PROVIDER_COLORS[i % PROVIDER_COLORS.length] }} />
+            </span>
+            <span className="tabular-nums font-mono text-muted w-12 text-right">{p.requests}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function WeekStat({ value, label, accent }: { value: string; label: string; accent?: boolean }) {
+  return (
+    <div className="px-4 first:pl-0 last:pr-0">
+      <p className={['text-2xl font-bold tabular-nums font-mono', accent ? 'text-brand-ink' : 'text-ink'].join(' ')}>{value}</p>
+      <p className="text-xs text-muted mt-1">{label}</p>
     </div>
   )
 }
@@ -185,55 +196,46 @@ function BudgetBar({ costUSD, limitUSD, pct, blocked }: {
   const barColor = blocked
     ? 'bg-red-500'
     : pct >= 0.95 ? 'bg-red-400'
-    : pct >= 0.80 ? 'bg-yellow-400'
-    : 'bg-green-400'
+    : pct >= 0.80 ? 'bg-amber-400'
+    : 'bg-brand'
 
   return (
     <section className={[
-      'rounded-xl border p-4',
-      blocked ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200',
+      'rounded-xl border mt-4',
+      blocked ? 'bg-red-50 border-red-200' : 'bg-card border-line',
     ].join(' ')}>
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-medium text-gray-700">{t('dashboard.budget_daily')}</span>
-        <span className={['text-sm font-medium', blocked ? 'text-red-600' : 'text-gray-600'].join(' ')}>
-          ${costUSD.toFixed(2)} / ${limitUSD.toFixed(0)}
-          {blocked && <span className="ml-2 text-xs font-semibold uppercase tracking-wide">{t('dashboard.budget_blocked')}</span>}
-        </span>
+      <div className="p-4">
+        <div className="flex items-center justify-between mb-2.5">
+          <span className="text-sm font-medium text-muted">{t('dashboard.budget_daily')}</span>
+          <span className={['text-sm font-bold font-mono tabular-nums', blocked ? 'text-red-600' : 'text-ink'].join(' ')}>
+            ${costUSD.toFixed(2)} <span className="text-faint font-normal">/ ${limitUSD.toFixed(0)}</span>
+            {blocked && <span className="ml-2 text-xs font-semibold uppercase tracking-wide">{t('dashboard.budget_blocked')}</span>}
+          </span>
+        </div>
+        <div className="h-[7px] bg-gray-100 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-500 ${barColor}`}
+            style={{ width: `${clampedPct * 100}%` }}
+          />
+        </div>
+        {blocked && (
+          <p className="text-xs text-red-600 mt-2">
+            {t('dashboard.budget_unblock_hint')}
+          </p>
+        )}
       </div>
-      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-500 ${barColor}`}
-          style={{ width: `${clampedPct * 100}%` }}
-        />
-      </div>
-      {blocked && (
-        <p className="text-xs text-red-600 mt-1.5">
-          {t('dashboard.budget_unblock_hint')}
-        </p>
-      )}
     </section>
-  )
-}
-
-function Stat({ label, value, accent }: { label: string; value: string; accent?: 'green' }) {
-  return (
-    <div>
-      <p className={['text-2xl font-bold tabular-nums', accent === 'green' ? 'text-emerald-600' : ''].join(' ')}>
-        {value}
-      </p>
-      <p className="text-xs text-gray-500 mt-0.5">{label}</p>
-    </div>
   )
 }
 
 function RequestTable({ logs }: { logs: LogRecord[] }) {
   const { t } = useTranslation()
-  if (logs.length === 0) return <p className="text-sm text-gray-400">{t('dashboard.no_requests')}</p>
+  if (logs.length === 0) return <p className="p-4 text-sm text-faint">{t('dashboard.no_requests')}</p>
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-left text-xs text-gray-500 font-medium border-b border-gray-100">
+          <tr className="text-left text-[11px] uppercase tracking-wide text-faint font-semibold bg-gray-50">
             {[
               t('dashboard.col_time'),
               t('dashboard.col_agent'),
@@ -241,20 +243,22 @@ function RequestTable({ logs }: { logs: LogRecord[] }) {
               t('dashboard.col_provider'),
               t('dashboard.col_cost'),
               t('dashboard.col_latency'),
+              t('logs.col_status'),
             ].map((h) => (
-              <th key={h} className="pb-2 pr-4 last:text-right">{h}</th>
+              <th key={h} className="px-4 py-2.5 first:pl-4 last:text-right border-b border-line">{h}</th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-50">
+        <tbody>
           {logs.map((log) => (
-            <tr key={log.id} className="hover:bg-gray-50">
-              <td className="py-1.5 pr-4 text-gray-400 text-xs whitespace-nowrap">{new Date(log.ts).toLocaleTimeString()}</td>
-              <td className="py-1.5 pr-4">{log.agent ?? '—'}</td>
-              <td className="py-1.5 pr-4 font-mono text-xs">{log.model}</td>
-              <td className="py-1.5 pr-4">{log.provider}</td>
-              <td className="py-1.5 pr-4 text-xs">${log.cost_usd.toFixed(4)}</td>
-              <td className="py-1.5 text-right text-xs">{log.latency_ms}ms</td>
+            <tr key={log.id} className="hover:bg-gray-50 border-b border-line last:border-b-0">
+              <td className="px-4 py-2.5 text-faint font-mono tabular-nums text-xs whitespace-nowrap">{new Date(log.ts).toLocaleTimeString()}</td>
+              <td className="px-4 py-2.5">{log.agent ?? '—'}</td>
+              <td className="px-4 py-2.5 font-mono text-xs">{log.model}</td>
+              <td className="px-4 py-2.5 capitalize">{log.provider}</td>
+              <td className="px-4 py-2.5 font-mono tabular-nums text-xs">${log.cost_usd.toFixed(4)}</td>
+              <td className="px-4 py-2.5 font-mono tabular-nums text-xs">{log.latency_ms}ms</td>
+              <td className="px-4 py-2.5 text-right text-xs"><StatusDot code={log.status_code} /></td>
             </tr>
           ))}
         </tbody>

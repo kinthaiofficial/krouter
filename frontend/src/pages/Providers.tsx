@@ -11,6 +11,7 @@ import {
   type SubscriptionProvider, type SubscriptionTier,
 } from '../api/client'
 import { statusCodeMeaning } from '../lib/statusCode'
+import { PageHeader } from '../components/ui'
 
 export default function Providers() {
   const { t } = useTranslation()
@@ -54,19 +55,19 @@ export default function Providers() {
 
   return (
     <div className="p-6 space-y-4 max-w-4xl mx-auto">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">{t('providers.title')}</h1>
-          <p className="text-xs text-gray-500 mt-0.5">{t('providers.subtitle')}</p>
-        </div>
-        <button
-          onClick={() => setShowAdd(true)}
-          className="flex items-center gap-1.5 text-sm border border-gray-200 rounded-lg px-3 py-1.5 hover:border-blue-400 hover:text-blue-600"
-        >
-          <Plus size={14} />
-          {t('providers.add')}
-        </button>
-      </div>
+      <PageHeader
+        title={t('providers.title')}
+        subtitle={t('providers.subtitle')}
+        right={
+          <button
+            onClick={() => setShowAdd(true)}
+            className="flex items-center gap-1.5 text-sm font-medium border border-line-strong bg-card rounded-lg px-3 py-1.5 text-muted hover:border-brand hover:text-brand-ink transition-colors"
+          >
+            <Plus size={14} />
+            {t('providers.add')}
+          </button>
+        }
+      />
 
       {isLoading ? (
         <p className="text-sm text-gray-400">{t('common.loading')}</p>
@@ -115,7 +116,7 @@ function ProviderCard({
   const statusIcon = !p.configured ? (
     <AlertCircle size={18} className="text-gray-300" />
   ) : healthy ? (
-    <CheckCircle size={18} className="text-green-500" />
+    <CheckCircle size={18} className="text-brand" />
   ) : (
     <XCircle size={18} className="text-red-500" />
   )

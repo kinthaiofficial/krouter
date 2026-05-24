@@ -3,6 +3,7 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { CheckCircle2, ExternalLink, Loader2, RefreshCw } from 'lucide-react'
 import { api } from '../api/client'
+import { PageHeader } from '../components/ui'
 
 // About page does a fresh upgrade check the moment the user opens it.
 // Flow: open page → spinner ("Checking for updates…") → result.
@@ -49,7 +50,7 @@ export default function About() {
 
   return (
     <div className="p-6 space-y-5 max-w-lg mx-auto">
-      <h1 className="text-lg font-semibold">{t('about.title')}</h1>
+      <PageHeader title={t('about.title')} />
 
       {/* Version info */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">

@@ -10,6 +10,7 @@ import {
   type BackupInfo, type AgentDiff,
   type SupportedAgent, type ConfiguredAgent,
 } from '../api/client'
+import { PageHeader } from '../components/ui'
 
 interface AgentStats {
   requests_today: number
@@ -208,16 +209,18 @@ export default function Agents() {
 
   return (
     <div className="p-6 space-y-4 max-w-3xl mx-auto">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">{t('agents.title')}</h1>
-        <button
-          onClick={() => { refetch(); invalidate() }}
-          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 px-3 py-1.5 rounded-lg hover:bg-surface transition-colors"
-        >
-          <RefreshCw size={14} />
-          {t('agents.re_detect')}
-        </button>
-      </div>
+      <PageHeader
+        title={t('agents.title')}
+        right={
+          <button
+            onClick={() => { refetch(); invalidate() }}
+            className="flex items-center gap-1.5 text-sm font-medium text-muted hover:text-ink border border-line-strong bg-card px-3 py-1.5 rounded-lg transition-colors"
+          >
+            <RefreshCw size={14} />
+            {t('agents.re_detect')}
+          </button>
+        }
+      />
 
       {(loadingSupported || loadingStatuses) ? (
         <p className="text-sm text-gray-500">{t('agents.detecting')}</p>

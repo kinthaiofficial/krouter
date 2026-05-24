@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronRight, CircleDot } from 'lucide-react'
 import { api, type LogRecord } from '../api/client'
 import { DecisionCard, DecisionRow } from '../components/RoutingDecision'
+import { PageHeader } from '../components/ui'
 
 const HISTORY_CAP = 50
 
@@ -56,13 +57,11 @@ export default function Router() {
 
   return (
     <div className="p-6 space-y-4 max-w-6xl mx-auto">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">{t('router.title')}</h1>
-          <p className="text-xs text-gray-500 mt-0.5">{t('router.subtitle')}</p>
-        </div>
-        <LiveBadge alive={sseAlive} t={t} />
-      </div>
+      <PageHeader
+        title={t('router.title')}
+        subtitle={t('router.subtitle')}
+        right={<LiveBadge alive={sseAlive} t={t} />}
+      />
 
       {!latest ? (
         <EmptyState t={t} />
@@ -101,13 +100,13 @@ function LiveBadge({ alive, t }: { alive: boolean; t: ReturnType<typeof useTrans
     <span
       className={[
         'inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium',
-        alive ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500',
+        alive ? 'bg-brand-soft text-brand-ink' : 'bg-gray-100 text-gray-500',
       ].join(' ')}
     >
       <span
         className={[
           'w-1.5 h-1.5 rounded-full',
-          alive ? 'bg-green-500 animate-pulse' : 'bg-gray-400',
+          alive ? 'bg-brand animate-pulse' : 'bg-gray-400',
         ].join(' ')}
       />
       {alive ? t('router.live') : t('router.offline')}

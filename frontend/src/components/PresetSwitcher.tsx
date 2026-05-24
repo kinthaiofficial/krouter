@@ -29,24 +29,41 @@ export default function PresetSwitcher({ current, onSelect }: Props) {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-border p-5">
-      <h2 className="text-sm font-medium text-gray-500 mb-3">{t('preset.title')}</h2>
-      <div className="flex gap-2">
-        {presets.map((p) => (
-          <button
-            key={p.value}
-            onClick={() => handleClick(p.value)}
-            className={[
-              'flex-1 rounded-lg border px-3 py-2 text-sm text-left transition-colors',
-              display === p.value
-                ? 'border-brand bg-brand-light text-brand font-semibold'
-                : 'border-border text-gray-700 hover:border-brand/50',
-            ].join(' ')}
-          >
-            <div className="font-medium">{p.label}</div>
-            <div className="text-xs text-gray-500 mt-0.5">{p.description}</div>
-          </button>
-        ))}
+    <div className="bg-card rounded-xl border border-line h-full">
+      <div className="px-4 py-3 border-b border-line">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-muted">{t('preset.title')}</h2>
+      </div>
+      <div className="p-4 flex flex-col gap-1.5">
+        {presets.map((p) => {
+          const active = display === p.value
+          return (
+            <button
+              key={p.value}
+              onClick={() => handleClick(p.value)}
+              className={[
+                'flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors',
+                active
+                  ? 'border-brand bg-brand-soft'
+                  : 'border-line hover:border-line-strong hover:bg-gray-50',
+              ].join(' ')}
+            >
+              <span
+                className={[
+                  'w-[15px] h-[15px] rounded-full shrink-0 border-[1.5px]',
+                  active
+                    ? 'border-brand shadow-[inset_0_0_0_3px_var(--color-brand)]'
+                    : 'border-line-strong',
+                ].join(' ')}
+              />
+              <span>
+                <span className={['block text-sm font-semibold', active ? 'text-brand-ink' : 'text-ink'].join(' ')}>
+                  {p.label}
+                </span>
+                <span className="block text-xs text-muted mt-0.5">{p.description}</span>
+              </span>
+            </button>
+          )
+        })}
       </div>
     </div>
   )

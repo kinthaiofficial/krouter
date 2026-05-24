@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, CheckCircle2, History, Wallet } from 'lucide-react'
 import { api, type Budget, type BudgetEvent, type Settings as ISettings } from '../api/client'
+import { PageHeader } from '../components/ui'
 
 export default function BudgetPage() {
   const { t } = useTranslation()
@@ -86,12 +87,7 @@ export default function BudgetPage() {
 
   return (
     <div className="p-6 space-y-4 max-w-3xl mx-auto">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">{t('budget.title')}</h1>
-          <p className="text-xs text-gray-500 mt-0.5">{t('budget.subtitle')}</p>
-        </div>
-      </div>
+      <PageHeader title={t('budget.title')} subtitle={t('budget.subtitle')} />
 
       <SpendCard budget={budget} t={t} />
 
@@ -149,8 +145,8 @@ function SpendCard({
   const blocked = budget.budget_blocked ?? false
   const remaining = Math.max(0, dailyLimit - budget.cost_today_usd)
 
-  let barColor = 'bg-green-500'
-  let pillBg = 'bg-green-50 text-green-700'
+  let barColor = 'bg-brand'
+  let pillBg = 'bg-brand-soft text-brand-ink'
   let label = t('budget.state_ok')
   if (pct >= 1) {
     barColor = 'bg-red-500'
@@ -214,7 +210,7 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: 're
   const toneCls =
     tone === 'red' ? 'text-red-600' :
     tone === 'yellow' ? 'text-yellow-700' :
-    tone === 'green' ? 'text-green-700' : 'text-gray-900'
+    tone === 'green' ? 'text-brand-ink' : 'text-ink'
   return (
     <div>
       <p className="text-xs text-gray-500">{label}</p>
