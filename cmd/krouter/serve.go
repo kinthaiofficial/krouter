@@ -325,8 +325,12 @@ The daemon listens on two ports:
 			}()
 
 			// Broadcast completed requests as SSE events so the Web UI updates live.
+			// Payload mirrors /internal/logs row shape so the Router page can render
+			// the same Request/Response diff card immediately on each event without
+			// a follow-up fetch — includes per-model rates and the baseline cost
+			// projection so the savings banner renders without UI-side computation.
 			proxySrv.SetOnComplete(func(rec storage.RequestRecord) {
-				apiSrv.Broadcast("request_completed", map[string]any{
+				payload := map[string]any{
 					"id":              rec.ID,
 					"ts":              rec.Timestamp.UTC().Format(time.RFC3339),
 					"agent":           rec.Agent,
@@ -342,7 +346,18 @@ The daemon listens on two ports:
 					"latency_ms":      rec.LatencyMS,
 					"status_code":     rec.StatusCode,
 					"error_message":   rec.ErrorMessage,
-				})
+				}
+				if pricingSvc != nil {
+					payload["requested_provider"] = pricingSvc.ProviderFor(rec.RequestedModel)
+					inMT, outMT := pricingSvc.PriceFor(rec.RequestedModel)
+					payload["requested_input_per_mtok"] = inMT
+					payload["requested_output_per_mtok"] = outMT
+					inMT, outMT = pricingSvc.PriceFor(rec.Model)
+					payload["routed_input_per_mtok"] = inMT
+					payload["routed_output_per_mtok"] = outMT
+					payload["baseline_cost_usd"] = float64(pricingSvc.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens)) / 1_000_000
+				}
+				apiSrv.Broadcast("request_completed", payload)
 			})
 
 			// Budget monitor — fires SSE events when spend crosses 80%/95%/100%

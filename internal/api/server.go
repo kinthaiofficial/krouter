@@ -633,11 +633,24 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 		LatencyMS      int64   `json:"latency_ms"`
 		StatusCode     int     `json:"status_code"`
 		ErrorMessage   string  `json:"error_message,omitempty"`
+
+		// Routing-decision enrichment for the Router dashboard card.
+		// All optional / zero-valued for legacy daemons or unknown
+		// models — the UI falls back to "—" cleanly.
+		RequestedProvider     string  `json:"requested_provider,omitempty"`
+		RequestedInputPerMTok float64 `json:"requested_input_per_mtok,omitempty"`
+		RequestedOutputPerMTok float64 `json:"requested_output_per_mtok,omitempty"`
+		RoutedInputPerMTok    float64 `json:"routed_input_per_mtok,omitempty"`
+		RoutedOutputPerMTok   float64 `json:"routed_output_per_mtok,omitempty"`
+		// BaselineCostUSD = (requested model's rate) × (actual tokens used).
+		// What the user would have paid if krouter hadn't picked a
+		// cheaper provider/model. UI computes savings = baseline - actual.
+		BaselineCostUSD float64 `json:"baseline_cost_usd,omitempty"`
 	}
 
 	out := make([]row, 0, len(records))
 	for _, rec := range records {
-		out = append(out, row{
+		r := row{
 			ID:             rec.ID,
 			Timestamp:      rec.Timestamp.Format(time.RFC3339),
 			Agent:          rec.Agent,
@@ -653,7 +666,14 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 			LatencyMS:      rec.LatencyMS,
 			StatusCode:     rec.StatusCode,
 			ErrorMessage:   rec.ErrorMessage,
-		})
+		}
+		if s.pricing != nil {
+			r.RequestedProvider = s.pricing.ProviderFor(rec.RequestedModel)
+			r.RequestedInputPerMTok, r.RequestedOutputPerMTok = s.pricing.PriceFor(rec.RequestedModel)
+			r.RoutedInputPerMTok, r.RoutedOutputPerMTok = s.pricing.PriceFor(rec.Model)
+			r.BaselineCostUSD = float64(s.pricing.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens)) / 1_000_000
+		}
+		out = append(out, r)
 	}
 	writeJSON(w, out)
 }

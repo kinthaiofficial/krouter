@@ -85,26 +85,32 @@ describe('<Router>', () => {
       expect(screen.getByText(/LATEST|最新/)).toBeInTheDocument()
     })
 
-    // Both sides of the diff show the model names.
+    // The request section has two cards side-by-side; each shows model + provider.
+    // requested_provider falls back to provider when the daemon didn't enrich the
+    // record (legacy / unknown model), so both sides may show "zai" here — accept
+    // one-or-more occurrences.
     expect(screen.getByText('claude-sonnet-4')).toBeInTheDocument()
     expect(screen.getByText('glm-4.6')).toBeInTheDocument()
-    expect(screen.getByText('zai')).toBeInTheDocument()
+    expect(screen.getAllByText('zai').length).toBeGreaterThanOrEqual(1)
 
-    // Cost shown
+    // Actual cost is rendered in the Actual response card.
     expect(screen.getByText('$0.0012')).toBeInTheDocument()
   })
 
-  it('does not render the diff side panel when no change happened', async () => {
+  it('renders the "no change" banner when requested and routed match', async () => {
     handlers.set('/internal/logs', () => [
       makeRec({
         id: 'req_seed_unchanged',
         requested_model: 'glm-4.6',
         model: 'glm-4.6',
+        provider: 'zai',
+        // No baseline → no savings → no_change banner shows.
+        baseline_cost_usd: 0.0012,
       }),
     ])
     renderWithProviders(<Router />)
     await waitFor(() => {
-      expect(screen.getByText(/routed unchanged|未做模型转换/i)).toBeInTheDocument()
+      expect(screen.getByText(/no savings to report|无节省可统计/i)).toBeInTheDocument()
     })
   })
 
@@ -177,9 +183,6 @@ describe('<Router>', () => {
   })
 
   it('renders a tooltip and inline explanation for non-2xx status codes', async () => {
-    // 402 = Payment Required. The latest card should:
-    //   (a) attach a title="402 — Payment required …" attribute on the pill
-    //   (b) render an inline explanation block below the latency line
     handlers.set('/internal/logs', () => [
       makeRec({
         id: 'req_402',
@@ -191,13 +194,53 @@ describe('<Router>', () => {
     renderWithProviders(<Router />)
     await waitFor(() => screen.getByText(/LATEST|最新/))
 
-    // Tooltip — the `title` attribute on the pill contains both the
-    // code and the explanation.
     const pill = screen.getByText('402').closest('span')
     expect(pill).toBeTruthy()
     expect(pill!.getAttribute('title')).toMatch(/Payment required|付费/)
 
-    // Inline explanation below the diff body.
     expect(screen.getByText(/HTTP 402/)).toBeInTheDocument()
+  })
+
+  it('renders a savings banner with $ amount and percentage when routing saved money', async () => {
+    handlers.set('/internal/logs', () => [
+      makeRec({
+        id: 'req_saved',
+        requested_model: 'claude-sonnet-4',
+        requested_provider: 'anthropic',
+        model: 'glm-4.6',
+        provider: 'zai',
+        cost_usd: 0.0012,
+        baseline_cost_usd: 0.12,
+        requested_input_per_mtok: 3,
+        requested_output_per_mtok: 15,
+        routed_input_per_mtok: 0.5,
+        routed_output_per_mtok: 1.5,
+      }),
+    ])
+    renderWithProviders(<Router />)
+
+    await waitFor(() => screen.getByText(/LATEST|最新/))
+
+    expect(screen.getByText(/Saved \$0\.1188|节省 \$0\.1188/)).toBeInTheDocument()
+    expect(screen.getByText(/99\.0%/)).toBeInTheDocument()
+
+    expect(screen.getByText(/\$3\.00 \/ 1M/)).toBeInTheDocument()
+    expect(screen.getByText(/\$0\.50 \/ 1M/)).toBeInTheDocument()
+  })
+
+  it('uses an overrun banner when the routed model actually cost more', async () => {
+    handlers.set('/internal/logs', () => [
+      makeRec({
+        id: 'req_overrun',
+        requested_model: 'cheap-model',
+        model: 'expensive-model',
+        cost_usd: 0.10,
+        baseline_cost_usd: 0.01,
+      }),
+    ])
+    renderWithProviders(<Router />)
+    await waitFor(() => {
+      expect(screen.getByText(/more than the requested model|高 \$/)).toBeInTheDocument()
+    })
   })
 })

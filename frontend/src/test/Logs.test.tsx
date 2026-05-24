@@ -80,8 +80,9 @@ describe('Logs page', () => {
     fireEvent.click(screen.getAllByText(/sonnet-4/)[0])
 
     await waitFor(() => {
-      // After expand the breakdown line "1,245 in · 387 out · 555 cached" is visible.
-      expect(screen.getByText(/555/)).toBeInTheDocument()
+      // After expand the breakdown "X in · Y out · 555 cached" appears in
+      // both the Projected and Actual response cards.
+      expect(screen.getAllByText(/555/).length).toBeGreaterThanOrEqual(1)
     })
   })
 
