@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.5] - 2026-05-24
+
+### Changed
+- **Agents page: unified card per agent** — the separate "Agent Inheritance" overview section and per-agent detail cards have been merged. Each agent now appears as a single card that combines scanner metadata (config path, inherited providers, last scan time), proxy connection state (Connected / Not Connected badge), enable/disable toggle, and the full stats + logs panel. Eliminates the duplicate listing where the same agent appeared twice on the page.
+- **Top nav streamlined** — nav items are now text-only (icons removed). Settings and Notifications move to the top-right icon cluster: a gear icon (⚙) links to Settings, a bell icon (🔔) links to Announcements. The bell shows a red dot when there are unread announcements. "Free tokens" nav label shortened to "Free".
+
 ## [2.3.4] - 2026-05-24
 
 ### Fixed
