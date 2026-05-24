@@ -54,7 +54,7 @@ describe('<FreeTokens>', () => {
     expect(screen.getByText(/新用户赠送/)).toBeInTheDocument()
     expect(screen.getByText(/Available — 1 to claim|可申领 — 1/)).toBeInTheDocument()
 
-    const link = screen.getByRole('link', { name: /去申请/i })
+    const link = screen.getByRole('link', { name: /Apply now|去申请/i })
     expect(link).toHaveAttribute('href', 'https://platform.deepseek.com/sign_up')
     expect(link).toHaveAttribute('target', '_blank')
   })
@@ -127,9 +127,8 @@ describe('<FreeTokens>', () => {
     ])
     renderWithProviders(<FreeTokens />)
     await waitFor(() => screen.getByText('OpenRouter'))
-    // "也支持" appears in both the help banner copy and the per-row hint —
-    // accept multiple matches.
-    expect(screen.getAllByText(/也支持/).length).toBeGreaterThanOrEqual(1)
+    // "Also supports" / "也支持" appears in the per-row hint panel.
+    expect(screen.getAllByText(/Also supports|也支持/).length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('openrouter-anthropic')).toBeInTheDocument()
   })
 })
