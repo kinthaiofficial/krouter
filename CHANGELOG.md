@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.4] - 2026-05-24
+
+### Fixed
+- **FreeTokens page: hardcoded Chinese/English strings replaced with i18n keys**: the `ProviderRow` component was rendering region labels ("国内" / "INT'L"), free-type badges ("试用赠送" / "永久免费" / "免费层"), configured/exhausted badges, validity/conditions meta, dual-protocol hint, apply/visit-site CTA, and last-verified footer — all hardcoded. All 14 label groups are now driven by `en.json` / `zh.json` keys under `freeTokens.*`. The English-default UI is now fully correct; Chinese appears only when the user switches to 中文.
+- **Dashboard "Quota" section header was hardcoded English**: now uses `t('dashboard.quota')`.
+- **About.tsx update description was hardcoded English**: "Version X is ready to install." now uses `t('about.update_ready', { version })`.
+- **Protocol-constraint explanation in FreeTokens was Chinese-only**: `freeTokens.howto_line2` is now written in English in `en.json` and Chinese in `zh.json`, with proper i18n structure in both locales.
+- **`💡` emoji in FreeTokens dual-protocol hint replaced with Lucide `Info` icon**: emoji-as-icon is an anti-pattern in dashboard UIs (no scale control, OS-dependent rendering). The indigo hint panel now uses `<Info className="w-3 h-3 text-indigo-500" />`.
+
+### Changed
+- **Language toggle added to the main header**: a small `EN / 中` button appears in the top-right of the sticky navigation bar. Clicking it calls `i18n.changeLanguage()` and writes to `localStorage` (key `krouter:lang`) for persistence across reloads. The toggle shows the *other* language as the action label ("中" when the UI is in English, "EN" when in Chinese).
+- **Contrast improvements across all pages (WCAG AA)**: functional text that previously used `text-gray-400` (contrast 2.96:1, below the 4.5:1 AA threshold) has been upgraded to `text-gray-500` (contrast 4.60:1, passes AA). Affected: page subtitles, stat labels, table column headers, timeline timestamps, section-divider text, install-wizard notes. Decorative elements (icons, transient loading pulses, truly de-emphasised footnotes) remain at `gray-400`.
+- **Dashboard visual hierarchy**: the "Today" stat card receives a 3 px brand-green left border to distinguish it as the live-state card vs the "This Week" summary card. All section headers normalised to `text-xs font-semibold uppercase tracking-wider text-gray-500`. Weekly savings amount uses `text-emerald-600` for consistent color-coding. All numeric values gain `tabular-nums` to prevent layout jitter. Provider section dividers gain `font-semibold` weight.
+
 ## [2.3.3] - 2026-05-24
 
 ### Changed
