@@ -7,8 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.6] - 2026-05-24
+
 ### Added
-- **About page now triggers a fresh update check on open**: previously the page rendered cached state from the daemon's 24 h ticker, so a user who opened it 10 hours after a new release saw "no update available" until the next tick. Now the page fires a synchronous check the moment it mounts and shows one of three states: a spinning loader with "Checking for updates…", a green check with "You're on the latest version" (with a small "Check again" link), or the existing yellow "Apply Update" banner when something newer is on the manifest. A red error block (with retry) covers network/signature failure. New endpoint `POST /internal/update-check` calls `upgrade.Service.CheckNow(ctx)` synchronously and returns the same JSON shape as `/internal/update-status`. The existing test-only helper was renamed `CheckOnceForTest` → `CheckNow` to reflect it being a real product API.
+- **About page now triggers a fresh update check on open**: previously the page rendered cached state from the daemon's 24 h ticker, so a user who opened it 10 hours after a new release saw "no update available" until the next tick. Now the page fires a synchronous check the moment it mounts and shows one of four states: a spinning loader with "Checking for updates…", a green check with "You're on the latest version" (with a small "Check again" link), the existing yellow "Apply Update" banner when something newer is on the manifest, or a red error block with retry on network/signature failure. New endpoint `POST /internal/update-check` calls `upgrade.Service.CheckNow(ctx)` synchronously and returns the same JSON shape as `/internal/update-status`.
 
 ## [2.3.5] - 2026-05-24
 
