@@ -332,7 +332,12 @@
     "update_failed": "更新失败，请重试。",
     "update_ready": "版本 {{version}} 已就绪，可立即安装。",
     "release_notes": "更新日志",
-    "resources": "相关链接"
+    "resources": "相关链接",
+    "checking_for_updates": "正在检查新版本…",
+    "up_to_date": "当前已是最新版本。",
+    "recheck": "再次检查",
+    "check_failed": "检查更新失败。daemon 可能离线，或者 manifest 端点不可达。",
+    "retry_check": "重试"
   },
   "inheritance": {
     "title": "Agent 继承",

@@ -103,7 +103,7 @@ func TestCheckOnce_NewVersionAvailable(t *testing.T) {
 	defer srv.Close()
 
 	svc := newTestService(t, key, srv.URL+"/manifest.json", "0.0.1")
-	svc.CheckOnceForTest(context.Background())
+	svc.CheckNow(context.Background())
 
 	latest := svc.Latest()
 	require.NotNil(t, latest)
@@ -125,7 +125,7 @@ func TestCheckOnce_AlreadyLatest(t *testing.T) {
 	defer srv.Close()
 
 	svc := newTestService(t, key, srv.URL+"/manifest.json", "0.0.1")
-	svc.CheckOnceForTest(context.Background())
+	svc.CheckNow(context.Background())
 
 	assert.Nil(t, svc.Latest(), "Latest() should be nil when already up to date")
 }
@@ -150,7 +150,7 @@ func TestCheckOnce_BadSignature(t *testing.T) {
 	defer srv.Close()
 
 	svc := newTestService(t, key, srv.URL+"/manifest.json", "0.0.1")
-	svc.CheckOnceForTest(context.Background())
+	svc.CheckNow(context.Background())
 
 	// Bad signature → Latest() must remain nil.
 	assert.Nil(t, svc.Latest())
@@ -165,7 +165,7 @@ func TestCheckOnce_ServerError(t *testing.T) {
 	key := testKey(t)
 	svc := newTestService(t, key, srv.URL+"/manifest.json", "0.0.1")
 	// Must not panic.
-	assert.NotPanics(t, func() { svc.CheckOnceForTest(context.Background()) })
+	assert.NotPanics(t, func() { svc.CheckNow(context.Background()) })
 	assert.Nil(t, svc.Latest())
 }
 

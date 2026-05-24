@@ -291,6 +291,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/internal/announcements", auth(http.HandlerFunc(s.handleAnnouncements)))
 	mux.Handle("/internal/free-providers", auth(http.HandlerFunc(s.handleFreeProviders)))
 	mux.Handle("/internal/update-status", auth(http.HandlerFunc(s.handleUpdateStatus)))
+	mux.Handle("/internal/update-check", auth(http.HandlerFunc(s.handleUpdateCheck)))
 	mux.Handle("/internal/remote/enable", auth(http.HandlerFunc(s.handleRemoteEnable)))
 	mux.Handle("/internal/remote/disable", auth(http.HandlerFunc(s.handleRemoteDisable)))
 	mux.Handle("/internal/remote/status", auth(http.HandlerFunc(s.handleRemoteStatus)))
@@ -1089,6 +1090,27 @@ func (s *Server) handleUpdateStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, resp)
+}
+
+// handleUpdateCheck handles POST /internal/update-check.
+// Forces a fresh manifest fetch synchronously (off the normal 24 h
+// schedule), then returns the same JSON shape as /internal/update-status.
+// Used by the About page so the user can open the page and immediately
+// see whether a new version is available, instead of waiting up to a
+// full day for the periodic ticker.
+func (s *Server) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.upgrade != nil {
+		s.upgrade.CheckNow(r.Context())
+	}
+	// Reuse the read handler's shape so the frontend has one type to model.
+	// handleUpdateStatus enforces GET, so flip the method on the clone.
+	r2 := r.Clone(r.Context())
+	r2.Method = http.MethodGet
+	s.handleUpdateStatus(w, r2)
 }
 
 // handleUpdateApply handles POST /internal/update-apply.
