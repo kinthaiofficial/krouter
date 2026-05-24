@@ -1,9 +1,15 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Link2, Link2Off, RefreshCw, ChevronDown, ChevronUp, TerminalSquare, RotateCcw, History } from 'lucide-react'
-import { api, type BackupInfo, type AgentDiff } from '../api/client'
-import AgentInheritanceSection from '../components/AgentInheritanceSection'
+import {
+  Link2, Link2Off, RefreshCw, ChevronDown, ChevronUp,
+  TerminalSquare, RotateCcw, History, Check, Power, Edit2,
+} from 'lucide-react'
+import {
+  api,
+  type BackupInfo, type AgentDiff,
+  type SupportedAgent, type ConfiguredAgent,
+} from '../api/client'
 
 interface AgentStats {
   requests_today: number
@@ -33,6 +39,23 @@ interface LogRow {
   latency_ms: number
   status_code: number
 }
+
+interface UnifiedAgent {
+  id: string
+  displayName: string
+  supported?: SupportedAgent
+  config?: ConfiguredAgent
+  status?: AgentStatus
+}
+
+const AGENT_LABELS: Record<string, string> = {
+  'openclaw': 'OpenClaw',
+  'claude-code': 'Claude Code',
+  'cursor': 'Cursor',
+  'hermes': 'Hermes',
+}
+
+// ─── DiffModal ─────────────────────────────────────────────────────────────
 
 function DiffModal({ diff, onConfirm, onCancel, loading }: {
   diff: AgentDiff
@@ -75,6 +98,8 @@ function DiffModal({ diff, onConfirm, onCancel, loading }: {
   )
 }
 
+// ─── BackupsPanel ──────────────────────────────────────────────────────────
+
 function BackupsPanel({ agentName }: { agentName: string }) {
   const { t } = useTranslation()
   const qc = useQueryClient()
@@ -91,8 +116,8 @@ function BackupsPanel({ agentName }: { agentName: string }) {
     },
   })
 
-  if (isLoading) return <p className="text-xs text-gray-400 py-2">{t('agents.backups_loading')}</p>
-  if (backups.length === 0) return <p className="text-xs text-gray-400 py-2">{t('agents.backups_empty')}</p>
+  if (isLoading) return <p className="text-xs text-gray-500 py-2">{t('agents.backups_loading')}</p>
+  if (backups.length === 0) return <p className="text-xs text-gray-500 py-2">{t('agents.backups_empty')}</p>
 
   return (
     <div className="space-y-1">
@@ -101,7 +126,7 @@ function BackupsPanel({ agentName }: { agentName: string }) {
           <span className="flex-1 font-mono text-gray-600 truncate" title={b.filename}>
             {new Date(b.created_at).toLocaleString()}
           </span>
-          <span className="text-gray-400">{b.size_kb > 0 ? `${b.size_kb} KB` : '< 1 KB'}</span>
+          <span className="text-gray-500">{b.size_kb > 0 ? `${b.size_kb} KB` : '< 1 KB'}</span>
           <button
             onClick={() => {
               if (window.confirm(t('agents.restore_confirm', { date: new Date(b.created_at).toLocaleString() }))) {
@@ -120,19 +145,24 @@ function BackupsPanel({ agentName }: { agentName: string }) {
   )
 }
 
-const AGENT_LABELS: Record<string, string> = {
-  'openclaw': 'OpenClaw',
-  'claude-code': 'Claude Code',
-  'cursor': 'Cursor',
-  'hermes': 'Hermes',
-}
+// ─── Page ──────────────────────────────────────────────────────────────────
 
 export default function Agents() {
   const { t } = useTranslation()
   const qc = useQueryClient()
   const [expandedLogs, setExpandedLogs] = useState<string | null>(null)
 
-  const { data: agents = [], isLoading, refetch } = useQuery<AgentStatus[]>({
+  const { data: supported = [], isLoading: loadingSupported } = useQuery<SupportedAgent[]>({
+    queryKey: ['agents-supported'],
+    queryFn: api.agentsSupported,
+    staleTime: 60_000,
+  })
+  const { data: configured = [] } = useQuery<ConfiguredAgent[]>({
+    queryKey: ['agents-configured'],
+    queryFn: api.agentsConfigured,
+    refetchInterval: 15_000,
+  })
+  const { data: statuses = [], isLoading: loadingStatuses, refetch } = useQuery<AgentStatus[]>({
     queryKey: ['agents'],
     queryFn: () =>
       fetch('/internal/agents', { credentials: 'include' }).then((r) => {
@@ -142,12 +172,46 @@ export default function Agents() {
     refetchInterval: 30_000,
   })
 
+  const cfgByID = new Map(configured.map((c) => [c.agent_id, c]))
+  const statusByName = new Map(statuses.map((a) => [a.name, a]))
+
+  // Build unified list starting from the scanner registry (canonical order).
+  // Any legacy agent that appears in /internal/agents but not in supported
+  // (e.g. older daemon build) is appended at the end.
+  const seenIDs = new Set<string>()
+  const agents: UnifiedAgent[] = []
+
+  for (const s of supported) {
+    seenIDs.add(s.agent_id)
+    agents.push({
+      id: s.agent_id,
+      displayName: s.display_name,
+      supported: s,
+      config: cfgByID.get(s.agent_id),
+      status: statusByName.get(s.agent_id),
+    })
+  }
+  for (const st of statuses) {
+    if (!seenIDs.has(st.name)) {
+      agents.push({
+        id: st.name,
+        displayName: AGENT_LABELS[st.name] ?? st.name,
+        status: st,
+      })
+    }
+  }
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['agents'] })
+    qc.invalidateQueries({ queryKey: ['agents-configured'] })
+  }
+
   return (
-    <div className="p-6 space-y-6 max-w-3xl mx-auto">
+    <div className="p-6 space-y-4 max-w-3xl mx-auto">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">{t('agents.title')}</h1>
         <button
-          onClick={() => { refetch(); qc.invalidateQueries({ queryKey: ['agents'] }) }}
+          onClick={() => { refetch(); invalidate() }}
           className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 px-3 py-1.5 rounded-lg hover:bg-surface transition-colors"
         >
           <RefreshCw size={14} />
@@ -155,24 +219,22 @@ export default function Agents() {
         </button>
       </div>
 
-      <AgentInheritanceSection />
-
-      {isLoading ? (
-        <p className="text-sm text-gray-400">{t('agents.detecting')}</p>
+      {(loadingSupported || loadingStatuses) ? (
+        <p className="text-sm text-gray-500">{t('agents.detecting')}</p>
       ) : agents.length === 0 ? (
         <div className="bg-gray-50 rounded-xl border border-dashed border-gray-200 p-8 text-center space-y-1">
-          <p className="text-sm text-gray-400">{t('agents.none_detected')}</p>
-          <p className="text-xs text-gray-400">{t('agents.none_detail')}</p>
+          <p className="text-sm text-gray-500">{t('agents.none_detected')}</p>
+          <p className="text-xs text-gray-500">{t('agents.none_detail')}</p>
         </div>
       ) : (
         <div className="space-y-3">
           {agents.map((a) => (
-            <AgentCard
-              key={a.name}
+            <UnifiedAgentCard
+              key={a.id}
               agent={a}
-              logsExpanded={expandedLogs === a.name}
-              onToggleLogs={() => setExpandedLogs(expandedLogs === a.name ? null : a.name)}
-              onMutationSuccess={() => qc.invalidateQueries({ queryKey: ['agents'] })}
+              logsExpanded={expandedLogs === a.id}
+              onToggleLogs={() => setExpandedLogs(expandedLogs === a.id ? null : a.id)}
+              onMutationSuccess={invalidate}
             />
           ))}
         </div>
@@ -181,194 +243,330 @@ export default function Agents() {
   )
 }
 
-function AgentCard({
+// ─── UnifiedAgentCard ──────────────────────────────────────────────────────
+
+function UnifiedAgentCard({
   agent: a,
   logsExpanded,
   onToggleLogs,
   onMutationSuccess,
 }: {
-  agent: AgentStatus
+  agent: UnifiedAgent
   logsExpanded: boolean
   onToggleLogs: () => void
   onMutationSuccess: () => void
 }) {
   const { t } = useTranslation()
-  const label = AGENT_LABELS[a.name] ?? a.name
+  const qc = useQueryClient()
+
+  const enabled = a.config?.enabled ?? false
+  const connected = a.status?.connected ?? false
+  const inherited = a.config?.inherited_count ?? 0
+  const lastScannedAt = a.config?.last_scanned_at
+  const lastError = a.config?.last_error
+
+  const [editPath, setEditPath] = useState(false)
+  const [pathDraft, setPathDraft] = useState(
+    a.config?.config_path ?? a.supported?.default_path ?? ''
+  )
+  const [showBackups, setShowBackups] = useState(false)
   const [showDiff, setShowDiff] = useState(false)
   const [pendingDiff, setPendingDiff] = useState<AgentDiff | null>(null)
-  const [showBackups, setShowBackups] = useState(false)
+
+  // Inheritance mutations
+  const enable = useMutation({
+    mutationFn: () => api.agentEnable(a.id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['agents-configured'] }) },
+  })
+  const disable = useMutation({
+    mutationFn: () => api.agentDisable(a.id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['agents-configured'] }) },
+  })
+  const rescan = useMutation({
+    mutationFn: (path?: string) => api.agentRescan(a.id, path),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['agents-configured'] }) },
+  })
+
+  // Proxy connect/disconnect mutations
   const connectMutation = useMutation({
     mutationFn: () =>
-      fetch(`/internal/agents/${a.name}/connect`, {
-        method: 'POST',
-        credentials: 'include',
-      }).then((r) => {
-        if (!r.ok) return r.json().then((e: { error: string }) => { throw new Error(e.error) })
-        return r.json()
-      }),
+      fetch(`/internal/agents/${a.id}/connect`, { method: 'POST', credentials: 'include' })
+        .then((r) => {
+          if (!r.ok) return r.json().then((e: { error: string }) => { throw new Error(e.error) })
+          return r.json()
+        }),
     onSuccess: onMutationSuccess,
   })
-
   const disconnectMutation = useMutation({
     mutationFn: () =>
-      fetch(`/internal/agents/${a.name}/disconnect`, {
-        method: 'POST',
-        credentials: 'include',
-      }).then((r) => {
-        if (!r.ok) return r.json().then((e: { error: string }) => { throw new Error(e.error) })
-        return r.json()
-      }),
+      fetch(`/internal/agents/${a.id}/disconnect`, { method: 'POST', credentials: 'include' })
+        .then((r) => {
+          if (!r.ok) return r.json().then((e: { error: string }) => { throw new Error(e.error) })
+          return r.json()
+        }),
     onSuccess: onMutationSuccess,
   })
-
   const getDiff = useMutation({
-    mutationFn: () => api.agentDiff(a.name),
-    onSuccess: (diff) => {
-      setPendingDiff(diff)
-      setShowDiff(true)
-    },
+    mutationFn: () => api.agentDiff(a.id),
+    onSuccess: (diff) => { setPendingDiff(diff); setShowDiff(true) },
   })
 
-  const isBusy = connectMutation.isPending || disconnectMutation.isPending || getDiff.isPending
+  const isBusy =
+    enable.isPending || disable.isPending || rescan.isPending ||
+    connectMutation.isPending || disconnectMutation.isPending || getDiff.isPending
 
   const { data: logs = [], isLoading: logsLoading } = useQuery<LogRow[]>({
-    queryKey: ['agent-logs', a.name],
+    queryKey: ['agent-logs', a.id],
     queryFn: () =>
-      fetch(`/internal/logs?agent=${encodeURIComponent(a.name)}&n=50`, { credentials: 'include' })
+      fetch(`/internal/logs?agent=${encodeURIComponent(a.id)}&n=50`, { credentials: 'include' })
         .then((r) => r.json() as Promise<LogRow[]>),
     enabled: logsExpanded,
     staleTime: 10_000,
   })
 
+  const configPath = a.config?.config_path ?? a.supported?.default_path ?? a.status?.config_path
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-      <div className="p-4">
+      <div className="p-4 space-y-3">
+
+        {/* Header row: avatar · name · badges · action buttons */}
         <div className="flex items-start gap-3">
-          <div className="shrink-0 mt-0.5">
-            {a.connected ? (
-              <Link2 size={18} className="text-brand" />
-            ) : (
-              <Link2Off size={18} className="text-gray-300" />
-            )}
-          </div>
+          {/* Avatar circle — green when enabled, gray otherwise */}
+          <span
+            className={`shrink-0 mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-full text-white text-[11px] font-bold tracking-tight ${
+              enabled ? 'bg-brand' : 'bg-gray-300'
+            }`}
+          >
+            {a.id.slice(0, 2).toUpperCase()}
+          </span>
 
           <div className="flex-1 min-w-0">
+            {/* Name + status badges */}
             <div className="flex items-center gap-2 flex-wrap">
-              <p className="font-medium text-sm">{label}</p>
-              <span className={[
-                'text-xs px-1.5 py-0.5 rounded-full font-medium',
-                a.connected ? 'bg-brand-light text-brand' : 'bg-gray-100 text-gray-400',
-              ].join(' ')}>
-                {a.connected ? t('agents.connected') : t('agents.not_connected')}
-              </span>
+              <p className="font-semibold text-sm">{a.displayName}</p>
+
+              {/* Inheritance: enabled / disabled */}
+              {enabled ? (
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 rounded-full px-2 py-0.5">
+                  <Check className="w-3 h-3" /> {t('common.enabled')}
+                </span>
+              ) : a.config ? (
+                <span className="text-[11px] font-medium text-gray-500 bg-gray-100 rounded-full px-2 py-0.5">
+                  {t('common.disabled')}
+                </span>
+              ) : null}
+
+              {/* Proxy: connected / not connected */}
+              {connected ? (
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-brand bg-brand-light rounded-full px-2 py-0.5">
+                  <Link2 className="w-3 h-3" /> {t('agents.connected')}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-400 bg-gray-50 rounded-full px-2 py-0.5">
+                  <Link2Off className="w-3 h-3" /> {t('agents.not_connected')}
+                </span>
+              )}
             </div>
-            {a.config_path && (
-              <p className="text-xs text-gray-400 font-mono truncate mt-0.5">{a.config_path}</p>
+
+            {/* Config path (editable) */}
+            {configPath && (
+              <div className="flex items-center gap-1.5 mt-1">
+                {editPath ? (
+                  <input
+                    type="text"
+                    value={pathDraft}
+                    onChange={(e) => setPathDraft(e.target.value)}
+                    className="flex-1 text-xs font-mono px-2 py-0.5 border border-gray-200 rounded"
+                  />
+                ) : (
+                  <p className="text-xs text-gray-500 font-mono truncate flex-1" title={configPath}>
+                    {configPath}
+                  </p>
+                )}
+                {a.supported && (
+                  <button
+                    type="button"
+                    onClick={() => setEditPath((v) => !v)}
+                    className="text-gray-400 hover:text-gray-700 shrink-0"
+                    aria-label={editPath ? 'Cancel' : 'Edit path'}
+                  >
+                    <Edit2 className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
             )}
-            {a.cli_path && (
-              <p className="text-xs text-gray-400 font-mono truncate mt-0.5">{a.cli_path}</p>
+
+            {/* Inheritance meta: providers + last scan */}
+            {a.config && (
+              <p className="text-[11px] text-gray-500 mt-0.5">
+                {inherited > 0
+                  ? t('inheritance.providers_count', { count: inherited })
+                  : enabled ? t('inheritance.no_providers') : '—'}
+                {lastScannedAt && (
+                  <>
+                    {' · '}{t('inheritance.last_scan')}{' '}
+                    <span title={new Date(lastScannedAt).toLocaleString()}>
+                      {relativeTime(lastScannedAt)}
+                    </span>
+                  </>
+                )}
+              </p>
             )}
-            {a.providers && a.providers.length > 0 && (
-              <p className="text-xs text-gray-500 mt-1">
-                Providers: {a.providers.join(', ')}
+
+            {lastError && (
+              <p className="text-[11px] text-red-600 mt-0.5" title={lastError}>
+                {t('common.error')}: {lastError}
               </p>
             )}
           </div>
 
-          <div className="shrink-0">
-            {a.connected ? (
+          {/* Action buttons cluster */}
+          <div className="shrink-0 flex items-center gap-1.5 flex-wrap justify-end">
+            {/* Inheritance controls */}
+            {a.supported && (
+              <>
+                {editPath ? (
+                  <button
+                    type="button"
+                    onClick={() => { rescan.mutate(pathDraft); setEditPath(false) }}
+                    disabled={isBusy || !pathDraft.trim()}
+                    className="text-xs px-2.5 py-1 rounded-md bg-brand text-white hover:bg-brand-dark disabled:opacity-50"
+                  >
+                    {t('inheritance.save_rescan')}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => rescan.mutate(undefined)}
+                    disabled={isBusy}
+                    className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-md border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    {rescan.isPending ? t('inheritance.scanning') : t('inheritance.rescan')}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={enabled ? () => disable.mutate() : () => enable.mutate()}
+                  disabled={isBusy}
+                  className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-md disabled:opacity-50 ${
+                    enabled
+                      ? 'border border-gray-200 hover:bg-gray-50'
+                      : 'bg-brand text-white hover:bg-brand-dark'
+                  }`}
+                >
+                  <Power className="w-3 h-3" />
+                  {enabled ? t('inheritance.disable') : t('inheritance.enable')}
+                </button>
+              </>
+            )}
+
+            {/* Proxy connect / disconnect */}
+            {connected ? (
               <button
                 onClick={() => disconnectMutation.mutate()}
                 disabled={isBusy}
-                className="text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50 transition-colors font-medium"
+                className="text-xs px-2.5 py-1 rounded-md bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50 font-medium"
               >
                 {disconnectMutation.isPending ? t('agents.disconnecting') : t('agents.disconnect')}
               </button>
             ) : (
               <button
                 onClick={() => {
-                  if (a.name === 'openclaw' && !a.connected) {
-                    getDiff.mutate()
-                  } else {
-                    connectMutation.mutate()
-                  }
+                  if (a.id === 'openclaw') getDiff.mutate()
+                  else connectMutation.mutate()
                 }}
                 disabled={isBusy}
-                className="text-xs px-3 py-1.5 rounded-lg bg-brand-light text-brand hover:bg-green-100 disabled:opacity-50 transition-colors font-medium"
+                className="text-xs px-2.5 py-1 rounded-md bg-brand-light text-brand hover:bg-green-100 disabled:opacity-50 font-medium"
               >
-                {getDiff.isPending ? t('agents.loading') : connectMutation.isPending ? t('agents.connecting') : t('agents.connect')}
+                {getDiff.isPending ? t('agents.loading')
+                  : connectMutation.isPending ? t('agents.connecting')
+                  : t('agents.connect')}
               </button>
             )}
           </div>
         </div>
 
-        {(connectMutation.error || disconnectMutation.error) && (
-          <p className="mt-2 text-xs text-red-500 pl-7">
-            {(connectMutation.error as Error)?.message ?? (disconnectMutation.error as Error)?.message}
-          </p>
-        )}
-
-        {connectMutation.isSuccess && a.name === 'claude-code' && (
-          <div className="mt-2 ml-7 flex items-center gap-2 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+        {/* Post-connect hints */}
+        {connectMutation.isSuccess && a.id === 'claude-code' && (
+          <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
             <TerminalSquare size={12} className="shrink-0" />
             {t('agents.new_terminal_hint')}
           </div>
         )}
-        {connectMutation.isSuccess && (a.name === 'openclaw' || a.name === 'cursor') && (
-          <div className="mt-2 ml-7 flex items-center gap-2 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+        {connectMutation.isSuccess && (a.id === 'openclaw' || a.id === 'cursor') && (
+          <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
             <RotateCcw size={12} className="shrink-0" />
-            {t('agents.restart_hint', { label })}
+            {t('agents.restart_hint', { label: a.displayName })}
           </div>
         )}
 
-        <div className="mt-3 flex items-center gap-4 text-xs text-gray-500 border-t border-gray-100 pt-3">
-          <div>
-            <span className="font-medium text-gray-900">{a.stats.requests_today}</span>
-            {' '}{t('agents.requests_today')}
-          </div>
-          <div>
-            <span className="font-medium text-gray-900">${a.stats.cost_today_usd.toFixed(4)}</span>
-            {' '}{t('agents.cost')}
-          </div>
-          {a.stats.savings_today_usd > 0.000001 && (
+        {/* Errors */}
+        {(connectMutation.error || disconnectMutation.error) && (
+          <p className="text-xs text-red-500">
+            {(connectMutation.error as Error)?.message ?? (disconnectMutation.error as Error)?.message}
+          </p>
+        )}
+
+        {/* Stats + logs toggle */}
+        {a.status && (
+          <div className="flex items-center gap-4 text-xs text-gray-500 border-t border-gray-100 pt-3">
             <div>
-              <span className="font-medium text-brand">${a.stats.savings_today_usd.toFixed(4)}</span>
-              {' '}{t('agents.saved')}
+              <span className="font-medium text-gray-900 tabular-nums">
+                {a.status.stats.requests_today}
+              </span>{' '}
+              {t('agents.requests_today')}
             </div>
-          )}
-          <button
-            onClick={onToggleLogs}
-            className="ml-auto flex items-center gap-1 hover:text-gray-900 transition-colors"
-          >
-            {logsExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-            {logsExpanded ? t('agents.hide_logs') : t('agents.show_logs')}
-          </button>
-        </div>
+            <div>
+              <span className="font-medium text-gray-900 tabular-nums">
+                ${a.status.stats.cost_today_usd.toFixed(4)}
+              </span>{' '}
+              {t('agents.cost')}
+            </div>
+            {a.status.stats.savings_today_usd > 0.000001 && (
+              <div>
+                <span className="font-medium text-brand tabular-nums">
+                  ${a.status.stats.savings_today_usd.toFixed(4)}
+                </span>{' '}
+                {t('agents.saved')}
+              </div>
+            )}
+            <button
+              onClick={onToggleLogs}
+              className="ml-auto flex items-center gap-1 hover:text-gray-900 transition-colors"
+            >
+              {logsExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+              {logsExpanded ? t('agents.hide_logs') : t('agents.show_logs')}
+            </button>
+          </div>
+        )}
       </div>
 
+      {/* Logs panel */}
       {logsExpanded && (
         <div className="border-t border-gray-100 bg-gray-50 px-4 py-3">
           {logsLoading ? (
-            <p className="text-xs text-gray-400">{t('agents.logs_loading')}</p>
+            <p className="text-xs text-gray-500">{t('agents.logs_loading')}</p>
           ) : logs.length === 0 ? (
-            <p className="text-xs text-gray-400">{t('agents.logs_empty')}</p>
+            <p className="text-xs text-gray-500">{t('agents.logs_empty')}</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-gray-400 text-left">
-                    <th className="pb-2 font-medium w-24">{t('agents.col_time')}</th>
-                    <th className="pb-2 font-medium">{t('agents.col_model')}</th>
-                    <th className="pb-2 font-medium">{t('agents.col_provider')}</th>
-                    <th className="pb-2 font-medium text-right">{t('agents.col_tokens')}</th>
-                    <th className="pb-2 font-medium text-right">{t('agents.col_cost')}</th>
-                    <th className="pb-2 font-medium text-right">{t('agents.col_latency')}</th>
+                  <tr className="text-gray-500 font-medium text-left">
+                    <th className="pb-2 w-24">{t('agents.col_time')}</th>
+                    <th className="pb-2">{t('agents.col_model')}</th>
+                    <th className="pb-2">{t('agents.col_provider')}</th>
+                    <th className="pb-2 text-right">{t('agents.col_tokens')}</th>
+                    <th className="pb-2 text-right">{t('agents.col_cost')}</th>
+                    <th className="pb-2 text-right">{t('agents.col_latency')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {logs.map((log) => (
                     <tr key={log.id} className={log.status_code >= 400 ? 'text-red-500' : 'text-gray-700'}>
-                      <td className="py-1.5 pr-2 text-gray-400 tabular-nums">
+                      <td className="py-1.5 pr-2 text-gray-500 tabular-nums">
                         {new Date(log.ts).toLocaleTimeString()}
                       </td>
                       <td className="py-1.5 pr-2 font-mono truncate max-w-[140px]" title={log.model || log.requested_model}>
@@ -393,40 +591,46 @@ function AgentCard({
         </div>
       )}
 
+      {/* Backups */}
+      {configPath && (
+        <div className="px-4 pb-3 border-t border-gray-100">
+          <button
+            onClick={() => setShowBackups(!showBackups)}
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 pt-3"
+          >
+            <History size={13} />
+            {t('agents.backups')}
+            {showBackups ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          </button>
+          {showBackups && (
+            <div className="mt-2">
+              <BackupsPanel agentName={a.id} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Diff modal */}
       {showDiff && pendingDiff && (
         <DiffModal
           diff={pendingDiff}
           loading={connectMutation.isPending}
-          onConfirm={() => {
-            setShowDiff(false)
-            connectMutation.mutate()
-          }}
-          onCancel={() => {
-            setShowDiff(false)
-            setPendingDiff(null)
-          }}
+          onConfirm={() => { setShowDiff(false); connectMutation.mutate() }}
+          onCancel={() => { setShowDiff(false); setPendingDiff(null) }}
         />
-      )}
-
-      {a.config_path && (
-        <div className="px-4 pb-4">
-          <div className="mt-3 pt-3 border-t border-gray-100">
-            <button
-              onClick={() => setShowBackups(!showBackups)}
-              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700"
-            >
-              <History size={13} />
-              {t('agents.backups')}
-              {showBackups ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-            </button>
-            {showBackups && (
-              <div className="mt-2">
-                <BackupsPanel agentName={a.name} />
-              </div>
-            )}
-          </div>
-        </div>
       )}
     </div>
   )
+}
+
+// ─── Helpers ───────────────────────────────────────────────────────────────
+
+function relativeTime(msUTC: number): string {
+  const seconds = Math.floor((Date.now() - msUTC) / 1000)
+  if (seconds < 60) return `${seconds}s ago`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.floor(hours / 24)}d ago`
 }
