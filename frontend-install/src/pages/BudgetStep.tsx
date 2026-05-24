@@ -47,7 +47,7 @@ export default function BudgetStep({ onNext }: Props) {
           />
           <span className="text-gray-500 text-sm">{t('budget.unit')}</span>
         </div>
-        <p className="text-xs text-gray-400">{t('budget.note')}</p>
+        <p className="text-xs text-gray-500">{t('budget.note')}</p>
       </div>
 
       {error && <p className="text-red-500 text-sm">{error}</p>}

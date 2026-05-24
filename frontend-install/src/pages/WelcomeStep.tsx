@@ -40,7 +40,7 @@ export default function WelcomeStep({ onNext }: Props) {
         </li>
       </ul>
 
-      <p className="text-xs text-gray-400 mb-6">
+      <p className="text-xs text-gray-500 mb-6">
         {t('welcome.feature_auto')}
       </p>
 

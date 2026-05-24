@@ -46,7 +46,7 @@ function DiffModal({ diff, onConfirm, onCancel, loading }: {
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
         <div className="p-5 border-b border-gray-100">
           <h2 className="font-semibold text-sm">{t('agents.preview_changes')}</h2>
-          <p className="text-xs text-gray-400 mt-0.5">{t('agents.preview_detail')}</p>
+          <p className="text-xs text-gray-500 mt-0.5">{t('agents.preview_detail')}</p>
         </div>
         <div className="flex-1 overflow-auto p-5 grid grid-cols-2 gap-4 min-h-0">
           <div>

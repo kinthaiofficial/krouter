@@ -39,7 +39,7 @@ export default function FreeTokens() {
             <Gift className="w-4 h-4 text-emerald-500" />
             {t('freeTokens.title')}
           </h1>
-          <p className="text-xs text-gray-400 mt-0.5">{t('freeTokens.subtitle')}</p>
+          <p className="text-xs text-gray-500 mt-0.5">{t('freeTokens.subtitle')}</p>
         </div>
         {data && data.length > 0 && (
           <span className="text-xs text-gray-400">

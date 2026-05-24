@@ -79,7 +79,7 @@ export default function DetectStep({ onNext }: Props) {
               </span>
               <div>
                 <p className="font-medium text-gray-800">{AGENT_LABELS[a.name] ?? a.name}</p>
-                <p className="text-xs text-gray-400">{a.config_path ?? a.cli_path ?? ''}</p>
+                <p className="text-xs text-gray-500 font-mono">{a.config_path ?? a.cli_path ?? ''}</p>
               </div>
             </li>
           ))}

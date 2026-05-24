@@ -65,11 +65,11 @@ export default function Dashboard() {
         />
 
         {/* Today stats */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-2">
-          <h2 className="text-sm font-medium text-gray-500">{t('dashboard.today')}</h2>
-          <div className="flex gap-6">
+        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-2 border-l-[3px] border-l-brand">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500">{t('dashboard.today')}</h2>
+          <div className="flex gap-6 pt-1">
             <Stat label={t('dashboard.requests')} value={String(budget?.requests_today ?? 0)} />
-            <Stat label={t('dashboard.saved')} value={`$${(budget?.savings_today_usd ?? 0).toFixed(3)}`} />
+            <Stat label={t('dashboard.saved')} value={`$${(budget?.savings_today_usd ?? 0).toFixed(3)}`} accent="green" />
             <Stat label={t('dashboard.spent')} value={`$${(budget?.cost_today_usd ?? 0).toFixed(3)}`} />
           </div>
         </div>
@@ -87,23 +87,23 @@ export default function Dashboard() {
       {dashStats && (
         <section className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-medium text-gray-700">{t('dashboard.this_week')}</h2>
-            <span className="text-xs text-gray-400">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500">{t('dashboard.this_week')}</h2>
+            <span className="text-xs text-gray-500">
               {t('dashboard.agents_connected', { count: dashStats.agents_connected })}
             </span>
           </div>
           <div className="grid grid-cols-3 gap-4">
             <div>
               <p className="text-2xl font-bold tabular-nums">{dashStats.weekly.requests.toLocaleString()}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{t('dashboard.requests_label')}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{t('dashboard.requests_label')}</p>
             </div>
             <div>
               <p className="text-2xl font-bold tabular-nums">${dashStats.weekly.cost_usd.toFixed(3)}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{t('dashboard.spent_label')}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{t('dashboard.spent_label')}</p>
             </div>
             <div>
-              <p className="text-2xl font-bold tabular-nums text-green-600">${dashStats.weekly.savings_usd.toFixed(3)}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{t('dashboard.saved_label')}</p>
+              <p className="text-2xl font-bold tabular-nums text-emerald-600">${dashStats.weekly.savings_usd.toFixed(3)}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{t('dashboard.saved_label')}</p>
             </div>
           </div>
         </section>
@@ -111,7 +111,7 @@ export default function Dashboard() {
 
       {dashStats && dashStats.providers.length > 0 && (
         <section className="bg-white rounded-xl border border-gray-200 p-5">
-          <h2 className="text-sm font-medium text-gray-700 mb-4">{t('dashboard.provider_distribution')}</h2>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-4">{t('dashboard.provider_distribution')}</h2>
           <div className="flex items-center gap-6">
             <div className="w-32 h-32 shrink-0">
               <ResponsiveContainer width="100%" height="100%">
@@ -170,7 +170,7 @@ export default function Dashboard() {
 
       {/* Recent requests */}
       <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h2 className="text-sm font-medium text-gray-500 mb-4">{t('dashboard.recent_requests')}</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-4">{t('dashboard.recent_requests')}</h2>
         <RequestTable logs={recentLogs} />
       </div>
     </div>
@@ -215,11 +215,13 @@ function BudgetBar({ costUSD, limitUSD, pct, blocked }: {
   )
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, accent }: { label: string; value: string; accent?: 'green' }) {
   return (
     <div>
-      <p className="text-2xl font-bold">{value}</p>
-      <p className="text-xs text-gray-500">{label}</p>
+      <p className={['text-2xl font-bold tabular-nums', accent === 'green' ? 'text-emerald-600' : ''].join(' ')}>
+        {value}
+      </p>
+      <p className="text-xs text-gray-500 mt-0.5">{label}</p>
     </div>
   )
 }
@@ -231,7 +233,7 @@ function RequestTable({ logs }: { logs: LogRecord[] }) {
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
+          <tr className="text-left text-xs text-gray-500 font-medium border-b border-gray-100">
             {[
               t('dashboard.col_time'),
               t('dashboard.col_agent'),

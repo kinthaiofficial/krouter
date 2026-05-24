@@ -147,7 +147,7 @@ export default function Logs() {
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-lg font-semibold">{t('logs.title')}</h1>
-          <p className="text-xs text-gray-400 mt-0.5">{t('logs.subtitle')}</p>
+          <p className="text-xs text-gray-500 mt-0.5">{t('logs.subtitle')}</p>
         </div>
         <button
           onClick={exportCSV}

@@ -57,7 +57,7 @@ export default function Providers() {
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-lg font-semibold">{t('providers.title')}</h1>
-          <p className="text-xs text-gray-400 mt-0.5">{t('providers.subtitle')}</p>
+          <p className="text-xs text-gray-500 mt-0.5">{t('providers.subtitle')}</p>
         </div>
         <button
           onClick={() => setShowAdd(true)}
@@ -76,7 +76,7 @@ export default function Providers() {
         <>
           {active.length > 0 && (
             <div className="space-y-2">
-              <p className="text-xs text-gray-400 uppercase tracking-wide">{t('providers.active')}</p>
+              <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide">{t('providers.active')}</p>
               {active.map((p) => (
                 <ProviderCard key={p.name} provider={p} subscription={subByProvider.get(p.name)} />
               ))}
@@ -84,7 +84,7 @@ export default function Providers() {
           )}
           {inactive.length > 0 && (
             <div className="space-y-2 mt-6">
-              <p className="text-xs text-gray-400 uppercase tracking-wide">{t('providers.not_configured')}</p>
+              <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide">{t('providers.not_configured')}</p>
               {inactive.map((p) => (
                 <ProviderCard key={p.name} provider={p} subscription={subByProvider.get(p.name)} />
               ))}

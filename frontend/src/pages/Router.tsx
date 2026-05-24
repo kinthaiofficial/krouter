@@ -59,7 +59,7 @@ export default function Router() {
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-lg font-semibold">{t('router.title')}</h1>
-          <p className="text-xs text-gray-400 mt-0.5">{t('router.subtitle')}</p>
+          <p className="text-xs text-gray-500 mt-0.5">{t('router.subtitle')}</p>
         </div>
         <LiveBadge alive={sseAlive} t={t} />
       </div>

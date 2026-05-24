@@ -89,7 +89,7 @@ export default function BudgetPage() {
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-lg font-semibold">{t('budget.title')}</h1>
-          <p className="text-xs text-gray-400 mt-0.5">{t('budget.subtitle')}</p>
+          <p className="text-xs text-gray-500 mt-0.5">{t('budget.subtitle')}</p>
         </div>
       </div>
 
@@ -217,7 +217,7 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: 're
     tone === 'green' ? 'text-green-700' : 'text-gray-900'
   return (
     <div>
-      <p className="text-xs text-gray-400">{label}</p>
+      <p className="text-xs text-gray-500">{label}</p>
       <p className={['text-base font-mono mt-0.5', toneCls].join(' ')}>{value}</p>
     </div>
   )
@@ -284,19 +284,19 @@ function EventsTimeline({
       </div>
 
       {events.length === 0 ? (
-        <p className="text-sm text-gray-400 italic">{t('budget.history_empty')}</p>
+        <p className="text-sm text-gray-500 italic">{t('budget.history_empty')}</p>
       ) : (
         <ul className="divide-y divide-gray-50">
           {events.map((e) => (
             <li key={e.id} className="flex items-center gap-3 py-2 text-sm">
               <EventBadge type={e.event_type} t={t} />
-              <span className="text-xs text-gray-400 tabular-nums w-40 shrink-0">
+              <span className="text-xs text-gray-500 tabular-nums w-40 shrink-0">
                 {new Date(e.ts).toLocaleString()}
               </span>
               <span className="text-xs font-mono text-gray-600">
                 ${e.daily_cost_usd.toFixed(4)} / ${e.daily_limit_usd.toFixed(2)}
               </span>
-              <span className="text-xs text-gray-400 ml-auto tabular-nums">
+              <span className="text-xs text-gray-500 ml-auto tabular-nums">
                 {(e.daily_percent * 100).toFixed(1)}%
               </span>
             </li>

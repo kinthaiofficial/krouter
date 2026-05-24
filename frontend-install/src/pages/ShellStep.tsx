@@ -79,7 +79,7 @@ export default function ShellStep({ onNext, maxAttempts = 40, pollIntervalMs = 1
       ) : (
         <div className="rounded-xl bg-surface border border-border p-4 text-sm text-gray-600 mb-6">
           <p>{t('shell.step_rc')}</p>
-          <p className="mt-1 text-gray-400 text-xs">{t('shell.step_idempotent')}</p>
+          <p className="mt-1 text-gray-500 text-xs">{t('shell.step_idempotent')}</p>
         </div>
       )}
 
