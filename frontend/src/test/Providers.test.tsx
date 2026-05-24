@@ -137,6 +137,9 @@ describe('Providers page', () => {
     await waitFor(() => {
       expect(screen.getByText(/4 consecutive failures|连续失败 4 次/)).toBeInTheDocument()
     })
+    // The plain-language explanation for the last status code is rendered
+    // below the failure-streak line so users know what 503 actually means.
+    expect(screen.getByText(/Service unavailable|服务不可用/)).toBeInTheDocument()
   })
 
   it('surfaces an explicit error message when the models endpoint 500s', async () => {

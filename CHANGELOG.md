@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **HTTP status code explanations in the dashboard**: routing-decision rows, expanded cards, and the Providers "consecutive failure" banner now translate raw codes (`401`, `402`, `429`, `503`, …) into plain English / Chinese so users don't have to memorise what each one means. Every status pill carries a hover tooltip with the code + explanation (e.g. `402 — Payment required: provider quota exhausted or account out of credits`); non-2xx codes also get an inline explanation below the latency line in the expanded view and below the failure-streak count on the Providers card. New helper `frontend/src/lib/statusCode.ts` maps the common codes (200/201/204/400/401/402/403/404/408/409/413/422/429/500/502/503/504) plus 2xx/3xx/4xx/5xx fallback buckets to i18n keys under `status.*`.
+
 ## [2.3.0] - 2026-05-23
 
 ### Added
