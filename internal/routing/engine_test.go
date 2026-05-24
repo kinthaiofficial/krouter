@@ -447,22 +447,18 @@ func TestEngine_NoBudgetConfigured_RoutesNormally(t *testing.T) {
 	assert.NotEmpty(t, dec.Provider)
 }
 
-// ─── Free-credit routing (spec/06) ─────────────────────────────────────────
+// ─── Cost-driven cheapest path (the catalog-filter version was removed) ───
+//
+// The previous spec/06 "free-first" branch used data/free_tokens.json
+// catalog membership as a routing filter, which silently excluded any
+// user-configured free provider not on the catalog. It's gone. The
+// engine now picks cheapest by per-token cost from the pricing table —
+// a model priced at $0 wins automatically without a special-case path,
+// and unknown-to-the-catalog free providers no longer get penalised.
 
-// stubFreeProviders implements routing.FreeProviderSource for tests.
-// Static list, ignores ctx / protocol — tests cover those branches via
-// the cmd/krouter freeProviderSource implementation.
-type stubFreeProviders struct{ names []string }
-
-func (s *stubFreeProviders) ListAvailableFreeProviders(_ context.Context, _ string) []string {
-	return s.names
-}
-
-func TestEngine_Saver_FreeProviderPreferredOverPaidCheapest(t *testing.T) {
-	// Two openai-protocol providers: deepseek (catalogued as free) and
-	// moonshot (paid). Moonshot is cheaper per token in our fake pricing,
-	// but routing should pick deepseek because it's a free-credit
-	// provider the user has configured.
+func TestEngine_Saver_CheapestPerTokenWins(t *testing.T) {
+	// Two openai-protocol providers with different per-token pricing.
+	// The cheaper one must win — no catalog filter biases the choice.
 	reg := providers.New()
 	reg.Register(&fakeProvider{
 		name: "deepseek", protocol: providers.ProtocolOpenAI,
@@ -475,55 +471,8 @@ func TestEngine_Saver_FreeProviderPreferredOverPaidCheapest(t *testing.T) {
 	engine := routing.New(reg)
 	engine.WithPricing(&fakePricing{prices: map[string]float64{
 		"deepseek-chat":  0.27 / 1e6,
-		"moonshot-v1-8k": 0.10 / 1e6, // paid but cheaper per-token
+		"moonshot-v1-8k": 0.10 / 1e6, // strictly cheaper
 	}})
-	engine.WithFreeProviders(&stubFreeProviders{names: []string{"deepseek"}})
-
-	dec := engine.Decide(routing.Request{
-		Protocol:       "openai",
-		RequestedModel: "anything",
-	}, routing.PresetSaver)
-
-	assert.Equal(t, "deepseek", dec.Provider,
-		"free-credit provider must win over a paid cheaper-per-token provider")
-}
-
-func TestEngine_FreeProviderFallsBackToPaidWhenListEmpty(t *testing.T) {
-	// Even with FreeProviderSource wired, if it returns an empty list
-	// (no free credit configured, or all exhausted), routing falls
-	// through to the paid cheapest path.
-	reg := providers.New()
-	reg.Register(&fakeProvider{
-		name: "moonshot", protocol: providers.ProtocolOpenAI,
-		models: []string{"moonshot-v1-8k"},
-	})
-	engine := routing.New(reg)
-	engine.WithPricing(&fakePricing{prices: map[string]float64{
-		"moonshot-v1-8k": 0.10 / 1e6,
-	}})
-	engine.WithFreeProviders(&stubFreeProviders{names: nil})
-
-	dec := engine.Decide(routing.Request{
-		Protocol:       "openai",
-		RequestedModel: "anything",
-	}, routing.PresetSaver)
-
-	assert.Equal(t, "moonshot", dec.Provider)
-}
-
-func TestEngine_NoFreeProviderSource_BehavesLikePreFeature(t *testing.T) {
-	// When the engine has no FreeProviderSource attached at all, every
-	// decision should behave exactly as before (paid cheapest).
-	reg := providers.New()
-	reg.Register(&fakeProvider{
-		name: "moonshot", protocol: providers.ProtocolOpenAI,
-		models: []string{"moonshot-v1-8k"},
-	})
-	engine := routing.New(reg)
-	engine.WithPricing(&fakePricing{prices: map[string]float64{
-		"moonshot-v1-8k": 0.10 / 1e6,
-	}})
-	// no WithFreeProviders call
 
 	dec := engine.Decide(routing.Request{
 		Protocol:       "openai",
@@ -531,35 +480,5 @@ func TestEngine_NoFreeProviderSource_BehavesLikePreFeature(t *testing.T) {
 	}, routing.PresetSaver)
 
 	assert.Equal(t, "moonshot", dec.Provider,
-		"nil FreeProviderSource → paid-cheapest unchanged")
-}
-
-func TestEngine_FreeProvider_ProtocolMismatchSkipped(t *testing.T) {
-	// FreeProviderSource returns "deepseek" but deepseek's adapter
-	// speaks openai-protocol; the request is anthropic-protocol, so the
-	// free-first path must NOT pick deepseek — engine falls back to
-	// paid anthropic candidate.
-	reg := providers.New()
-	reg.Register(&fakeProvider{
-		name: "anthropic", protocol: providers.ProtocolAnthropic,
-		models: []string{"claude-haiku-4-5-20251001"},
-	})
-	reg.Register(&fakeProvider{
-		name: "deepseek", protocol: providers.ProtocolOpenAI,
-		models: []string{"deepseek-chat"},
-	})
-	engine := routing.New(reg)
-	engine.WithPricing(&fakePricing{prices: map[string]float64{
-		"claude-haiku-4-5-20251001": 0.8 / 1e6,
-		"deepseek-chat":             0.27 / 1e6,
-	}})
-	engine.WithFreeProviders(&stubFreeProviders{names: []string{"deepseek"}})
-
-	dec := engine.Decide(routing.Request{
-		Protocol:       "anthropic",
-		RequestedModel: "claude-sonnet-4-5",
-	}, routing.PresetSaver)
-
-	assert.Equal(t, "anthropic", dec.Provider,
-		"protocol mismatch must skip the free candidate")
+		"cheapest per-token wins; no catalog-based bias remains")
 }

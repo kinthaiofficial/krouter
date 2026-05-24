@@ -161,35 +161,14 @@ type OverrideSource interface {
 	GetRoutingOverride(agentName string) (alwaysUse, preset string)
 }
 
-// FreeProviderSource identifies providers the user has configured in an
-// agent (via inherited_endpoints) AND that the curated data/free_tokens.json
-// lists as offering free credits / quotas. Routing treats these as
-// "should be preferred over paid candidates" without the user doing
-// anything beyond pasting the API key into their agent — the catalog
-// match is what tells krouter the key is from a free credit.
-//
-// Implementations must also account for the 4xx exhaustion mark
-// (provider_exhausted_until table): a provider currently exhausted is
-// NOT returned, so routing automatically falls back to paid candidates
-// until the exhaustion TTL expires.
-type FreeProviderSource interface {
-	// ListAvailableFreeProviders returns the krouter_provider_names of
-	// free-credit providers the user has configured in some agent AND
-	// which are not currently marked exhausted. Filtered to providers
-	// whose adapter speaks the given protocol; routing iterates this
-	// list before consulting the paid-pricing cheapest path.
-	ListAvailableFreeProviders(ctx context.Context, protocol string) []string
-}
-
 // Engine makes routing decisions.
 type Engine struct {
-	registry      *providers.Registry
-	health        HealthChecker       // optional; nil means no health-based routing
-	pricing       PricingSource       // optional; nil falls back to hardcoded model names
-	subscription  SubscriptionSource  // optional; nil means no subscription-aware routing
-	quota         QuotaSource         // optional; nil means no quota-based downgrade
-	overrides     OverrideSource      // optional; nil means no per-agent overrides
-	freeProviders FreeProviderSource  // optional; nil means free-first routing disabled
+	registry     *providers.Registry
+	health       HealthChecker      // optional; nil means no health-based routing
+	pricing      PricingSource      // optional; nil falls back to hardcoded model names
+	subscription SubscriptionSource // optional; nil means no subscription-aware routing
+	quota        QuotaSource        // optional; nil means no quota-based downgrade
+	overrides    OverrideSource     // optional; nil means no per-agent overrides
 }
 
 // New creates a routing engine backed by the given provider registry.
@@ -223,15 +202,6 @@ func (e *Engine) WithQuota(q QuotaSource) {
 // WithOverrides attaches a per-agent routing override source.
 func (e *Engine) WithOverrides(o OverrideSource) {
 	e.overrides = o
-}
-
-// WithFreeProviders attaches the free-credit provider source. When set,
-// routing prefers providers the user has inherited from their agents
-// that match the curated free-token catalog (data/free_tokens.json),
-// falling back to the paid-pricing cheapest path on either no-match or
-// the provider being marked exhausted from a recent 4xx.
-func (e *Engine) WithFreeProviders(f FreeProviderSource) {
-	e.freeProviders = f
 }
 
 // subscriptionInfo returns quota info for a provider, or zero value if not available.
@@ -687,67 +657,15 @@ func (e *Engine) decideQuality(req Request) Decision {
 // configured key are considered. Returns nil, "" if pricing is unavailable
 // or no priced model is found.
 //
-// Free-credit providers are tried first when a FreeProviderSource is
-// attached: any inherited provider that the data/free_tokens.json
-// catalog lists as offering free credits and that isn't currently marked
-// exhausted will be preferred over paid candidates. This is invisible to
-// the caller — same return shape, same downstream Decision flow.
+// Why no "free-first" branch: the curated data/free_tokens.json catalog
+// is for dashboard discovery only — it can never be exhaustive across
+// every provider in the world, and using its membership as a routing
+// filter silently excluded any user-configured free provider not on the
+// list (and routed at "paid" for catalogued ones the user hadn't actually
+// signed up for). The right signal for "this model is free" is the per-
+// token price itself: a model with `InputCostPerToken == 0` falls out as
+// the cheapest naturally, no special-case code path required.
 func (e *Engine) cheapestProviderModel(proto providers.Protocol) (providers.Provider, string) {
-	if e.pricing == nil {
-		return nil, ""
-	}
-	// Free-first: when a free-credit provider is configured and not
-	// exhausted, route to it (cheapest model on that provider). We
-	// don't compare effective_cost against paid candidates because any
-	// free credit beats any paid token price.
-	if prov, model := e.cheapestFreeProviderModel(proto); prov != nil {
-		return prov, model
-	}
-	return e.cheapestPaidProviderModel(proto)
-}
-
-// cheapestFreeProviderModel returns the cheapest (provider, model) pair
-// among free-credit providers the user has actually configured. Returns
-// nil, "" when the FreeProviderSource is unattached, the list is empty,
-// or no available free provider can serve `proto`.
-func (e *Engine) cheapestFreeProviderModel(proto providers.Protocol) (providers.Provider, string) {
-	if e.freeProviders == nil {
-		return nil, ""
-	}
-	names := e.freeProviders.ListAvailableFreeProviders(context.Background(), string(proto))
-	if len(names) == 0 {
-		return nil, ""
-	}
-	// Index for O(1) membership tests inside the registry loop.
-	free := make(map[string]struct{}, len(names))
-	for _, n := range names {
-		free[n] = struct{}{}
-	}
-	var bestProv providers.Provider
-	var bestModel string
-	var bestCost float64 = -1
-	for _, p := range e.registry.All() {
-		if _, ok := free[p.Name()]; !ok {
-			continue
-		}
-		if p.Protocol() != proto || !e.isHealthy(p.Name()) || !e.providerHasKey(p.Name()) {
-			continue
-		}
-		for _, m := range p.SupportedModels() {
-			c := e.pricing.InputCostPerToken(m)
-			if c > 0 && (bestCost < 0 || c < bestCost) {
-				bestCost = c
-				bestProv = p
-				bestModel = m
-			}
-		}
-	}
-	return bestProv, bestModel
-}
-
-// cheapestPaidProviderModel is the pre-free-providers behaviour, kept as
-// a fallback when no free credit is available or none match the protocol.
-func (e *Engine) cheapestPaidProviderModel(proto providers.Protocol) (providers.Provider, string) {
 	if e.pricing == nil {
 		return nil, ""
 	}
