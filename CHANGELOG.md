@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-05-24
+
 ### Added
 - **HTTP status code explanations in the dashboard**: routing-decision rows, expanded cards, and the Providers "consecutive failure" banner now translate raw codes (`401`, `402`, `429`, `503`, …) into plain English / Chinese so users don't have to memorise what each one means. Every status pill carries a hover tooltip with the code + explanation (e.g. `402 — Payment required: provider quota exhausted or account out of credits`); non-2xx codes also get an inline explanation below the latency line in the expanded view and below the failure-streak count on the Providers card. New helper `frontend/src/lib/statusCode.ts` maps the common codes (200/201/204/400/401/402/403/404/408/409/413/422/429/500/502/503/504) plus 2xx/3xx/4xx/5xx fallback buckets to i18n keys under `status.*`.
 
@@ -16,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`pricing.Service.ProviderFor(model)`**: new public accessor returning the canonical provider name for a given model id.
 
 ### Fixed
+- **macOS `krouter start` gave cryptic exit-status-5 when plist was missing**: now returns a clear message directing users to run `krouter install` first.
+- **Release checksums omitted bare binaries**: `checksums.txt` now includes `krouter-linux-amd64`, `krouter-linux-arm64`, `krouter-apple-macos`, and `krouter-windows.exe` alongside the archives — these are the files the auto-updater manifest points to.
+- **v2.0.x upgrade: `pricing_cache` table not renamed on first run**: users upgrading from v2.0.x kept the old `pricing_cache` / `pricing_sync_meta` table names; the daemon now renames them to `token_price_api` / `token_price_api_meta` before running SQL migrations.
 - **Provider models endpoint always returned `[]` (regression from v2.3.0)**: `GET /internal/providers/{name}/models` was reading from `model_catalog`, which the daemon never populates from the LiteLLM sync flow — so every Provider card in the dashboard showed "No models catalogued yet" universally, including for builtin providers like `anthropic` and `minimax` that clearly have pricing on file. Fix: read from `token_price_api` (where the LiteLLM sync actually writes), filter by `provider == name`, return rows sorted by `model_id` for stable order, and surface `cached_input_per_mtok` in the response too. The providers-list `model_count` field had the same root cause and is now derived from a new `CountPricesByProvider()` query that returns the grouped count in a single SQL trip.
 
 ## [2.3.0] - 2026-05-23
