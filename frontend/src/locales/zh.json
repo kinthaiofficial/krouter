@@ -29,9 +29,7 @@
     "announcements": "通知",
     "about": "关于",
     "connecting": "连接中…",
-    "proxy_port": "代理端口 :{{port}}",
-    "collapse": "折叠",
-    "expand": "展开"
+    "proxy_port": "代理端口 :{{port}}"
   },
   "dashboard": {
     "title": "仪表盘",
