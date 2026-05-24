@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.7] - 2026-05-25
+
+### Changed
+- **Web UI redesigned to a high-contrast "pro control panel" theme**: the dashboard moved away from the generic admin-template look. Secondary text was the worst offender — `gray-400`/`gray-500` were hard to read — so the entire neutral ramp is remapped to a cooler, higher-contrast scale and the brand color is now emerald (`#0fa46a`). The Dashboard leads with a KPI strip (today's requests / saved / spent / saved-%, each with an accent rail), a LIVE indicator in the top bar, a provider-distribution panel with inline bars, and a recent-requests table with a status column. Shared primitives (`PageHeader`, `Panel`, `Badge`, `StatusDot`) give every page — Router, Logs, Budget, Providers, Agents, Settings, Free, About, Announcements — a consistent bordered-card layout. Figures render in the system monospace stack (`font-mono tabular-nums`); no webfonts are bundled, so the UI stays offline-capable and renders CJK through the system sans.
+
 ## [2.3.6] - 2026-05-24
 
 ### Added
