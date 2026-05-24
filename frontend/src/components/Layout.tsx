@@ -3,6 +3,7 @@ import { Outlet, NavLink } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   LayoutDashboard,
+  Gift,
   Route as RouteIcon,
   Bot,
   ScrollText,
@@ -19,6 +20,7 @@ import { api } from '../api/client'
 
 const navItems = [
   { to: '/', key: 'dashboard', icon: LayoutDashboard, end: true },
+  { to: '/free-tokens', key: 'free_tokens', icon: Gift },
   { to: '/router', key: 'router', icon: RouteIcon },
   { to: '/agents', key: 'agents', icon: Bot },
   { to: '/logs', key: 'logs', icon: ScrollText },

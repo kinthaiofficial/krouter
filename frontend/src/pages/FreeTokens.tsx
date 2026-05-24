@@ -1,27 +1,22 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Gift, ExternalLink, Check, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { api, type FreeProvider } from '../api/client'
 
-// FreeProvidersCard surfaces spec/06's curated catalog of LLM providers
-// offering free credits / quotas. The card has two jobs:
-//
-//   1. Discovery — make sure users *know* DeepSeek / Groq / etc. give
-//      out free tokens; one-click signup keeps friction low.
-//
-//   2. Configured state — when an inherited_endpoints row matches a
-//      catalog entry, show a "✓ configured" badge so the user knows
-//      routing is already preferring it (no extra setup required;
-//      spec/06 §2: routing is fully automatic).
-//
-// The "Routing automatically prefers configured free providers" line is
-// the key user education — without it the discovery list reads like
-// "advertisements" rather than "things you've already enabled".
-export default function FreeProvidersCard() {
-  const { data, isLoading } = useQuery({
+// FreeTokens is the top-level dashboard page for spec/06's free-credit
+// provider catalogue. Previously the same data lived as a card on the
+// Dashboard (FreeProvidersCard); promoting it to its own page gives the
+// catalogue room to grow (per-provider expand-for-details, regional
+// filters, search later) and matches the user's stated mental model —
+// "free tokens" is now a peer-level concept next to Router / Agents /
+// Providers, not an afterthought on the Dashboard.
+export default function FreeTokens() {
+  const { t } = useTranslation()
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['free-providers'],
     queryFn: api.freeProviders,
-    staleTime: 5 * 60_000, // catalog rarely changes; cache 5 min
+    staleTime: 5 * 60_000,
   })
 
   const [showConfigured, setShowConfigured] = useState(false)
@@ -36,71 +31,95 @@ export default function FreeProvidersCard() {
     return { configured: cfg, available: avail }
   }, [data])
 
-  if (isLoading) return null
-  if (!data || data.length === 0) return null
-
   return (
-    <section
-      data-testid="free-providers-card"
-      className="bg-white border border-border rounded-2xl p-5 shadow-sm"
-    >
-      <header className="flex items-baseline justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <Gift className="w-4 h-4 text-emerald-500" />
-          <h2 className="text-sm font-semibold">Free LLM credits</h2>
+    <div className="p-6 space-y-4 max-w-4xl mx-auto" data-testid="free-tokens-page">
+      <div className="flex items-end justify-between flex-wrap gap-2">
+        <div>
+          <h1 className="text-lg font-semibold flex items-center gap-2">
+            <Gift className="w-4 h-4 text-emerald-500" />
+            {t('freeTokens.title')}
+          </h1>
+          <p className="text-xs text-gray-400 mt-0.5">{t('freeTokens.subtitle')}</p>
         </div>
-        <span className="text-xs text-gray-400">
-          {configured.length} configured · {available.length} to claim
-        </span>
-      </header>
+        {data && data.length > 0 && (
+          <span className="text-xs text-gray-400">
+            {t('freeTokens.summary', {
+              configured: configured.length,
+              available: available.length,
+            })}
+          </span>
+        )}
+      </div>
 
-      <p className="text-[12px] text-gray-500 mb-2 leading-relaxed">
-        Apply at the signup link, paste the API key into your AI agent
-        (OpenClaw / Claude Code / etc.). krouter detects the new key via
-        agent inheritance and{' '}
-        <span className="font-medium text-gray-700">automatically prefers free providers</span>{' '}
-        until their quota runs out.
-      </p>
+      {isLoading ? (
+        <p className="text-sm text-gray-400">{t('common.loading')}</p>
+      ) : isError ? (
+        <p className="text-sm text-red-500">{t('freeTokens.load_failed')}</p>
+      ) : !data || data.length === 0 ? (
+        <EmptyState t={t} />
+      ) : (
+        <div className="space-y-4">
+          {/* Help banner — the routing-rules invariant + how to claim. */}
+          <section className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
+            <p className="text-[12px] text-gray-600 leading-relaxed">
+              {t('freeTokens.howto_line1')}
+            </p>
+            <p className="text-[11px] text-gray-500 leading-relaxed border-l-2 border-gray-100 pl-2">
+              {t('freeTokens.howto_line2')}
+            </p>
+          </section>
 
-      <p className="text-[11px] text-gray-400 mb-4 leading-relaxed border-l-2 border-gray-100 pl-2">
-        协议约束 (spec/00 §B2): 免费路由必须同协议匹配。表中绝大多数 provider 是
-        OpenAI 协议 — Cursor/Cline/Codex 等 OpenAI 协议客户端立即享有免费 routing,
-        而 Claude Code 等 Anthropic 协议客户端只有在 provider 同时支持 Anthropic
-        endpoint (例如 OpenRouter / GLM / Moonshot) 时才有效。下方双协议 provider 旁
-        会显示 "也支持 Anthropic 协议" 提示,需要在 agent 里同时配置 OpenAI 和
-        Anthropic 两个 provider entry (同一个 key,不同 baseURL)。
-      </p>
+          {/* Available (not yet configured) — primary CTA. */}
+          {available.length > 0 && (
+            <section className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+              <h2 className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold">
+                {t('freeTokens.section_available', { n: available.length })}
+              </h2>
+              <ul className="space-y-2">
+                {available.map((p) => (
+                  <ProviderRow key={p.id} p={p} />
+                ))}
+              </ul>
+            </section>
+          )}
 
-      {/* Available (not yet configured) — primary CTA */}
-      {available.length > 0 && (
-        <ul className="space-y-2 mb-3">
-          {available.map((p) => (
-            <ProviderRow key={p.id} p={p} />
-          ))}
-        </ul>
-      )}
-
-      {/* Configured — collapsed by default to keep the card compact */}
-      {configured.length > 0 && (
-        <div className="pt-2 border-t border-gray-100">
-          <button
-            type="button"
-            onClick={() => setShowConfigured((v) => !v)}
-            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900"
-          >
-            {showConfigured ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-            <span>{configured.length} already configured</span>
-          </button>
-          {showConfigured && (
-            <ul className="space-y-2 mt-2">
-              {configured.map((p) => (
-                <ProviderRow key={p.id} p={p} />
-              ))}
-            </ul>
+          {/* Configured — collapsed by default. */}
+          {configured.length > 0 && (
+            <section className="bg-white rounded-xl border border-gray-200">
+              <button
+                type="button"
+                onClick={() => setShowConfigured((v) => !v)}
+                className="w-full flex items-center gap-2 px-4 py-3 text-sm text-gray-600 hover:bg-gray-50 rounded-xl"
+              >
+                {showConfigured ? (
+                  <ChevronUp className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronDown className="w-3.5 h-3.5" />
+                )}
+                {t('freeTokens.section_configured', { n: configured.length })}
+              </button>
+              {showConfigured && (
+                <ul className="space-y-2 px-4 pb-4">
+                  {configured.map((p) => (
+                    <ProviderRow key={p.id} p={p} />
+                  ))}
+                </ul>
+              )}
+            </section>
           )}
         </div>
       )}
-    </section>
+    </div>
+  )
+}
+
+function EmptyState({ t }: { t: ReturnType<typeof useTranslation>['t'] }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 px-6 py-12 text-center">
+      <Gift className="w-7 h-7 mx-auto text-gray-300 mb-3" />
+      <p className="text-sm font-medium text-gray-700">{t('freeTokens.empty_title')}</p>
+      <p className="text-xs text-gray-400 mt-1">{t('freeTokens.empty_hint')}</p>
+    </div>
   )
 }
 
@@ -109,7 +128,7 @@ function ProviderRow({ p }: { p: FreeProvider }) {
     <li className="border border-border rounded-lg p-3">
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-0.5">
+          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
             <p className="font-medium text-sm">{p.display_name}</p>
 
             <span className={`text-[10px] font-medium rounded-full px-1.5 py-0.5 ${
@@ -117,7 +136,7 @@ function ProviderRow({ p }: { p: FreeProvider }) {
                 ? 'bg-red-50 text-red-700'
                 : 'bg-blue-50 text-blue-700'
             }`}>
-              {p.region === 'china' ? '国内' : 'INT\'L'}
+              {p.region === 'china' ? '国内' : "INT'L"}
             </span>
 
             <span className="text-[10px] font-medium rounded-full px-1.5 py-0.5 bg-gray-100 text-gray-600">
@@ -155,7 +174,7 @@ function ProviderRow({ p }: { p: FreeProvider }) {
             <p className="text-[11px] text-amber-600 mt-0.5">{p.exhausted_reason}</p>
           )}
 
-          {/* Dual-protocol providers: surface the alternate setup so
+          {/* Dual-protocol providers — surface alternate setup so
               Anthropic-protocol clients can also benefit. */}
           {p.additional_protocols && p.additional_protocols.length > 0 && (
             <div className="mt-2 rounded-md border border-indigo-100 bg-indigo-50 p-2">
@@ -190,7 +209,7 @@ function ProviderRow({ p }: { p: FreeProvider }) {
           )}
 
           <p className="text-[10px] text-gray-300 mt-1">
-            信息核对于 {p.last_verified || 'unknown'} — 政策可能已更新,请以官网为准
+            信息核对于 {p.last_verified || 'unknown'} — 政策可能已更新, 请以官网为准
           </p>
         </div>
 

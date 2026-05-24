@@ -24,6 +24,7 @@
     "providers": "Providers",
     "budget": "Budget",
     "settings": "Settings",
+    "free_tokens": "Free tokens",
     "router": "Router",
     "announcements": "Notifications",
     "about": "About",
@@ -183,6 +184,18 @@
     "latency": "Latency",
     "savings_amount": "Saved {{amount}}{{pct}} by routing",
     "overrun_amount": "Cost {{amount}}{{pct}} more than the requested model"
+  },
+  "freeTokens": {
+    "title": "Free LLM credits",
+    "subtitle": "Curated catalogue of providers offering free credits, daily quotas, or free tiers.",
+    "summary": "{{configured}} configured · {{available}} to claim",
+    "load_failed": "Failed to load the free-tokens catalogue. Check the daemon logs.",
+    "empty_title": "No free providers loaded yet",
+    "empty_hint": "Once the daemon's free-tokens sync completes you'll see the catalogue here.",
+    "howto_line1": "Apply at the signup link, paste the API key into your AI agent (OpenClaw / Claude Code / etc.). krouter detects the new key via agent inheritance and automatically prefers free providers until their quota runs out.",
+    "howto_line2": "协议约束 (spec/00 §B2): 免费路由必须同协议匹配。表中绝大多数 provider 是 OpenAI 协议 — Cursor/Cline/Codex 等 OpenAI 协议客户端立即享有免费 routing, 而 Claude Code 等 Anthropic 协议客户端只有在 provider 同时支持 Anthropic endpoint (例如 OpenRouter / GLM / Moonshot) 时才有效。下方双协议 provider 旁会显示 \"也支持 Anthropic 协议\" 提示。",
+    "section_available": "Available — {{n}} to claim",
+    "section_configured": "{{n}} already configured"
   },
   "providers": {
     "title": "Providers",
