@@ -192,7 +192,7 @@
     "empty_title": "暂无免费 provider 数据",
     "empty_hint": "daemon 完成首次同步后这里会列出可用的免费 provider。",
     "howto_line1": "点击官网申请，把 API key 配置到 AI agent（OpenClaw / Claude Code 等）。krouter 通过 agent 继承机制自动识别新 key，免费 provider 会被自动优先路由，直到额度耗尽。",
-    "howto_line2": "协议约束 (spec/00 §B2)：免费路由必须同协议匹配。表中绝大多数 provider 是 OpenAI 协议 — Cursor/Cline/Codex 等 OpenAI 协议客户端立即享有免费 routing；而 Claude Code 等 Anthropic 协议客户端只有在 provider 同时支持 Anthropic endpoint（例如 OpenRouter / GLM / Moonshot）时才有效。下方双协议 provider 旁会显示"也支持 Anthropic 协议"提示。",
+    "howto_line2": "协议约束 (spec/00 §B2)：免费路由必须同协议匹配。表中绝大多数 provider 是 OpenAI 协议 — Cursor/Cline/Codex 等 OpenAI 协议客户端立即享有免费 routing；而 Claude Code 等 Anthropic 协议客户端只有在 provider 同时支持 Anthropic endpoint（例如 OpenRouter / GLM / Moonshot）时才有效。下方双协议 provider 旁会显示「也支持 Anthropic 协议」提示。",
     "section_available": "可申领 — {{n}} 个",
     "section_configured": "已配置 {{n}} 个",
     "region_china": "国内",
