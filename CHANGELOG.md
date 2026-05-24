@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.2] - 2026-05-24
+
 ### Changed
 - **Free LLM credits promoted from a Dashboard card to a top-level nav item**: the catalogue now lives at `/krouter/free-tokens` with its own page header, subtitle, and proper empty-state — sidebar entry "Free tokens" / "免费 Token" sits between Dashboard and Router with the Gift icon. The old `FreeProvidersCard` component (and its standalone test) are removed; the Dashboard's per-section block is replaced by a one-line comment pointing at the new page. Rationale: the catalogue's discovery / dual-protocol explainer / configured-vs-available split is a substantial feature that deserves a peer-level surface, not a Dashboard sub-card.
 - **Subscription providers (MiniMax, …) merged into the Providers page**: each subscription-based provider now gets a purple `SUBSCRIPTION` badge in the collapsed header. Expanding the card surfaces a new **Subscription quotas** section listing every active scenario — each row uses the more standard "X / Y (Z% used)" Western dashboard format with a USED-fill progress bar (emerald → yellow → red traffic-light tones), the local-time window and reset countdown, plus the per-call cost when known. The standalone `SubscriptionQuotaCard` on Dashboard is removed (data shows on Providers); the previous "remaining + reverse-fill bar" representation is gone. A refresh button on each subscription block calls `/internal/subscription/refresh` with the provider name.
