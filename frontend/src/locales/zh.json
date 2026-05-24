@@ -235,7 +235,17 @@
     "save": "保存",
     "saving": "保存中…",
     "remove": "删除",
-    "api_key_placeholder": "API key（或设置对应环境变量）"
+    "api_key_placeholder": "API key（或设置对应环境变量）",
+    "subscription_badge": "订阅",
+    "subscription_title": "订阅配额",
+    "tier_usage": "{{used}} / {{total}} （已用 {{pct}}%）",
+    "scenario_text": "文本生成",
+    "scenario_speech": "语音合成",
+    "scenario_lyrics": "歌词生成",
+    "scenario_image": "图像生成",
+    "scenario_music": "音乐生成",
+    "scenario_mcp_image": "图片理解 MCP",
+    "scenario_mcp_search": "网络搜索 MCP"
   },
   "settings": {
     "title": "设置",

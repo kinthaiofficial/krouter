@@ -1,15 +1,20 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   CheckCircle, XCircle, AlertCircle, Plus, Trash2,
-  ChevronDown, ChevronRight,
+  ChevronDown, ChevronRight, RefreshCw, Zap,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { api, type ProviderInfo, type AddProviderBody, type ProviderModelRow } from '../api/client'
+import {
+  api,
+  type ProviderInfo, type AddProviderBody, type ProviderModelRow,
+  type SubscriptionProvider, type SubscriptionTier,
+} from '../api/client'
 import { statusCodeMeaning } from '../lib/statusCode'
 
 export default function Providers() {
   const { t } = useTranslation()
+  const qc = useQueryClient()
   const [showAdd, setShowAdd] = useState(false)
   const { data: providers = [], isLoading, isError } = useQuery<ProviderInfo[]>({
     queryKey: ['providers'],
@@ -17,6 +22,32 @@ export default function Providers() {
     // 60s — no longer live-reordering by usage, so don't poll aggressively.
     refetchInterval: 60_000,
   })
+
+  // Subscription quotas (MiniMax and any future subscription providers).
+  // Surface them on the matching Provider card so the user has one place
+  // to inspect "everything we know about this provider" — replaces the
+  // separate Dashboard SubscriptionQuotaCard.
+  const { data: subscriptions = [] } = useQuery<SubscriptionProvider[]>({
+    queryKey: ['subscription-status'],
+    queryFn: api.subscriptionStatus,
+    refetchInterval: 60_000,
+  })
+
+  // Live-update on the daemon's subscription SSE events so the card refreshes
+  // immediately when MiniMax just hit a quota wall, etc.
+  useEffect(() => {
+    const es = new EventSource('/internal/events', { withCredentials: true })
+    const refresh = () => qc.invalidateQueries({ queryKey: ['subscription-status'] })
+    es.addEventListener('subscription_exhausted', refresh)
+    es.addEventListener('subscription_quota_refreshed', refresh)
+    return () => es.close()
+  }, [qc])
+
+  const subByProvider = useMemo(() => {
+    const m = new Map<string, SubscriptionProvider>()
+    for (const s of subscriptions) m.set(s.provider, s)
+    return m
+  }, [subscriptions])
 
   const active = providers.filter((p) => p.configured)
   const inactive = providers.filter((p) => !p.configured)
@@ -46,13 +77,17 @@ export default function Providers() {
           {active.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs text-gray-400 uppercase tracking-wide">{t('providers.active')}</p>
-              {active.map((p) => <ProviderCard key={p.name} provider={p} />)}
+              {active.map((p) => (
+                <ProviderCard key={p.name} provider={p} subscription={subByProvider.get(p.name)} />
+              ))}
             </div>
           )}
           {inactive.length > 0 && (
             <div className="space-y-2 mt-6">
               <p className="text-xs text-gray-400 uppercase tracking-wide">{t('providers.not_configured')}</p>
-              {inactive.map((p) => <ProviderCard key={p.name} provider={p} />)}
+              {inactive.map((p) => (
+                <ProviderCard key={p.name} provider={p} subscription={subByProvider.get(p.name)} />
+              ))}
             </div>
           )}
         </>
@@ -65,7 +100,13 @@ export default function Providers() {
 
 // ─── Per-provider card ─────────────────────────────────────────────────────
 
-function ProviderCard({ provider: p }: { provider: ProviderInfo }) {
+function ProviderCard({
+  provider: p,
+  subscription,
+}: {
+  provider: ProviderInfo
+  subscription?: SubscriptionProvider
+}) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
 
@@ -94,7 +135,7 @@ function ProviderCard({ provider: p }: { provider: ProviderInfo }) {
         {open ? <ChevronDown size={14} className="text-gray-400 shrink-0" /> : <ChevronRight size={14} className="text-gray-400 shrink-0" />}
         {statusIcon}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className={['font-medium text-sm', p.configured ? 'text-gray-900' : 'text-gray-500'].join(' ')}>
               {p.display_name || p.name}
             </span>
@@ -102,6 +143,15 @@ function ProviderCard({ provider: p }: { provider: ProviderInfo }) {
             {p.is_builtin && (
               <span className="text-[10px] uppercase tracking-wider text-gray-400 border border-gray-200 rounded px-1.5 py-0.5">
                 {t('providers.builtin')}
+              </span>
+            )}
+            {subscription && (
+              // The subscription badge sets this provider apart from
+              // pay-per-token providers — clicking the card reveals the
+              // tier list with usage and reset windows below.
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-purple-700 bg-purple-50 border border-purple-200 rounded px-1.5 py-0.5">
+                <Zap size={10} />
+                {t('providers.subscription_badge')}
               </span>
             )}
           </div>
@@ -123,14 +173,22 @@ function ProviderCard({ provider: p }: { provider: ProviderInfo }) {
         />
       </button>
 
-      {open && <CardDetails p={p} fullEndpoint={fullEndpoint} />}
+      {open && <CardDetails p={p} fullEndpoint={fullEndpoint} subscription={subscription} />}
     </div>
   )
 }
 
 // ─── Expanded details ──────────────────────────────────────────────────────
 
-function CardDetails({ p, fullEndpoint }: { p: ProviderInfo; fullEndpoint: string }) {
+function CardDetails({
+  p,
+  fullEndpoint,
+  subscription,
+}: {
+  p: ProviderInfo
+  fullEndpoint: string
+  subscription?: SubscriptionProvider
+}) {
   const { t } = useTranslation()
   const qc = useQueryClient()
   const [testResult, setTestResult] = useState<{ latency_ms: number; status_code: number; ok: boolean; error?: string } | null>(null)
@@ -142,6 +200,10 @@ function CardDetails({ p, fullEndpoint }: { p: ProviderInfo; fullEndpoint: strin
   const remove = useMutation({
     mutationFn: () => api.removeProvider(p.name),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['providers'] }),
+  })
+  const refreshSubscription = useMutation({
+    mutationFn: () => api.subscriptionRefresh(p.name),
+    onSuccess: (fresh) => qc.setQueryData(['subscription-status'], fresh),
   })
 
   const {
@@ -220,6 +282,39 @@ function CardDetails({ p, fullEndpoint }: { p: ProviderInfo; fullEndpoint: strin
             </span>
           )}
         </p>
+      )}
+
+      {/* Subscription tiers — one row per scenario (text, voice, lyrics, …).
+          Replaces the old Dashboard-level SubscriptionQuotaCard so users can
+          inspect all subscription state inline with the provider. */}
+      {subscription && subscription.tiers.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-baseline justify-between">
+            <h3 className="text-xs uppercase tracking-wider text-gray-500 font-semibold flex items-center gap-1.5">
+              <Zap size={12} className="text-purple-500" />
+              {t('providers.subscription_title')}
+              {subscription.source_agent && (
+                <span className="text-[10px] text-gray-400 normal-case tracking-normal font-normal">
+                  · via {subscription.source_agent}
+                </span>
+              )}
+            </h3>
+            <button
+              type="button"
+              onClick={() => refreshSubscription.mutate()}
+              disabled={refreshSubscription.isPending}
+              className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900 disabled:opacity-50"
+            >
+              <RefreshCw size={12} className={refreshSubscription.isPending ? 'animate-spin' : ''} />
+              {t('subscription.refresh')}
+            </button>
+          </div>
+          <ul className="space-y-2">
+            {subscription.tiers.map((tier) => (
+              <TierRow key={`${tier.tier_name}-${tier.highspeed}`} tier={tier} />
+            ))}
+          </ul>
+        </div>
       )}
 
       {/* Models */}
@@ -546,4 +641,108 @@ function AddProviderDialog({ onClose }: { onClose: () => void }) {
       </div>
     </div>
   )
+}
+
+// ─── Subscription tier row ────────────────────────────────────────────────
+
+function TierRow({ tier }: { tier: SubscriptionTier }) {
+  const { t } = useTranslation()
+  const pct = tier.total > 0 ? Math.min(100, (tier.used / tier.total) * 100) : 0
+
+  // Used-fill bar with traffic-light tones — matches the Budget page's
+  // colour staging and the more common Western dashboard idiom of
+  // showing "what's been consumed" rather than "what's left".
+  const barTone =
+    pct >= 95 ? 'bg-red-500'
+    : pct >= 80 ? 'bg-yellow-500'
+    : 'bg-emerald-500'
+
+  return (
+    <li className="rounded-lg border border-gray-200 px-3 py-2">
+      <div className="flex items-baseline justify-between gap-2 mb-1 flex-wrap">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-sm font-medium text-gray-900 truncate" title={tier.tier_name}>
+            {scenarioDisplayName(tier.tier_name, t)}
+          </span>
+          {tier.highspeed && (
+            <span className="text-[10px] text-orange-600 bg-orange-50 rounded px-1">
+              {t('subscription.highspeed')}
+            </span>
+          )}
+        </div>
+        <p className="text-xs font-mono text-gray-600 tabular-nums">
+          {t('providers.tier_usage', {
+            used: tier.used.toLocaleString(),
+            total: tier.total.toLocaleString(),
+            pct: pct.toFixed(0),
+          })}
+        </p>
+      </div>
+      <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+        <div
+          className={['h-full rounded-full transition-all', barTone].join(' ')}
+          style={{ width: `${pct}%` }}
+          role="progressbar"
+          aria-valuenow={Math.round(pct)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        />
+      </div>
+      <div className="flex items-baseline justify-between mt-1 gap-2 flex-wrap text-[11px]">
+        <span className="text-gray-400">
+          {tier.window_start && tier.window_end
+            ? `${formatLocalWindow(tier.window_start)}–${formatLocalWindow(tier.window_end)}`
+            : ''}
+          {tier.seconds_to_reset > 0 && (
+            <span className="ml-1.5">· {formatResetIn(tier.seconds_to_reset, t)}</span>
+          )}
+        </span>
+        {tier.monthly_price_usd > 0 && (
+          <span className="text-gray-400">
+            ≈ ${tier.effective_cost_per_call_usd.toFixed(6)} / call
+          </span>
+        )}
+      </div>
+    </li>
+  )
+}
+
+// scenarioDisplayName maps known MiniMax (and future-provider) scenario
+// names to friendly i18n keys. Unknown names fall back to the raw value.
+//
+// MiniMax's token-plan endpoint returns scenarios as opaque model_name
+// strings (e.g. "MiniMax-M*", "speech_synthesis"). We catch the well-known
+// shapes here and let everything else through unchanged.
+function scenarioDisplayName(raw: string, t: ReturnType<typeof useTranslation>['t']): string {
+  const lower = raw.toLowerCase()
+  if (raw.startsWith('MiniMax-M')) return t('providers.scenario_text')
+  if (lower.includes('speech') || lower.startsWith('tts') || lower.includes('t2a')) {
+    return t('providers.scenario_speech')
+  }
+  if (lower.includes('lyric')) return t('providers.scenario_lyrics')
+  if (lower.includes('music')) return t('providers.scenario_music')
+  if (lower.includes('mcp') && lower.includes('image')) return t('providers.scenario_mcp_image')
+  if (lower.includes('mcp') && (lower.includes('search') || lower.includes('web'))) {
+    return t('providers.scenario_mcp_search')
+  }
+  if (lower.includes('image') || lower.includes('vision')) return t('providers.scenario_image')
+  return raw
+}
+
+function formatLocalWindow(rfc3339: string): string {
+  const d = new Date(rfc3339)
+  if (isNaN(d.getTime())) return ''
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
+function formatResetIn(seconds: number, t: ReturnType<typeof useTranslation>['t']): string {
+  if (seconds <= 0) return t('subscription.window_closed')
+  if (seconds < 60) return t('subscription.resets_in', { time: `${seconds}s` })
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return t('subscription.resets_in', { time: `${minutes}m` })
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  if (hours < 24) return t('subscription.resets_in', { time: `${hours}h ${mins}m` })
+  const days = Math.floor(hours / 24)
+  return t('subscription.resets_in', { time: `${days}d ${hours % 24}h` })
 }

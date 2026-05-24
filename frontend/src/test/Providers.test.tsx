@@ -33,14 +33,27 @@ function makeProvider(over: Partial<ProviderInfo> = {}): ProviderInfo {
 
 let providers: ProviderInfo[] = []
 let modelsByProvider: Record<string, ProviderModelRow[]> = {}
+let subscriptionPayload: unknown = []
+
+class FakeEventSource {
+  url = ''
+  addEventListener() {}
+  close() {}
+  constructor(url: string) { this.url = url }
+}
 
 beforeEach(() => {
   providers = []
   modelsByProvider = {}
+  subscriptionPayload = []
+  vi.stubGlobal('EventSource', FakeEventSource)
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     const path = url.split('?')[0]
     if (path === '/internal/providers') {
       return { ok: true, status: 200, json: () => Promise.resolve(providers) } as Response
+    }
+    if (path === '/internal/subscription/status') {
+      return { ok: true, status: 200, json: () => Promise.resolve(subscriptionPayload) } as Response
     }
     const m = /^\/internal\/providers\/([^/]+)\/models$/.exec(path)
     if (m) {
@@ -167,6 +180,91 @@ describe('Providers page', () => {
     // Should NOT show the empty-state copy — that would conflate the
     // genuinely-empty case with the error case.
     expect(screen.queryByText(/No models catalogued yet|该 Provider 暂无已收录的模型/)).not.toBeInTheDocument()
+  })
+
+  it('shows a SUBSCRIPTION badge and per-scenario tier rows when the provider has subscription quotas', async () => {
+    providers = [makeProvider({
+      name: 'minimax',
+      display_name: 'MiniMax',
+      protocol: 'anthropic',
+    })]
+    subscriptionPayload = [
+      {
+        provider: 'minimax',
+        source_agent: 'openclaw',
+        oauth_present: true,
+        last_polled_at: '2026-05-24T06:14:05Z',
+        tiers: [
+          {
+            tier_name: 'MiniMax-M*',
+            total: 1500,
+            used: 67,
+            remaining: 1433,
+            highspeed: false,
+            window_start: '2026-05-24T02:00:00Z',
+            window_end: '2026-05-24T07:00:00Z',
+            seconds_to_reset: 2621,
+            effective_cost_per_call_usd: 0.0000313,
+            monthly_price_cny: 49,
+            monthly_price_usd: 6.76,
+          },
+          {
+            tier_name: 'speech_synthesis',
+            total: 4000,
+            used: 0,
+            remaining: 4000,
+            highspeed: false,
+            window_start: '2026-05-24T00:00:00Z',
+            window_end: '2026-05-25T00:00:00Z',
+            seconds_to_reset: 35400,
+            effective_cost_per_call_usd: 0,
+            monthly_price_cny: 0,
+            monthly_price_usd: 0,
+          },
+          {
+            tier_name: 'mcp_web_search',
+            total: 150,
+            used: 0,
+            remaining: 150,
+            highspeed: false,
+            window_start: '2026-05-24T02:00:00Z',
+            window_end: '2026-05-24T07:00:00Z',
+            seconds_to_reset: 2621,
+            effective_cost_per_call_usd: 0,
+            monthly_price_cny: 0,
+            monthly_price_usd: 0,
+          },
+        ],
+      },
+    ]
+
+    renderWithProviders(<Providers />)
+    await waitFor(() => screen.getByText('MiniMax'))
+
+    // Badge is visible in the collapsed header.
+    expect(screen.getByText(/Subscription|订阅/)).toBeInTheDocument()
+
+    // Expand → tier rows show with the new used/total/% format.
+    fireEvent.click(screen.getByText('MiniMax'))
+
+    await waitFor(() => {
+      // Scenario display names (mapped) — text + speech + MCP web search.
+      expect(screen.getByText(/Text generation|文本生成/)).toBeInTheDocument()
+      expect(screen.getByText(/Speech synthesis|语音合成/)).toBeInTheDocument()
+      expect(screen.getByText(/Web search.*MCP|网络搜索 MCP/)).toBeInTheDocument()
+    })
+
+    // Usage label uses the X / Y (Z% used) format.
+    expect(screen.getByText(/67 \/ 1,500.*4% used|67 \/ 1,500.*已用 4%/)).toBeInTheDocument()
+  })
+
+  it('does NOT render the subscription block on providers without a quota row', async () => {
+    providers = [makeProvider({ name: 'anthropic', display_name: 'Anthropic' })]
+    subscriptionPayload = []  // no subscription anywhere
+    renderWithProviders(<Providers />)
+    await waitFor(() => screen.getByText('Anthropic'))
+    fireEvent.click(screen.getByText('Anthropic'))
+    expect(screen.queryByText(/Subscription quotas|订阅配额/)).not.toBeInTheDocument()
   })
 
   it('renders both base_url and path_prefix as separate rows', async () => {

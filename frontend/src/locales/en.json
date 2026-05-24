@@ -235,7 +235,17 @@
     "save": "Save",
     "saving": "Saving…",
     "remove": "Remove",
-    "api_key_placeholder": "API key (or set the env var)"
+    "api_key_placeholder": "API key (or set the env var)",
+    "subscription_badge": "Subscription",
+    "subscription_title": "Subscription quotas",
+    "tier_usage": "{{used}} / {{total}} ({{pct}}% used)",
+    "scenario_text": "Text generation",
+    "scenario_speech": "Speech synthesis",
+    "scenario_lyrics": "Lyrics generation",
+    "scenario_image": "Image generation",
+    "scenario_music": "Music generation",
+    "scenario_mcp_image": "Image understanding (MCP)",
+    "scenario_mcp_search": "Web search (MCP)"
   },
   "settings": {
     "title": "Settings",
