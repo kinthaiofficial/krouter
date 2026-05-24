@@ -56,13 +56,18 @@ describe('<Layout> (top nav)', () => {
     renderLayout()
     await waitFor(() => expect(screen.getByText('KRouter')).toBeInTheDocument())
 
-    const expected = [
-      'Dashboard', 'Free tokens', 'Router', 'Agents', 'Logs',
-      'Providers', 'Budget', 'Settings', 'Notifications', 'About',
+    // Main nav: text-only items (no icons).
+    const textItems = [
+      'Dashboard', 'Free', 'Router', 'Agents', 'Logs',
+      'Providers', 'Budget', 'About',
     ]
-    for (const label of expected) {
+    for (const label of textItems) {
       expect(screen.getByRole('link', { name: new RegExp(`^${label}$`) })).toBeInTheDocument()
     }
+
+    // Settings and Notifications are icon-only — accessible via title attribute.
+    expect(screen.getByRole('link', { name: /Settings/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Notifications/i })).toBeInTheDocument()
   })
 
   it('does not render the old "Collapse" / "Expand" toggle', async () => {
@@ -91,8 +96,9 @@ describe('<Layout> (top nav)', () => {
 
     renderLayout()
     await waitFor(() => {
-      // The badge number is rendered next to the Notifications nav label.
-      expect(screen.getByText('7')).toBeInTheDocument()
+      // Unread state is shown as a red dot on the bell icon, not a number.
+      const bellLink = screen.getByRole('link', { name: /Notifications/i })
+      expect(bellLink.querySelector('.bg-red-500')).toBeTruthy()
     })
   })
 })
