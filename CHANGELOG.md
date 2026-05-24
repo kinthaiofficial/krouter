@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Dashboard layout: left sidebar → top nav bar**: the sidebar made content cramped on narrower viewports (≤ 1280 px Router / Providers pages got squeezed). The nav is now a single sticky header at the top of the page; brand + version on the left, all 10 nav items in a horizontal row that wraps when needed. Content area is no longer competing with a 224 px aside, so dense pages (Router decision card, Providers cards, Logs rows) get the full viewport width. Removed: the collapse / expand toggle button and the `krouter:sidebar-collapsed` localStorage preference (a vestige of the old aside); `nav.collapse` / `nav.expand` i18n keys are gone too. The Notifications red-badge moves to inline-with-the-nav-label on the top bar.
+
 ## [2.3.2] - 2026-05-24
 
 ### Changed

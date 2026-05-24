@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -12,11 +11,19 @@ import {
   Settings2,
   Bell,
   Info,
-  PanelLeftClose,
-  PanelLeftOpen,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
+
+// Layout was originally a left sidebar but the narrower viewport sizes
+// (≤ 1280 px) left the content column too cramped on dense pages like
+// Router or Providers. Moving the nav to a single top bar reclaims that
+// horizontal real estate — pages with `max-w-*xl mx-auto` continue to
+// centre themselves but no longer compete with a 224 px aside.
+//
+// On narrower viewports the nav row wraps via `flex-wrap`; we don't
+// bother with a hamburger menu because the dashboard is laptop / desktop
+// territory in practice.
 
 const navItems = [
   { to: '/', key: 'dashboard', icon: LayoutDashboard, end: true },
@@ -31,8 +38,6 @@ const navItems = [
   { to: '/about', key: 'about', icon: Info },
 ]
 
-const COLLAPSED_KEY = 'krouter:sidebar-collapsed'
-
 export default function Layout() {
   const { t } = useTranslation()
   const { data: status } = useQuery({ queryKey: ['status'], queryFn: api.status })
@@ -43,103 +48,59 @@ export default function Layout() {
     refetchInterval: 60_000,
   })
 
-  // Persist collapsed preference in localStorage so it survives reloads.
-  const [collapsed, setCollapsed] = useState<boolean>(() => {
-    try { return localStorage.getItem(COLLAPSED_KEY) === '1' } catch { return false }
-  })
-  useEffect(() => {
-    try {
-      localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0')
-    } catch (e) {
-      // Safari Private Browsing throws SecurityError on localStorage.setItem;
-      // warn so the user/operator sees why the preference isn't persisting
-      // instead of silently dropping it.
-      console.warn('krouter: failed to persist sidebar state:', e)
-    }
-  }, [collapsed])
-
   return (
-    <div className="flex min-h-screen bg-surface text-gray-900">
-      {/* Sidebar */}
-      <aside
-        className={[
-          'shrink-0 bg-white border-r border-border flex flex-col transition-all duration-200',
-          collapsed ? 'w-14' : 'w-56',
-        ].join(' ')}
-      >
-        <div
-          className={[
-            'border-b border-border flex items-center gap-3',
-            collapsed ? 'px-3 py-4 justify-center' : 'px-5 py-4',
-          ].join(' ')}
-        >
-          <img src="/krouter/favicon.svg" alt="" className="w-7 h-7 shrink-0" />
-          {!collapsed && (
-            <div className="flex-1 min-w-0">
-              <span className="font-bold text-sm text-gray-900">KRouter</span>
-              {status && (
-                <span className="ml-1.5 text-xs text-gray-400">{status.version}</span>
-              )}
-            </div>
-          )}
-        </div>
-        <nav className={['flex-1 py-3 space-y-0.5', collapsed ? 'px-2' : 'px-3'].join(' ')}>
-          {navItems.map(({ to, key, icon: Icon, end }) => {
-            const badge =
-              key === 'announcements' && (annCount?.unread ?? 0) > 0
-                ? annCount!.unread
-                : null
-            return (
-              <NavLink
-                key={to}
-                to={to}
-                end={end}
-                title={collapsed ? t(`nav.${key}`) : undefined}
-                className={({ isActive }) =>
-                  [
-                    'flex items-center rounded-lg text-sm font-medium transition-colors relative',
-                    collapsed ? 'justify-center px-2 py-2' : 'gap-2.5 px-3 py-2',
-                    isActive
-                      ? 'bg-brand-light text-brand'
-                      : 'text-gray-500 hover:bg-surface hover:text-gray-900',
-                  ].join(' ')
-                }
-              >
-                <Icon size={16} />
-                {!collapsed && <span>{t(`nav.${key}`)}</span>}
-                {badge !== null && !collapsed && (
-                  <span className="ml-auto text-xs bg-red-500 text-white rounded-full px-1.5 py-0.5 leading-none">
-                    {badge}
-                  </span>
-                )}
-                {badge !== null && collapsed && (
-                  <span
-                    aria-label={`${badge} unread`}
-                    className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"
-                  />
-                )}
-              </NavLink>
-            )
-          })}
-        </nav>
-        <button
-          type="button"
-          onClick={() => setCollapsed((v) => !v)}
-          title={collapsed ? t('nav.expand') : t('nav.collapse')}
-          aria-label={collapsed ? t('nav.expand') : t('nav.collapse')}
-          aria-pressed={collapsed}
-          className={[
-            'mx-2 mb-2 mt-1 flex items-center gap-2 px-2 py-2 rounded-lg text-xs text-gray-400 hover:bg-surface hover:text-gray-700 transition-colors',
-            collapsed ? 'justify-center' : '',
-          ].join(' ')}
-        >
-          {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
-          {!collapsed && <span>{t('nav.collapse')}</span>}
-        </button>
-      </aside>
+    <div className="min-h-screen bg-surface text-gray-900">
+      {/* Top nav */}
+      <header className="sticky top-0 z-10 bg-white border-b border-border">
+        <div className="max-w-7xl mx-auto px-4 py-2 flex items-center gap-3 flex-wrap">
+          {/* Brand + version */}
+          <div className="flex items-center gap-2 shrink-0 mr-2">
+            <img src="/krouter/favicon.svg" alt="" className="w-6 h-6 shrink-0" />
+            <span className="font-bold text-sm text-gray-900">KRouter</span>
+            {status && (
+              <span className="text-xs text-gray-400">{status.version}</span>
+            )}
+          </div>
 
-      {/* Main content */}
-      <main className="flex-1 overflow-auto">
+          {/* Nav items — wrap to a second row on narrow viewports. */}
+          <nav className="flex items-center gap-0.5 flex-wrap">
+            {navItems.map(({ to, key, icon: Icon, end }) => {
+              const badge =
+                key === 'announcements' && (annCount?.unread ?? 0) > 0
+                  ? annCount!.unread
+                  : null
+              return (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={end}
+                  className={({ isActive }) =>
+                    [
+                      'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors relative',
+                      isActive
+                        ? 'bg-brand-light text-brand'
+                        : 'text-gray-500 hover:bg-surface hover:text-gray-900',
+                    ].join(' ')
+                  }
+                >
+                  <Icon size={15} />
+                  <span>{t(`nav.${key}`)}</span>
+                  {badge !== null && (
+                    <span className="text-[10px] bg-red-500 text-white rounded-full px-1.5 py-0.5 leading-none">
+                      {badge}
+                    </span>
+                  )}
+                </NavLink>
+              )
+            })}
+          </nav>
+        </div>
+      </header>
+
+      {/* Main content — no longer compressed by a sidebar. Pages still set
+          their own max-w-*xl mx-auto, so widescreens centre, narrow
+          viewports fill. */}
+      <main>
         <Outlet />
       </main>
     </div>

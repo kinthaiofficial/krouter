@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, waitFor, fireEvent } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import { Routes, Route } from 'react-router-dom'
 import { renderWithProviders } from './helpers'
 import '../i18n'
@@ -13,7 +13,7 @@ beforeEach(() => {
       return Promise.resolve({
         ok: true, status: 200,
         json: () => Promise.resolve({
-          status: 'running', version: 'v2.2.0', uptime_seconds: 0,
+          status: 'running', version: 'v2.3.2', uptime_seconds: 0,
           pid: 1, proxy_port: 8402, mgmt_port: 8403,
         }),
       } as Response)
@@ -28,90 +28,71 @@ function renderLayout() {
   return renderWithProviders(
     <Routes>
       <Route element={<Layout />}>
-        <Route path="/" element={<div data-testid="content" />} />
+        <Route path="/" element={<div data-testid="content">Hello</div>} />
       </Route>
     </Routes>,
   )
 }
 
-describe('<Layout>', () => {
-  it('does not render the bottom "proxy :8402" footer or its divider', async () => {
+describe('<Layout> (top nav)', () => {
+  it('renders nav as a top header, no left sidebar', async () => {
     renderLayout()
     await waitFor(() => expect(screen.getByTestId('content')).toBeInTheDocument())
-    // The proxy port footer is removed in this PR — text should be absent.
-    expect(screen.queryByText(/proxy\s*:?\s*8402/i)).not.toBeInTheDocument()
-    expect(screen.queryByText(/代理端口/)).not.toBeInTheDocument()
+
+    // The brand + nav items live in a <header>, not an <aside>.
+    const header = screen.getByRole('banner')  // <header>
+    expect(header).toBeInTheDocument()
+    expect(document.querySelector('aside')).toBeNull()
   })
 
-  it('starts expanded by default and shows labels for nav items', async () => {
+  it('shows the brand and the version chip', async () => {
     renderLayout()
-    await waitFor(() => {
-      expect(screen.getByRole('link', { name: /Dashboard/i })).toBeInTheDocument()
-    })
-    // "Router" nav label is present (text visible).
-    expect(screen.getAllByText(/Router|路由/).length).toBeGreaterThan(0)
+    await waitFor(() => expect(screen.getByText('KRouter')).toBeInTheDocument())
+    // The version chip comes in once the /internal/status query resolves.
+    await waitFor(() => expect(screen.getByText('v2.3.2')).toBeInTheDocument())
   })
 
-  it('collapses when the toggle button is clicked, hiding labels', async () => {
+  it('renders every nav item as a link in document order', async () => {
     renderLayout()
-    await waitFor(() => screen.getByRole('button', { name: /Collapse|折叠/ }))
+    await waitFor(() => expect(screen.getByText('KRouter')).toBeInTheDocument())
 
-    // Initially the Dashboard nav label is visible as text.
-    const dashboardBefore = screen.getByText(/^Dashboard$|^仪表盘$/)
-    expect(dashboardBefore).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: /Collapse|折叠/ }))
-
-    // After collapse, the Dashboard label text is no longer rendered.
-    await waitFor(() => {
-      expect(screen.queryByText(/^Dashboard$|^仪表盘$/)).not.toBeInTheDocument()
-    })
-
-    // The toggle button now says "Expand".
-    expect(screen.getByRole('button', { name: /Expand|展开/ })).toBeInTheDocument()
+    const expected = [
+      'Dashboard', 'Free tokens', 'Router', 'Agents', 'Logs',
+      'Providers', 'Budget', 'Settings', 'Notifications', 'About',
+    ]
+    for (const label of expected) {
+      expect(screen.getByRole('link', { name: new RegExp(`^${label}$`) })).toBeInTheDocument()
+    }
   })
 
-  it('persists the collapsed state in localStorage across reloads', async () => {
-    const { unmount } = renderLayout()
-    await waitFor(() => screen.getByRole('button', { name: /Collapse|折叠/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Collapse|折叠/ }))
-
-    await waitFor(() => {
-      expect(localStorage.getItem('krouter:sidebar-collapsed')).toBe('1')
-    })
-
-    unmount()
-
-    // Second render should pick up the collapsed preference.
+  it('does not render the old "Collapse" / "Expand" toggle', async () => {
     renderLayout()
-    await waitFor(() => {
-      // Collapsed state → toggle button reads "Expand".
-      expect(screen.getByRole('button', { name: /Expand|展开/ })).toBeInTheDocument()
-    })
+    await waitFor(() => expect(screen.getByText('KRouter')).toBeInTheDocument())
+    // The collapse button is gone with the sidebar.
+    expect(screen.queryByRole('button', { name: /Collapse|Expand/i })).not.toBeInTheDocument()
   })
 
-  it('shows a tiny red dot on the collapsed Notifications icon when unread > 0', async () => {
+  it('shows the unread badge on the Notifications nav item', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       const path = url.split('?')[0]
       if (path === '/internal/status') {
         return Promise.resolve({
           ok: true, status: 200,
           json: () => Promise.resolve({
-            status: 'running', version: 'v2.2.0', uptime_seconds: 0,
+            status: 'running', version: 'v2.3.2', uptime_seconds: 0,
             pid: 1, proxy_port: 8402, mgmt_port: 8403,
           }),
         } as Response)
       }
       return Promise.resolve({
-        ok: true, status: 200, json: () => Promise.resolve({ unread: 3 }),
+        ok: true, status: 200, json: () => Promise.resolve({ unread: 7 }),
       } as Response)
     }))
-    localStorage.setItem('krouter:sidebar-collapsed', '1')
 
     renderLayout()
     await waitFor(() => {
-      // aria-label set on the small dot when collapsed.
-      expect(screen.getByLabelText('3 unread')).toBeInTheDocument()
+      // The badge number is rendered next to the Notifications nav label.
+      expect(screen.getByText('7')).toBeInTheDocument()
     })
   })
 })
