@@ -109,8 +109,12 @@ func (s *Service) Start(ctx context.Context, interval time.Duration) {
 	}
 }
 
-// CheckOnceForTest triggers a single update check synchronously. For tests only.
-func (s *Service) CheckOnceForTest(ctx context.Context) {
+// CheckNow triggers a single update check synchronously, off the normal
+// 24 h schedule. Used by the About page's "open the page → just tell me
+// if there's an update" flow so users don't have to wait up to a full
+// day for the periodic ticker. Tests also call this to drive the
+// check loop deterministically.
+func (s *Service) CheckNow(ctx context.Context) {
 	s.checkOnce(ctx)
 }
 

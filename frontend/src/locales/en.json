@@ -332,7 +332,12 @@
     "update_failed": "Failed to apply update. Please try again.",
     "update_ready": "Version {{version}} is ready to install.",
     "release_notes": "Release Notes",
-    "resources": "Resources"
+    "resources": "Resources",
+    "checking_for_updates": "Checking for updates…",
+    "up_to_date": "You're on the latest version.",
+    "recheck": "Check again",
+    "check_failed": "Couldn't check for updates. The daemon may be offline or the manifest endpoint is unreachable.",
+    "retry_check": "Try again"
   },
   "inheritance": {
     "title": "Agent Inheritance",
