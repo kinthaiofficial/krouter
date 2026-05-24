@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api, type ProviderInfo, type AddProviderBody, type ProviderModelRow } from '../api/client'
+import { statusCodeMeaning } from '../lib/statusCode'
 
 export default function Providers() {
   const { t } = useTranslation()
@@ -206,13 +207,18 @@ function CardDetails({ p, fullEndpoint }: { p: ProviderInfo; fullEndpoint: strin
         />
       </DetailGrid>
 
-      {/* Recent error */}
+      {/* Recent error — failure streak with plain-language explanation of the last status code. */}
       {p.consecutive_failures > 0 && (
         <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
           {t('providers.failure_streak', {
             n: p.consecutive_failures,
             code: p.last_error_code ?? '—',
           })}
+          {p.last_error_code != null && p.last_error_code > 0 && (
+            <span className="block mt-0.5 text-red-700/80">
+              {statusCodeMeaning(p.last_error_code, t)}
+            </span>
+          )}
         </p>
       )}
 

@@ -175,4 +175,29 @@ describe('<Router>', () => {
     // No "N earlier" pill should appear because the duplicate didn't add a row.
     expect(screen.queryByText(/earlier|再显示/)).not.toBeInTheDocument()
   })
+
+  it('renders a tooltip and inline explanation for non-2xx status codes', async () => {
+    // 402 = Payment Required. The latest card should:
+    //   (a) attach a title="402 — Payment required …" attribute on the pill
+    //   (b) render an inline explanation block below the latency line
+    handlers.set('/internal/logs', () => [
+      makeRec({
+        id: 'req_402',
+        requested_model: 'claude-sonnet-4',
+        model: 'glm-4.6',
+        status_code: 402,
+      }),
+    ])
+    renderWithProviders(<Router />)
+    await waitFor(() => screen.getByText(/LATEST|最新/))
+
+    // Tooltip — the `title` attribute on the pill contains both the
+    // code and the explanation.
+    const pill = screen.getByText('402').closest('span')
+    expect(pill).toBeTruthy()
+    expect(pill!.getAttribute('title')).toMatch(/Payment required|付费/)
+
+    // Inline explanation below the diff body.
+    expect(screen.getByText(/HTTP 402/)).toBeInTheDocument()
+  })
 })

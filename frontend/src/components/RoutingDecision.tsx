@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowRight, ChevronDown, ChevronRight } from 'lucide-react'
+import { ArrowRight, ChevronDown, ChevronRight, Info } from 'lucide-react'
 import type { LogRecord } from '../api/client'
+import { statusCodeMeaning } from '../lib/statusCode'
 
 // ─── Public components used by both Router and Logs pages ──────────────────
 
@@ -84,6 +85,18 @@ export function DecisionCard({ rec, pulse = false, showLatestBadge = false }: De
           <span>{t('router.latency_ms', { ms: rec.latency_ms.toLocaleString() })}</span>
           {!modelChanged && (
             <span className="ml-auto text-gray-400 italic">{t('router.no_change')}</span>
+          )}
+          {!ok && (
+            // Inline plain-language explanation for the status code so users
+            // don't have to memorise that "402 = quota exhausted" etc.
+            <span className="w-full mt-1 text-red-600 text-xs flex items-start gap-1.5">
+              <Info size={12} className="shrink-0 mt-0.5" aria-hidden />
+              <span>
+                <span className="font-mono">HTTP {rec.status_code}</span>
+                {' — '}
+                {statusCodeMeaning(rec.status_code, t)}
+              </span>
+            </span>
           )}
           {rec.error_message && (
             <span className="w-full mt-1 text-red-600 font-mono text-xs">
@@ -200,14 +213,20 @@ function SidePanel({
 }
 
 function StatusPill({ code, ok }: { code: number; ok: boolean }) {
+  const { t } = useTranslation()
+  // Hover tooltip explains the code in plain language. Non-2xx codes also
+  // get a small info icon nudge so users notice the tooltip is there.
+  const meaning = statusCodeMeaning(code, t)
   return (
     <span
+      title={`${code} — ${meaning}`}
       className={[
-        'text-xs font-mono px-2 py-0.5 rounded',
+        'inline-flex items-center gap-1 text-xs font-mono px-2 py-0.5 rounded cursor-help',
         ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600',
       ].join(' ')}
     >
       {code}
+      {!ok && <Info size={10} className="opacity-60" aria-hidden />}
     </span>
   )
 }
