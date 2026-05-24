@@ -290,6 +290,10 @@ jobs:
             krouter-*-macos.dmg \
             krouter-*-x86_64.AppImage \
             krouter-*-setup.exe \
+            krouter-apple-macos \
+            krouter-linux-amd64 \
+            krouter-linux-arm64 \
+            krouter-windows.exe \
             > checksums.txt
 
       - name: Create or update GitHub release

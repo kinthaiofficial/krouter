@@ -131,6 +131,14 @@ func StartLaunchAgent() error {
 	if err != nil {
 		return err
 	}
+	if _, err := os.Stat(plistPath); os.IsNotExist(err) {
+		return fmt.Errorf(
+			"LaunchAgent plist not found at %s\n"+
+				"krouter has not been fully installed, or 'krouter stop' removed the plist.\n"+
+				"Run 'krouter install' to (re)create it, then try again.",
+			plistPath,
+		)
+	}
 	target := launchctlTarget()
 	out, err := exec.Command("launchctl", "bootstrap", target, plistPath).CombinedOutput()
 	if err != nil {

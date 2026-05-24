@@ -83,10 +83,37 @@ func (s *Store) NewULID() string {
 	return ulid.MustNew(ulid.Timestamp(time.Now()), s.entropy).String()
 }
 
+// migrateLegacyPricingCache renames pricing_cache → token_price_api for users
+// upgrading from v2.0.x. Migration 001 was rewritten in place after those
+// releases, so existing installs still have the old table name.
+func (s *Store) migrateLegacyPricingCache() error {
+	var count int
+	if err := s.db.QueryRow(
+		`SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name='pricing_cache'`,
+	).Scan(&count); err != nil || count == 0 {
+		return err
+	}
+	if _, err := s.db.Exec(`ALTER TABLE pricing_cache RENAME TO token_price_api`); err != nil {
+		return fmt.Errorf("migrate pricing_cache: %w", err)
+	}
+	if err := s.db.QueryRow(
+		`SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name='pricing_sync_meta'`,
+	).Scan(&count); err == nil && count > 0 {
+		if _, err := s.db.Exec(`ALTER TABLE pricing_sync_meta RENAME TO token_price_api_meta`); err != nil {
+			return fmt.Errorf("migrate pricing_sync_meta: %w", err)
+		}
+	}
+	return nil
+}
+
 // Migrate applies any unapplied SQL migration files from the embedded migrations/ directory.
 // Files are applied in lexical order (001_*.sql, 002_*.sql, …).
 // Each migration runs in a transaction; a failure rolls back and stops migration.
 func (s *Store) Migrate() error {
+	if err := s.migrateLegacyPricingCache(); err != nil {
+		return fmt.Errorf("legacy pricing_cache migration: %w", err)
+	}
+
 	// Bootstrap schema_migrations before running user-defined migrations.
 	_, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
 		version    INTEGER PRIMARY KEY,
