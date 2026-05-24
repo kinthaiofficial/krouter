@@ -5,7 +5,6 @@ import { useTranslation } from 'react-i18next'
 import { api, type LogRecord, type Preset, type DashboardStats } from '../api/client'
 import PresetSwitcher from '../components/PresetSwitcher'
 import QuotaBar from '../components/QuotaBar'
-import SubscriptionQuotaCard from '../components/SubscriptionQuotaCard'
 
 const PROVIDER_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4']
 
@@ -160,8 +159,10 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Subscription quota — collapses to nothing when no providers polled. */}
-      <SubscriptionQuotaCard />
+      {/* Subscription quota — moved into the Providers page (PR β). Each
+          subscription-based provider (MiniMax, …) is now identified on
+          its Provider card with a "SUBSCRIPTION" badge; expanding the card
+          reveals the per-scenario tier list with used/total + %-bar. */}
 
       {/* Free LLM credits — moved to its own top-level page (`/free-tokens`)
           in PR α. Dashboard no longer renders the inline card; users reach

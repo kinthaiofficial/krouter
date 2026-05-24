@@ -239,6 +239,43 @@ func TestQuotaPoller_PollOnce_HappyPathDoesNotFireCallback(t *testing.T) {
 	assert.Equal(t, 0, *calls, "happy path must not fire the unauthorized callback")
 }
 
+func TestParseQuotaResponse_RetainsAllNonZeroScenarios(t *testing.T) {
+	// MiniMax's token-plan endpoint returns multiple scenarios per account
+	// (text gen, speech synthesis, lyrics, image, music, MCP image-understanding,
+	// MCP web-search, …). We used to filter out everything but MiniMax-M* —
+	// that hid 6 of the 7 scenarios from the dashboard. The fix retains every
+	// scenario with a non-zero total_count.
+	body := []byte(`{
+		"base_resp": {"status_code": 0, "status_msg": "ok"},
+		"model_remains": [
+			{"model_name": "MiniMax-M*",        "start_time": 1779400000000, "end_time": 1779418000000, "current_interval_total_count": 1500, "current_interval_usage_count": 67},
+			{"model_name": "speech_synthesis",  "start_time": 1779379200000, "end_time": 1779465600000, "current_interval_total_count": 4000, "current_interval_usage_count": 0},
+			{"model_name": "lyric_generation",  "start_time": 1779379200000, "end_time": 1779465600000, "current_interval_total_count": 100,  "current_interval_usage_count": 0},
+			{"model_name": "image_generation",  "start_time": 1779379200000, "end_time": 1779465600000, "current_interval_total_count": 50,   "current_interval_usage_count": 0},
+			{"model_name": "music_generation",  "start_time": 1779379200000, "end_time": 1779465600000, "current_interval_total_count": 100,  "current_interval_usage_count": 0},
+			{"model_name": "mcp_image_understanding", "start_time": 1779400000000, "end_time": 1779418000000, "current_interval_total_count": 150, "current_interval_usage_count": 0},
+			{"model_name": "mcp_web_search",          "start_time": 1779400000000, "end_time": 1779418000000, "current_interval_total_count": 150, "current_interval_usage_count": 0},
+			{"model_name": "inactive_plan",     "start_time": 0,             "end_time": 0,             "current_interval_total_count": 0,    "current_interval_usage_count": 0}
+		]
+	}`)
+	got, err := parseQuotaResponse(body)
+	require.NoError(t, err)
+	require.Len(t, got, 7, "all 7 active scenarios kept; inactive (total_count=0) dropped")
+
+	names := map[string]bool{}
+	for _, q := range got {
+		names[q.ModelPattern] = true
+		assert.Equal(t, "minimax", q.Provider)
+	}
+	for _, scenario := range []string{
+		"MiniMax-M*", "speech_synthesis", "lyric_generation", "image_generation",
+		"music_generation", "mcp_image_understanding", "mcp_web_search",
+	} {
+		assert.True(t, names[scenario], "scenario %q must be retained", scenario)
+	}
+	assert.False(t, names["inactive_plan"], "zero-total scenarios still skipped")
+}
+
 func TestParseQuotaResponse_Status1004ReturnsErrMinimaxAuth(t *testing.T) {
 	body := []byte(`{"base_resp":{"status_code":1004,"status_msg":"login fail"}}`)
 	_, err := parseQuotaResponse(body)

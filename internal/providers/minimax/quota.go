@@ -276,7 +276,14 @@ type quotaAPIResponse struct {
 // rescan / surface a re-auth nudge to the user.
 var ErrMinimaxAuth = errors.New("minimax: authentication failed")
 
-// Only text model plans (MiniMax-M*) are stored; speech/video plans are skipped.
+// All non-zero quota scenarios are stored. The MiniMax token-plan endpoint
+// returns multiple scenarios per account — text generation (MiniMax-M*),
+// speech synthesis, lyrics, image, music, image-understanding MCP, web-search
+// MCP, etc. Surfacing all of them in the dashboard matches what users see in
+// MiniMax's own console; pricing only resolves for the text models (the
+// `token_price_sub` catalogue only has MiniMax-M* SKUs) and the rest render
+// with zero pricing — that's fine: the dashboard's purpose is showing usage,
+// not pricing every conceivable plan tier.
 func parseQuotaResponse(data []byte) ([]storage.SubscriptionQuota, error) {
 	var resp quotaAPIResponse
 	if err := json.Unmarshal(data, &resp); err != nil {
@@ -295,10 +302,6 @@ func parseQuotaResponse(data []byte) ([]storage.SubscriptionQuota, error) {
 
 	var out []storage.SubscriptionQuota
 	for _, m := range resp.ModelRemains {
-		// Only track text generation models (MiniMax-M*).
-		if !strings.HasPrefix(m.ModelName, "MiniMax-M") {
-			continue
-		}
 		if m.CurrentIntervalTotalCount == 0 {
 			continue // weekly-only quota or inactive plan; skip
 		}
