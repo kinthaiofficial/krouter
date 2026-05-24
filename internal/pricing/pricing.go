@@ -417,6 +417,21 @@ func (s *Service) PriceFor(model string) (inputPerMTok, outputPerMTok float64) {
 	return e.InputCostPerToken * 1e6, e.OutputCostPerToken * 1e6
 }
 
+// ProviderFor returns the canonical provider name for a given model id —
+// i.e. the provider that "owns" the model in the LiteLLM catalogue.
+// Returns "" for unknown models. Used by the Router dashboard card to
+// show "you asked for claude-sonnet-4-5 (canonical provider: anthropic)
+// but krouter routed to glm-4.6 on zai".
+func (s *Service) ProviderFor(model string) string {
+	s.mu.RLock()
+	e, ok := s.prices[model]
+	s.mu.RUnlock()
+	if !ok {
+		return ""
+	}
+	return e.Provider
+}
+
 // BaselineCostFor computes the cost of a request using the "balanced" baseline
 // (i.e., as if the user's requested model had been used at Anthropic pricing).
 // Used for savings computation in the usage API.

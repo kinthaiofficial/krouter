@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Router decision card redesigned with parallel Request / Response panels + savings banner**: previously the two cards on the Router page used different field sets (left = protocol + model only; right = provider + model + cost) so they didn't read as a true comparison. Now: (1) a **Request** section shows two parallel cards with the same 6 fields each — endpoint, protocol, provider, model, input/output price per 1M tokens, estimated tokens — with the model name and prices visually highlighted because that's what differs between the two; (2) a **Response** section shows two parallel cards — actual tokens (in/out/cached) and actual cost — with the Actual cost prominently larger and highlighted; (3) a **savings banner** below the Response cards reads "Saved $X.XXXX (XX.X%) by routing" with a green trend-down icon, or "Cost $X more (Y%) than the requested model" with a red trend-up icon when routing was more expensive, or a neutral "no savings to report" line when the requested and routed sides match exactly.
+- **API: `/internal/logs` JSON + `request_completed` SSE event gain 6 new fields**: `requested_provider`, `requested_input_per_mtok`, `requested_output_per_mtok`, `routed_input_per_mtok`, `routed_output_per_mtok`, `baseline_cost_usd`. All omitempty / optional — legacy daemons or unknown-model records still parse, and the UI falls back to "—" cleanly. The new field semantics: `baseline_cost_usd = price_for(requested_model) × actual_tokens_used`, i.e. what the user would have paid if krouter hadn't routed to a cheaper alternative. The UI computes `savings = baseline - actual` and renders the banner accordingly.
+- **`pricing.Service.ProviderFor(model)`**: new public accessor that returns the canonical provider name for a given model id (e.g. `claude-sonnet-4-5 → "anthropic"`). Used by the API DTO enrichment to fill `requested_provider` so the Router card can show which provider would have handled the request if not routed.
+
 ## [2.3.0] - 2026-05-23
 
 ### Added

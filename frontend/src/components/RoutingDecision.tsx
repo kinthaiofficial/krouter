@@ -1,7 +1,8 @@
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { ArrowRight, ChevronDown, ChevronRight } from 'lucide-react'
-import type { LogRecord } from '../api/client'
+import { ArrowRight, ChevronDown, ChevronRight, TrendingDown, TrendingUp } from 'lucide-react'
+import { api, type LogRecord, type ProviderInfo } from '../api/client'
 
 // ─── Public components used by both Router and Logs pages ──────────────────
 
@@ -16,10 +17,39 @@ interface DecisionCardProps {
 
 export function DecisionCard({ rec, pulse = false, showLatestBadge = false }: DecisionCardProps) {
   const { t } = useTranslation()
-  const requested = rec.requested_model ?? rec.model
-  const routed = rec.model
-  const modelChanged = requested !== routed
   const ok = rec.status_code >= 200 && rec.status_code < 300
+
+  // Endpoint URLs come from the providers list (base_url + path_prefix).
+  // Cached across mounts; refetch every 5 minutes is plenty since URLs
+  // rarely change.
+  const { data: providers = [] } = useQuery<ProviderInfo[]>({
+    queryKey: ['providers', 'endpoints'],
+    queryFn: api.providers,
+    staleTime: 5 * 60_000,
+  })
+  const endpointFor = (name: string) => {
+    const p = providers.find((x) => x.name === name)
+    if (!p) return ''
+    return (p.base_url ?? '') + (p.path_prefix ?? '')
+  }
+
+  // Derived: what the routing engine effectively did.
+  const requestedModel = rec.requested_model || rec.model
+  const routedModel = rec.model
+  const modelChanged = requestedModel !== routedModel
+  const requestedProvider = rec.requested_provider || rec.provider
+  const routedProvider = rec.provider
+  const providerChanged = requestedProvider !== routedProvider
+  const sameRoute = !modelChanged && !providerChanged
+
+  // Savings: actual cost vs the baseline cost we'd have paid had we used
+  // the requested model. Backend computes baseline_cost_usd; for legacy
+  // daemons missing the field we just don't render the banner.
+  const baseline = rec.baseline_cost_usd
+  const actual = rec.cost_usd
+  const savings = baseline !== undefined ? baseline - actual : undefined
+  const savingsPct =
+    baseline !== undefined && baseline > 0 ? (savings! / baseline) * 100 : undefined
 
   return (
     <div
@@ -28,7 +58,7 @@ export function DecisionCard({ rec, pulse = false, showLatestBadge = false }: De
         pulse ? 'border-green-400 shadow-lg shadow-green-100' : 'border-gray-200',
       ].join(' ')}
     >
-      {/* Header row */}
+      {/* Header */}
       <div className="px-5 py-3 flex items-center gap-3 border-b border-gray-100 flex-wrap">
         {showLatestBadge && (
           <span className="bg-green-500 text-white text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded">
@@ -47,63 +77,312 @@ export function DecisionCard({ rec, pulse = false, showLatestBadge = false }: De
         </span>
       </div>
 
-      {/* Diff body */}
-      <div className="px-5 py-5">
-        <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-stretch">
-          <SidePanel
-            label={t('router.agent_requested')}
-            tone="gray"
-            rows={[
-              { k: t('router.protocol'), v: rec.protocol },
-              { k: t('router.model'), v: requested, mono: true },
-            ]}
-          />
-          <div className="flex items-center justify-center text-gray-400">
-            <ArrowRight size={20} />
+      <div className="px-5 py-5 space-y-5">
+        {/* ───── Request section ───── */}
+        <Section label={t('router.section_request')}>
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-3 items-stretch">
+            <RequestCard
+              label={t('router.req_requested')}
+              tone="gray"
+              endpoint={endpointFor(requestedProvider)}
+              protocol={rec.protocol}
+              provider={requestedProvider}
+              model={requestedModel}
+              inputPerMTok={rec.requested_input_per_mtok}
+              outputPerMTok={rec.requested_output_per_mtok}
+              estInputTokens={rec.input_tokens}
+              estOutputTokens={rec.output_tokens}
+              t={t}
+            />
+            <div className="hidden md:flex items-center justify-center text-gray-400">
+              <ArrowRight size={20} />
+            </div>
+            <RequestCard
+              label={t('router.req_routed')}
+              tone={modelChanged ? 'green' : providerChanged ? 'blue' : 'gray'}
+              endpoint={endpointFor(routedProvider)}
+              protocol={rec.protocol}
+              provider={routedProvider}
+              model={routedModel}
+              highlightModel={modelChanged}
+              inputPerMTok={rec.routed_input_per_mtok}
+              outputPerMTok={rec.routed_output_per_mtok}
+              highlightPrice={modelChanged}
+              estInputTokens={rec.input_tokens}
+              estOutputTokens={rec.output_tokens}
+              t={t}
+            />
           </div>
-          <SidePanel
-            label={t('router.krouter_routed')}
-            tone={modelChanged ? 'green' : 'blue'}
-            rows={[
-              { k: t('router.provider'), v: rec.provider },
-              { k: t('router.model'), v: routed, mono: true, highlight: modelChanged },
-              { k: t('router.cost'), v: `$${rec.cost_usd.toFixed(4)}`, mono: true },
-            ]}
-          />
-        </div>
+        </Section>
 
-        <div className="mt-5 pt-4 border-t border-gray-100 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-gray-500">
-          <span>
-            {t('router.tokens_breakdown', {
-              in: rec.input_tokens.toLocaleString(),
-              out: rec.output_tokens.toLocaleString(),
-              cached: (rec.cached_tokens ?? 0).toLocaleString(),
-            })}
-          </span>
-          <span>·</span>
-          <span>{t('router.latency_ms', { ms: rec.latency_ms.toLocaleString() })}</span>
-          {!modelChanged && (
-            <span className="ml-auto text-gray-400 italic">{t('router.no_change')}</span>
+        {/* ───── Response section ───── */}
+        <Section label={t('router.section_response')}>
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-3 items-stretch">
+            <ResponseCard
+              label={t('router.resp_projected')}
+              tone="gray"
+              inputTokens={rec.input_tokens}
+              outputTokens={rec.output_tokens}
+              cachedTokens={rec.cached_tokens ?? 0}
+              cost={baseline}
+              latencyMS={rec.latency_ms}
+              t={t}
+              isBaseline
+            />
+            <div className="hidden md:flex items-center justify-center text-gray-400">
+              <ArrowRight size={20} />
+            </div>
+            <ResponseCard
+              label={t('router.resp_actual')}
+              tone={savings !== undefined && savings > 0 ? 'green' : 'gray'}
+              inputTokens={rec.input_tokens}
+              outputTokens={rec.output_tokens}
+              cachedTokens={rec.cached_tokens ?? 0}
+              cost={actual}
+              highlightCost
+              latencyMS={rec.latency_ms}
+              t={t}
+            />
+          </div>
+
+          {/* Savings banner */}
+          {savings !== undefined && (
+            <SavingsBanner
+              savings={savings}
+              pct={savingsPct}
+              sameRoute={sameRoute}
+              t={t}
+            />
           )}
-          {rec.error_message && (
-            <span className="w-full mt-1 text-red-600 font-mono text-xs">
-              {rec.error_message}
-            </span>
-          )}
-        </div>
+        </Section>
+
+        {/* Error row */}
+        {!ok && rec.error_message && (
+          <p className="text-xs text-red-600 font-mono">{rec.error_message}</p>
+        )}
       </div>
     </div>
   )
 }
 
-/* Collapsed one-liner that expands into a full DecisionCard.
- *
- * Used by:
- *   - Router page's history section
- *   - Logs page rows (everything-expandable)
- *
- * Optional initiallyOpen prop is for tests / deep links.
- */
+// ─── Section wrapper ──────────────────────────────────────────────────────
+
+function Section({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold">
+        {label}
+      </p>
+      {children}
+    </div>
+  )
+}
+
+// ─── Request card (one of two side-by-side) ───────────────────────────────
+
+interface RequestCardProps {
+  label: string
+  tone: 'gray' | 'green' | 'blue'
+  endpoint: string
+  protocol: string
+  provider: string
+  model: string
+  highlightModel?: boolean
+  inputPerMTok?: number
+  outputPerMTok?: number
+  highlightPrice?: boolean
+  estInputTokens: number
+  estOutputTokens: number
+  t: ReturnType<typeof useTranslation>['t']
+}
+
+function RequestCard({
+  label, tone, endpoint, protocol, provider, model,
+  highlightModel = false, inputPerMTok, outputPerMTok, highlightPrice = false,
+  estInputTokens, estOutputTokens, t,
+}: RequestCardProps) {
+  const toneCls = {
+    gray: 'bg-gray-50 border-gray-200',
+    blue: 'bg-blue-50 border-blue-200',
+    green: 'bg-green-50 border-green-200',
+  }[tone]
+  return (
+    <div className={['rounded-lg border px-4 py-3', toneCls].join(' ')}>
+      <p className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold mb-2">
+        {label}
+      </p>
+      <dl className="space-y-1.5 text-sm">
+        <Field k={t('router.endpoint')} v={endpoint || '—'} mono dim={!endpoint} />
+        <Field k={t('router.protocol')} v={protocol || '—'} />
+        <Field k={t('router.provider')} v={provider || '—'} />
+        <Field
+          k={t('router.model')}
+          v={model || '—'}
+          mono
+          highlight={highlightModel}
+          big={highlightModel}
+        />
+        <Field
+          k={t('router.price_input')}
+          v={inputPerMTok != null && inputPerMTok > 0 ? `$${inputPerMTok.toFixed(2)} / 1M` : '—'}
+          mono
+          highlight={highlightPrice}
+        />
+        <Field
+          k={t('router.price_output')}
+          v={outputPerMTok != null && outputPerMTok > 0 ? `$${outputPerMTok.toFixed(2)} / 1M` : '—'}
+          mono
+          highlight={highlightPrice}
+        />
+        <Field
+          k={t('router.est_tokens')}
+          v={t('router.tokens_in_out', {
+            in: estInputTokens.toLocaleString(),
+            out: estOutputTokens.toLocaleString(),
+          })}
+          mono
+          dim
+        />
+      </dl>
+    </div>
+  )
+}
+
+// ─── Response card ─────────────────────────────────────────────────────────
+
+interface ResponseCardProps {
+  label: string
+  tone: 'gray' | 'green' | 'blue'
+  inputTokens: number
+  outputTokens: number
+  cachedTokens: number
+  cost?: number
+  highlightCost?: boolean
+  latencyMS: number
+  isBaseline?: boolean
+  t: ReturnType<typeof useTranslation>['t']
+}
+
+function ResponseCard({
+  label, tone, inputTokens, outputTokens, cachedTokens,
+  cost, highlightCost = false, latencyMS, isBaseline = false, t,
+}: ResponseCardProps) {
+  const toneCls = {
+    gray: 'bg-gray-50 border-gray-200',
+    blue: 'bg-blue-50 border-blue-200',
+    green: 'bg-green-50 border-green-200',
+  }[tone]
+  return (
+    <div className={['rounded-lg border px-4 py-3', toneCls].join(' ')}>
+      <p className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold mb-2">
+        {label}
+      </p>
+      <dl className="space-y-1.5 text-sm">
+        <Field
+          k={t('router.actual_tokens')}
+          v={t('router.tokens_breakdown', {
+            in: inputTokens.toLocaleString(),
+            out: outputTokens.toLocaleString(),
+            cached: cachedTokens.toLocaleString(),
+          })}
+          mono
+        />
+        <Field
+          k={t('router.actual_cost')}
+          v={cost != null ? `$${cost.toFixed(4)}` : '—'}
+          mono
+          highlight={highlightCost}
+          big={highlightCost}
+        />
+        {!isBaseline && (
+          <Field
+            k={t('router.latency')}
+            v={t('router.latency_ms', { ms: latencyMS.toLocaleString() })}
+            mono
+            dim
+          />
+        )}
+      </dl>
+    </div>
+  )
+}
+
+// ─── Field row ─────────────────────────────────────────────────────────────
+
+interface FieldProps {
+  k: string
+  v: string
+  mono?: boolean
+  big?: boolean
+  highlight?: boolean
+  dim?: boolean
+}
+
+function Field({ k, v, mono = false, big = false, highlight = false, dim = false }: FieldProps) {
+  return (
+    <div className="flex items-baseline gap-2">
+      <dt className="text-xs text-gray-500 w-24 shrink-0">{k}</dt>
+      <dd
+        className={[
+          mono ? 'font-mono' : '',
+          big ? 'text-base font-semibold' : 'text-sm',
+          highlight ? 'text-green-700' : '',
+          dim ? 'text-gray-500' : 'text-gray-900',
+          'truncate',
+        ].join(' ')}
+        title={v}
+      >
+        {v}
+      </dd>
+    </div>
+  )
+}
+
+// ─── Savings banner ───────────────────────────────────────────────────────
+
+function SavingsBanner({
+  savings,
+  pct,
+  sameRoute,
+  t,
+}: {
+  savings: number
+  pct?: number
+  sameRoute: boolean
+  t: ReturnType<typeof useTranslation>['t']
+}) {
+  if (sameRoute || Math.abs(savings) < 0.000001) {
+    return (
+      <div className="mt-3 px-4 py-2 rounded-lg bg-gray-50 border border-gray-200 text-xs text-gray-500 italic flex items-center gap-2">
+        {t('router.no_change')}
+      </div>
+    )
+  }
+  const positive = savings > 0
+  const dollars = `$${Math.abs(savings).toFixed(4)}`
+  const pctStr = pct != null && Number.isFinite(pct) ? ` (${pct.toFixed(1)}%)` : ''
+
+  return (
+    <div
+      className={[
+        'mt-3 px-4 py-3 rounded-lg border flex items-center gap-3',
+        positive
+          ? 'bg-green-50 border-green-200 text-green-700'
+          : 'bg-red-50 border-red-200 text-red-700',
+      ].join(' ')}
+    >
+      {positive ? <TrendingDown size={18} /> : <TrendingUp size={18} />}
+      <span className="text-sm font-semibold">
+        {positive
+          ? t('router.savings_amount', { amount: dollars, pct: pctStr })
+          : t('router.overrun_amount', { amount: dollars, pct: pctStr })}
+      </span>
+    </div>
+  )
+}
+
+// ─── Collapsed one-liner row (used by Router history + Logs page) ────────
+
 export function DecisionRow({
   r,
   initiallyOpen = false,
@@ -153,51 +432,7 @@ export function DecisionRow({
   )
 }
 
-// ─── Private helpers ───────────────────────────────────────────────────────
-
-interface RowSpec {
-  k: string
-  v: string
-  mono?: boolean
-  highlight?: boolean
-}
-
-function SidePanel({
-  label,
-  tone,
-  rows,
-}: {
-  label: string
-  tone: 'gray' | 'green' | 'blue'
-  rows: RowSpec[]
-}) {
-  const toneCls = {
-    gray: 'bg-gray-50 border-gray-200',
-    blue: 'bg-blue-50 border-blue-200',
-    green: 'bg-green-50 border-green-200',
-  }[tone]
-  return (
-    <div className={['rounded-lg border px-4 py-3', toneCls].join(' ')}>
-      <p className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold mb-2">{label}</p>
-      <dl className="space-y-1.5">
-        {rows.map((row) => (
-          <div key={row.k} className="flex items-baseline gap-2">
-            <dt className="text-xs text-gray-500 w-16 shrink-0">{row.k}</dt>
-            <dd
-              className={[
-                'text-sm',
-                row.mono ? 'font-mono' : '',
-                row.highlight ? 'font-semibold text-green-700' : 'text-gray-900',
-              ].join(' ')}
-            >
-              {row.v}
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </div>
-  )
-}
+// ─── Status pill ──────────────────────────────────────────────────────────
 
 function StatusPill({ code, ok }: { code: number; ok: boolean }) {
   return (

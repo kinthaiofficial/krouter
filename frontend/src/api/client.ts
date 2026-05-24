@@ -95,6 +95,16 @@ export interface LogRecord {
   latency_ms: number
   status_code: number
   error_message?: string
+
+  // Routing-decision enrichment used by the Router page card.
+  // Optional / absent for legacy daemons and for unknown models — the UI
+  // falls back to "—" cleanly.
+  requested_provider?: string
+  requested_input_per_mtok?: number   // $ / 1M tokens
+  requested_output_per_mtok?: number
+  routed_input_per_mtok?: number
+  routed_output_per_mtok?: number
+  baseline_cost_usd?: number          // (requested model rate × actual tokens)
 }
 
 export interface StatusResponse {
