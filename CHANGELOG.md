@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Savings numbers are no longer fabricated for unknown models** (#53): `BaselineCostFor` used to substitute claude-sonnet-4-5's price when the requested model wasn't in the catalog, inventing a "savings" figure against a price the user never faced — and contradicting `PriceFor`, which returns 0 for the same model. It now returns 0 for unknown models, so the Router/Logs/budget savings only reflect a real baseline-vs-actual comparison.
+
+### Fixed
 - **Routing is deterministic and never selects keyless providers** (#46, #47, #51): `Registry.All()` / `ForProtocol()` now iterate in registration order instead of randomized Go map order, so two identical requests route reproducibly (previously the same request could land on different providers ~30s apart). And `pickHealthyProvider`, `pickProviderForModel`, and `fallbackOpenAI` now skip providers without a configured key — consistent with `cheapestProviderModel` / `mostExpensiveProviderModel` — so routing no longer wastes a request on a guaranteed 401, and the fallback chain stops churning through keyless providers (fireworks → gemini → xai → …) one 4xx at a time.
 
 ### Changed

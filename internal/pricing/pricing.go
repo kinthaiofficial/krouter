@@ -432,22 +432,23 @@ func (s *Service) ProviderFor(model string) string {
 	return e.Provider
 }
 
-// BaselineCostFor computes the cost of a request using the "balanced" baseline
-// (i.e., as if the user's requested model had been used at Anthropic pricing).
-// Used for savings computation in the usage API.
+// BaselineCostFor computes what the request WOULD have cost at the requested
+// model's OWN catalog price (micro-USD) — the basis for the savings figure
+// (baseline − actual). Returns 0 for a model not in the catalog.
+//
+// It deliberately does NOT substitute another model's price (it used to fall
+// back to claude-sonnet-4-5): comparing the user's actual cost against a model
+// they never asked for fabricates a savings number, and is inconsistent with
+// PriceFor, which already returns 0 for unknown models (issue #53). Callers
+// treat a 0 baseline as "no comparable baseline" — the savings aggregator only
+// sums positive (baseline − actual) deltas, so an unknown model contributes no
+// fabricated savings.
 func (s *Service) BaselineCostFor(requestedModel string, inputTokens, outputTokens int) int64 {
-	// Try the requested model directly; fall back to a known sonnet price.
 	s.mu.RLock()
 	entry, ok := s.prices[requestedModel]
 	s.mu.RUnlock()
 	if !ok {
-		// Unknown requested model: use claude-sonnet-4-5 as baseline.
-		s.mu.RLock()
-		entry, ok = s.prices["claude-sonnet-4-5"]
-		s.mu.RUnlock()
-		if !ok {
-			return 0
-		}
+		return 0
 	}
 	cost := float64(inputTokens)*entry.InputCostPerToken +
 		float64(outputTokens)*entry.OutputCostPerToken
