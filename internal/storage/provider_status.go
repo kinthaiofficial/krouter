@@ -109,6 +109,21 @@ func (s *Store) ConsecutiveFailures(provider string) int {
 	return count
 }
 
+// LastFailureAt returns the time of the provider's most recent recorded
+// failure, or the zero time if there is no record / no failure yet.
+// Implements routing.HealthChecker (used for the half-open recovery probe).
+func (s *Store) LastFailureAt(provider string) time.Time {
+	var t sql.NullTime
+	err := s.db.QueryRow(
+		`SELECT last_failure_at FROM provider_status WHERE provider = ?`,
+		provider,
+	).Scan(&t)
+	if err != nil || !t.Valid {
+		return time.Time{}
+	}
+	return t.Time.UTC()
+}
+
 // scanner is satisfied by both *sql.Row and *sql.Rows.
 type providerStatusScanner interface {
 	Scan(dest ...any) error

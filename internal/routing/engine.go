@@ -11,9 +11,15 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/kinthaiofficial/krouter/internal/providers"
 )
+
+// healthRecoveryTTL: after this long with no new failure, a provider that
+// tripped the consecutive-failure threshold gets a half-open probe (one routing
+// attempt) instead of being excluded forever — see issue #48.
+const healthRecoveryTTL = 5 * time.Minute
 
 // ErrBudgetExceeded is returned by the routing engine when the daily (or
 // weekly) spend limit has been reached. The proxy layer turns this into an
@@ -115,6 +121,10 @@ type Decision struct {
 // HealthChecker provides provider health metrics used for routing decisions.
 type HealthChecker interface {
 	ConsecutiveFailures(provider string) int
+	// LastFailureAt returns the time of the provider's most recent failure
+	// (zero time if none). Used to give an unhealthy provider a half-open
+	// probe once the recovery window has elapsed — see issue #48.
+	LastFailureAt(provider string) time.Time
 }
 
 // PricingSource returns per-model cost data used for tier-aware routing.
@@ -226,12 +236,21 @@ func subscriptionDecision(provider string, info SubscriptionInfo) Decision {
 	}
 }
 
-// isHealthy returns false if the provider has ≥3 consecutive failures.
+// isHealthy reports whether a provider should be considered for routing.
+// A provider with <3 consecutive failures is healthy. Once it trips the
+// threshold it is excluded — but only until healthRecoveryTTL has elapsed
+// since its last failure, after which it gets a half-open probe. Without this,
+// three transient 4xx/5xx (e.g. during a key refresh) demoted a provider
+// permanently, since nothing routed there to clear the count (issue #48).
 func (e *Engine) isHealthy(providerName string) bool {
 	if e.health == nil {
 		return true
 	}
-	return e.health.ConsecutiveFailures(providerName) < 3
+	if e.health.ConsecutiveFailures(providerName) < 3 {
+		return true
+	}
+	last := e.health.LastFailureAt(providerName)
+	return !last.IsZero() && time.Since(last) >= healthRecoveryTTL
 }
 
 // pickHealthyProvider returns the first healthy provider for the given protocol
