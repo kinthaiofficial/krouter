@@ -253,6 +253,82 @@ func TestDisconnectOpenClaw_IgnoresMinimaxPortal_WhenBaseURLIsNotKrouter(t *test
 	assert.Equal(t, "https://some-other-proxy.example.com", portal["baseUrl"], "unrelated baseUrl must not be touched")
 }
 
+func TestConnectOpenClaw_RedirectsOpenAIProvider_WithV1(t *testing.T) {
+	// An OpenAI-protocol provider must be redirected to the /v1 proxy base, with
+	// its original endpoint saved in the krouter sidecar. api / apiKey untouched.
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	initial := `{"models":{"providers":{"anthropic":{"apiKey":"sk-real"},"deepseek":{"baseUrl":"https://api.deepseek.com","api":"openai-responses","apiKey":"ds-key"}}}}`
+	require.NoError(t, os.WriteFile(cfg, []byte(initial), 0644))
+
+	require.NoError(t, config.ConnectOpenClaw(cfg))
+
+	data, _ := os.ReadFile(cfg)
+	var root map[string]any
+	require.NoError(t, json.Unmarshal(data, &root))
+	providers := root["models"].(map[string]any)["providers"].(map[string]any)
+
+	ds := providers["deepseek"].(map[string]any)
+	assert.Equal(t, "http://127.0.0.1:8402/v1", ds["baseUrl"], "openai provider must get the /v1 proxy base")
+	assert.Equal(t, "openai-responses", ds["api"], "api must be left untouched")
+	assert.Equal(t, "ds-key", ds["apiKey"], "apiKey must be preserved")
+	assert.Equal(t, "https://api.deepseek.com", ds["_krouterOriginalBaseUrl"], "original baseUrl must be saved in sidecar")
+
+	// Anthropic still routes to the bare base (no /v1).
+	anthropic := providers["anthropic"].(map[string]any)
+	assert.Equal(t, "http://127.0.0.1:8402", anthropic["baseUrl"])
+}
+
+func TestOpenClaw_OpenAIProvider_RoundTrip(t *testing.T) {
+	// Connect then disconnect must leave an OpenAI provider exactly as it was.
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	initial := `{"models":{"providers":{"anthropic":{"apiKey":"sk-real"},"deepseek":{"baseUrl":"https://api.deepseek.com","api":"openai-responses","apiKey":"ds-key"}}}}`
+	require.NoError(t, os.WriteFile(cfg, []byte(initial), 0644))
+
+	require.NoError(t, config.ConnectOpenClaw(cfg))
+	require.NoError(t, config.DisconnectOpenClaw(cfg))
+
+	data, _ := os.ReadFile(cfg)
+	var root map[string]any
+	require.NoError(t, json.Unmarshal(data, &root))
+	ds := root["models"].(map[string]any)["providers"].(map[string]any)["deepseek"].(map[string]any)
+	assert.Equal(t, "https://api.deepseek.com", ds["baseUrl"], "baseUrl must be restored from sidecar")
+	assert.NotContains(t, ds, "_krouterOriginalBaseUrl", "sidecar must be removed after disconnect")
+	assert.Equal(t, "ds-key", ds["apiKey"])
+}
+
+func TestConnectOpenClaw_RedirectsSubAgentModelsJSON(t *testing.T) {
+	// A provider defined only in a sub-agent's models.json must also be
+	// redirected on connect and restored on disconnect.
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	require.NoError(t, os.WriteFile(cfg, []byte(`{"models":{"providers":{"anthropic":{"apiKey":"sk"}}}}`), 0644))
+
+	subDir := filepath.Join(dir, "agents", "claude", "agent")
+	require.NoError(t, os.MkdirAll(subDir, 0755))
+	subModels := filepath.Join(subDir, "models.json")
+	require.NoError(t, os.WriteFile(subModels, []byte(`{"providers":{"deepseek":{"baseUrl":"https://api.deepseek.com","api":"openai-responses","apiKey":"k"}}}`), 0644))
+
+	require.NoError(t, config.ConnectOpenClaw(cfg))
+
+	data, _ := os.ReadFile(subModels)
+	var root map[string]any
+	require.NoError(t, json.Unmarshal(data, &root))
+	ds := root["providers"].(map[string]any)["deepseek"].(map[string]any)
+	assert.Equal(t, "http://127.0.0.1:8402/v1", ds["baseUrl"], "sub-agent openai provider must be redirected")
+	assert.Equal(t, "https://api.deepseek.com", ds["_krouterOriginalBaseUrl"])
+
+	require.NoError(t, config.DisconnectOpenClaw(cfg))
+
+	data, _ = os.ReadFile(subModels)
+	root = nil
+	require.NoError(t, json.Unmarshal(data, &root))
+	ds = root["providers"].(map[string]any)["deepseek"].(map[string]any)
+	assert.Equal(t, "https://api.deepseek.com", ds["baseUrl"], "sub-agent baseUrl must be restored")
+	assert.NotContains(t, ds, "_krouterOriginalBaseUrl")
+}
+
 // ── Cursor ────────────────────────────────────────────────────────────────────
 
 func TestConnectCursor_SetsFields(t *testing.T) {
