@@ -260,6 +260,22 @@ func (s *Server) handleAnthropicWithRouting(
 			return
 		}
 		s.logger.Error("provider forward failed (all fallbacks exhausted)", "err", err)
+		// Write a durable log row so the failed request still appears on the
+		// Router/Logs dashboards (and in per-provider stats) instead of being
+		// silently dropped — issue #52. dec carries the last attempted
+		// provider/model (may be empty if nothing was attempted).
+		s.logRequest(r.Context(), storage.RequestRecord{
+			ID:             s.storeNewULID(),
+			Timestamp:      start,
+			Agent:          agentName(r),
+			Protocol:       "anthropic",
+			RequestedModel: req.RequestedModel,
+			Provider:       dec.Provider,
+			Model:          dec.Model,
+			StatusCode:     http.StatusBadGateway,
+			LatencyMS:      time.Since(start).Milliseconds(),
+			ErrorMessage:   err.Error(),
+		})
 		http.Error(w, "bad gateway", http.StatusBadGateway)
 		return
 	}
@@ -725,6 +741,19 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		s.logger.Error("provider forward failed (all fallbacks exhausted)", "err", err)
+		// Durable log row on the error path too — issue #52 (see Anthropic handler).
+		s.logRequest(r.Context(), storage.RequestRecord{
+			ID:             s.storeNewULID(),
+			Timestamp:      start,
+			Agent:          agentName(r),
+			Protocol:       "openai",
+			RequestedModel: req.RequestedModel,
+			Provider:       dec.Provider,
+			Model:          dec.Model,
+			StatusCode:     http.StatusBadGateway,
+			LatencyMS:      time.Since(start).Milliseconds(),
+			ErrorMessage:   err.Error(),
+		})
 		http.Error(w, "bad gateway", http.StatusBadGateway)
 		return
 	}
@@ -1098,7 +1127,10 @@ func (s *Server) logRequest(ctx context.Context, rec storage.RequestRecord) {
 						_ = s.store.IncrementQuota(bg, "opus", int64(total))
 					}
 				}
-			} else if rec.StatusCode > 0 {
+			} else if rec.StatusCode > 0 && rec.Provider != "" {
+				// Guard the empty provider: a fallback-exhaustion row (#52) may
+				// carry no provider when nothing was attempted; don't write a
+				// provider_status entry keyed by "".
 				_ = s.store.RecordFailure(bg, rec.Provider, rec.StatusCode)
 			}
 		}
