@@ -49,9 +49,12 @@ export default function About() {
   const hasUpdate = !!data?.latest && data.latest !== data.current
 
   return (
-    <div className="p-6 space-y-5 max-w-lg mx-auto">
+    <div className="p-6 space-y-5 max-w-6xl mx-auto">
       <PageHeader title={t('about.title')} />
 
+      {/* Version + Resources sit side-by-side so the sparse content fills the
+          wide (max-w-6xl) container instead of leaving the right half blank. */}
+      <div className="grid md:grid-cols-2 gap-5 items-start">
       {/* Version info */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
         <h2 className="text-sm font-medium text-gray-500">{t('about.version')}</h2>
@@ -79,18 +82,6 @@ export default function About() {
         )}
       </div>
 
-      {/* Update check + result. Always rendered so the user gets immediate
-          feedback that the daemon went and looked. */}
-      <UpdateCheckCard
-        loading={check.isPending}
-        error={check.isError}
-        retry={() => check.mutate()}
-        data={data}
-        hasUpdate={hasUpdate}
-        applyUpdate={applyUpdate}
-        t={t}
-      />
-
       {/* Links */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-2">
         <h2 className="text-sm font-medium text-gray-500">{t('about.resources')}</h2>
@@ -104,6 +95,19 @@ export default function About() {
           kinthai.ai
         </a>
       </div>
+      </div>
+
+      {/* Update check + result — full-width banner below the grid. Always
+          rendered so the user gets immediate feedback that the daemon looked. */}
+      <UpdateCheckCard
+        loading={check.isPending}
+        error={check.isError}
+        retry={() => check.mutate()}
+        data={data}
+        hasUpdate={hasUpdate}
+        applyUpdate={applyUpdate}
+        t={t}
+      />
     </div>
   )
 }

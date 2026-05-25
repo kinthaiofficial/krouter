@@ -86,7 +86,7 @@ export default function BudgetPage() {
   }
 
   return (
-    <div className="p-6 space-y-4 max-w-3xl mx-auto">
+    <div className="p-6 space-y-4 max-w-6xl mx-auto">
       <PageHeader title={t('budget.title')} subtitle={t('budget.subtitle')} />
 
       <SpendCard budget={budget} t={t} />
