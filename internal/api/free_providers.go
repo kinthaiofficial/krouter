@@ -24,6 +24,10 @@ type freeProviderJSON struct {
 	KeySetupHint        string                       `json:"key_setup_hint"`
 	LastVerified        string                       `json:"last_verified"`
 	Notes               string                       `json:"notes,omitempty"`
+	// I18n: lang → field → value overrides of the human-readable fields.
+	// The string fields above are the default English copy; the dashboard
+	// overlays the current UI language and falls back to English.
+	I18n                map[string]map[string]string `json:"i18n,omitempty"`
 	AdditionalProtocols []freeProviderProtocolJSON   `json:"additional_protocols,omitempty"`
 
 	// Runtime-joined fields:
@@ -35,11 +39,12 @@ type freeProviderJSON struct {
 }
 
 type freeProviderProtocolJSON struct {
-	Protocol            string `json:"protocol"`
-	KrouterProviderName string `json:"krouter_provider_name"`
-	KeySetupHint        string `json:"key_setup_hint,omitempty"`
-	UserConfigured      bool   `json:"user_configured"`        // join: did the user inherit this alt-protocol provider?
-	SourceAgent         string `json:"source_agent,omitempty"` // which agent supplied it
+	Protocol            string                       `json:"protocol"`
+	KrouterProviderName string                       `json:"krouter_provider_name"`
+	KeySetupHint        string                       `json:"key_setup_hint,omitempty"`
+	I18n                map[string]map[string]string `json:"i18n,omitempty"`
+	UserConfigured      bool                         `json:"user_configured"`        // join: did the user inherit this alt-protocol provider?
+	SourceAgent         string                       `json:"source_agent,omitempty"` // which agent supplied it
 }
 
 // handleFreeProviders returns the free-provider catalog joined with the
@@ -96,6 +101,7 @@ func (s *Server) handleFreeProviders(w http.ResponseWriter, r *http.Request) {
 			KeySetupHint:        p.KeySetupHint,
 			LastVerified:        p.LastVerified,
 			Notes:               p.Notes,
+			I18n:                p.I18n,
 		}
 		if agentID, ok := inheritedByName[p.KrouterProviderName]; ok {
 			row.UserConfigured = true
@@ -112,6 +118,7 @@ func (s *Server) handleFreeProviders(w http.ResponseWriter, r *http.Request) {
 				Protocol:            ap.Protocol,
 				KrouterProviderName: ap.KrouterProviderName,
 				KeySetupHint:        ap.KeySetupHint,
+				I18n:                ap.I18n,
 			}
 			if agentID, ok := inheritedByName[ap.KrouterProviderName]; ok {
 				apRow.UserConfigured = true

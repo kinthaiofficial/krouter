@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor, fireEvent } from '@testing-library/react'
 import { renderWithProviders } from './helpers'
-import '../i18n'
+import i18n from '../i18n'
 import FreeTokens from '../pages/FreeTokens'
 
 type Handler = () => unknown
@@ -96,6 +96,42 @@ describe('<FreeTokens>', () => {
     // Header always visible (h1 + subtitle).
     expect(screen.getByRole('heading', { level: 1, name: /Free LLM credits|免费 LLM 额度/ })).toBeInTheDocument()
     expect(screen.getByText(/Curated catalogue|整理好的免费额度/)).toBeInTheDocument()
+  })
+
+  it('shows English copy by default and the zh override after switching language', async () => {
+    handlers.set('/internal/free-providers', () => [
+      {
+        id: 'zhipu-glm',
+        display_name: 'Zhipu GLM',
+        krouter_provider_name: 'zai',
+        protocol: 'openai',
+        region: 'china',
+        free_type: 'trial_credit',
+        free_summary: 'Sign-up grants 25M tokens',
+        free_quota_usd: 3.5,
+        validity: '30 days',
+        conditions: 'Phone + real-name',
+        signup_url: 'https://open.bigmodel.cn',
+        key_setup_hint: 'zai key',
+        last_verified: '2026-05-23',
+        user_configured: false,
+        i18n: { zh: { free_summary: '注册赠送 2500万 tokens' } },
+      },
+    ])
+
+    try {
+      renderWithProviders(<FreeTokens />)
+      // Default language is English → base field, not the zh override.
+      await waitFor(() => screen.getByText('Sign-up grants 25M tokens'))
+      expect(screen.queryByText('注册赠送 2500万 tokens')).not.toBeInTheDocument()
+
+      // Switching the UI to Chinese overlays the zh override.
+      await i18n.changeLanguage('zh')
+      await waitFor(() => screen.getByText('注册赠送 2500万 tokens'))
+      expect(screen.queryByText('Sign-up grants 25M tokens')).not.toBeInTheDocument()
+    } finally {
+      await i18n.changeLanguage('en') // restore for other tests
+    }
   })
 
   it('surfaces the dual-protocol hint when applicable', async () => {

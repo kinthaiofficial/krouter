@@ -279,6 +279,8 @@ export interface FreeProviderProtocolAlternate {
   protocol: string
   krouter_provider_name: string
   key_setup_hint?: string
+  // Per-language overrides of key_setup_hint, shaped lang → field → value.
+  i18n?: Record<string, Record<string, string>>
   user_configured: boolean
   source_agent?: string
 }
@@ -298,6 +300,11 @@ export interface FreeProvider {
   key_setup_hint: string
   last_verified: string
   notes?: string
+  // Per-language overrides of the human-readable fields (free_summary,
+  // conditions, key_setup_hint, notes, display_name), shaped
+  // lang → field → value. The flat fields above are the default English
+  // copy; the UI overlays the current language and falls back to English.
+  i18n?: Record<string, Record<string, string>>
   user_configured: boolean
   source_agent?: string
   exhausted?: boolean

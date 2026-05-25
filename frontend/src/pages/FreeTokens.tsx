@@ -126,8 +126,25 @@ function EmptyState({ t }: { t: ReturnType<typeof useTranslation>['t'] }) {
   )
 }
 
+// loc overlays the current UI language onto a catalog object's default
+// (English) string field, falling back to English when no translation
+// exists for that field/language. Catalog content (free_summary, conditions,
+// notes, key_setup_hint, display_name) ships English by default with optional
+// per-language overrides in the object's `i18n` map (lang → field → value).
+function loc<T extends { i18n?: Record<string, Record<string, string>> }>(
+  obj: T,
+  field: Extract<keyof T, string>,
+  lang: string,
+): string {
+  const override = obj.i18n?.[lang]?.[field]
+  if (override) return override
+  const base = obj[field]
+  return typeof base === 'string' ? base : ''
+}
+
 function ProviderRow({ p }: { p: FreeProvider }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const lang = i18n.language.startsWith('zh') ? 'zh' : 'en'
 
   const freeTypeLabel =
     p.free_type === 'trial_credit' ? t('freeTokens.free_type_trial')
@@ -139,7 +156,7 @@ function ProviderRow({ p }: { p: FreeProvider }) {
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-            <p className="font-medium text-sm">{p.display_name}</p>
+            <p className="font-medium text-sm">{loc(p, 'display_name', lang)}</p>
 
             <span className={`text-[10px] font-medium rounded-full px-1.5 py-0.5 ${
               p.region === 'china'
@@ -170,15 +187,15 @@ function ProviderRow({ p }: { p: FreeProvider }) {
             )}
           </div>
 
-          <p className="text-[12px] text-gray-600 leading-snug">{p.free_summary}</p>
+          <p className="text-[12px] text-gray-600 leading-snug">{loc(p, 'free_summary', lang)}</p>
 
           <div className="mt-1 text-[11px] text-gray-400 flex gap-3 flex-wrap">
             <span>{t('freeTokens.validity_label')} {p.validity || '—'}</span>
-            <span>{t('freeTokens.conditions_label')} {p.conditions || '—'}</span>
+            <span>{t('freeTokens.conditions_label')} {loc(p, 'conditions', lang) || '—'}</span>
           </div>
 
-          {p.notes && (
-            <p className="text-[11px] text-gray-400 mt-0.5">{p.notes}</p>
+          {loc(p, 'notes', lang) && (
+            <p className="text-[11px] text-gray-400 mt-0.5">{loc(p, 'notes', lang)}</p>
           )}
           {p.exhausted_reason && (
             <p className="text-[11px] text-amber-600 mt-0.5">{p.exhausted_reason}</p>
@@ -212,9 +229,9 @@ function ProviderRow({ p }: { p: FreeProvider }) {
                         <span className="text-[10px] text-indigo-500">{t('freeTokens.not_configured')}</span>
                       )}
                     </div>
-                    {a.key_setup_hint && (
+                    {loc(a, 'key_setup_hint', lang) && (
                       <p className="text-[10px] text-indigo-600 mt-0.5 leading-snug">
-                        {a.key_setup_hint}
+                        {loc(a, 'key_setup_hint', lang)}
                       </p>
                     )}
                   </li>
