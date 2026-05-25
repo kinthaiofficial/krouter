@@ -19,12 +19,12 @@ import (
 	"github.com/kinthaiofficial/krouter/internal/logging"
 	"github.com/kinthaiofficial/krouter/internal/notifications"
 	"github.com/kinthaiofficial/krouter/internal/pricing"
-	"github.com/kinthaiofficial/krouter/internal/proxy"
 	"github.com/kinthaiofficial/krouter/internal/providers"
-	"github.com/kinthaiofficial/krouter/internal/proxycfg"
 	anthropicadapter "github.com/kinthaiofficial/krouter/internal/providers/anthropic"
 	minimaxadapter "github.com/kinthaiofficial/krouter/internal/providers/minimax"
 	openaiadapter "github.com/kinthaiofficial/krouter/internal/providers/openai"
+	"github.com/kinthaiofficial/krouter/internal/proxy"
+	"github.com/kinthaiofficial/krouter/internal/proxycfg"
 	"github.com/kinthaiofficial/krouter/internal/remote"
 	"github.com/kinthaiofficial/krouter/internal/routing"
 	"github.com/kinthaiofficial/krouter/internal/storage"
@@ -162,20 +162,9 @@ The daemon listens on two ports:
 			}
 			pricingSvc.WithHTTPClient(&http.Client{Timeout: 30 * time.Second, Transport: bgTransport})
 
-			// After each LiteLLM sync, update provider adapter model lists from catalog.
-			pricingSvc.OnSync(func(catalog map[string][]string) {
-				for litellmProvider, models := range catalog {
-					adapterName := litellmProvider
-					if mapped, ok := pricing.LiteLLMToKrouterProvider[litellmProvider]; ok {
-						adapterName = mapped
-					}
-					if p, ok := reg.Get(adapterName); ok {
-						if ms, ok := p.(providers.ModelSetter); ok {
-							ms.SetModels(models)
-						}
-					}
-				}
-			})
+			// LiteLLM is the source for per-token pricing only. The routable
+			// model list comes from live /v1/models discovery (see
+			// ApplyDiscoveredModelsToRegistry / RefreshModelsIfStale below).
 			pricingSvc.StartSync(ctx, 24*time.Hour)
 
 			// Subscription pricing remote sync (spec/05 §11.4). Primary URL
@@ -316,7 +305,24 @@ The daemon listens on two ports:
 				})
 			})
 
-			// Model discovery — re-syncs cached model lists on daemon start.
+			// Lazy model discovery from live traffic: when a request flows for a
+			// model, learn that model's provider's full /v1/models list using the
+			// request's own key. Covers agents whose key krouter can't read from
+			// config (Cursor keychain, Claude Code env). Deduped + stale-guarded.
+			proxySrv.SetModelObserver(func(requestedModel, key string) {
+				provider := pricingSvc.ProviderForModel(requestedModel)
+				if provider == "" {
+					return
+				}
+				apiSrv.DiscoverIfStale(context.Background(), provider, key)
+			})
+
+			// Load cached /v1/models results into the registry now so the
+			// routing engine has accurate model availability immediately, before
+			// any fresh discovery runs.
+			apiSrv.ApplyDiscoveredModelsToRegistry(ctx)
+
+			// Model discovery — re-syncs stale cached model lists on daemon start.
 			go func() {
 				timer := time.NewTimer(10 * time.Second)
 				defer timer.Stop()
@@ -615,7 +621,7 @@ func weekStartUTC() time.Time {
 	if weekday == 0 {
 		weekday = 7 // Sunday → 7
 	}
-	return now.Truncate(24 * time.Hour).AddDate(0, 0, -(weekday - 1))
+	return now.Truncate(24*time.Hour).AddDate(0, 0, -(weekday - 1))
 }
 
 // subscriptionSource implements routing.SubscriptionSource via the storage layer.

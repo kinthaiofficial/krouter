@@ -42,11 +42,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
-	"log/slog"
 	"sort"
 	"strconv"
 	"strings"
@@ -80,19 +80,19 @@ type sseEvent struct {
 
 // Server is the management API server.
 type Server struct {
-	token     string
-	store     *storage.Store
-	pricing   *pricing.Service
-	upgrade   *upgrade.Service
-	remote    *remote.Service
+	token         string
+	store         *storage.Store
+	pricing       *pricing.Service
+	upgrade       *upgrade.Service
+	remote        *remote.Service
 	registry      *providers.Registry
 	settings      *config.Manager
 	proxyMgr      interface{ Status() proxycfg.ProxyStatus }
 	minimaxPoller subscriptionPoller
-	startAt   time.Time
-	version   string
-	buildTime string
-	ports     struct{ proxy, mgmt int }
+	startAt       time.Time
+	version       string
+	buildTime     string
+	ports         struct{ proxy, mgmt int }
 
 	// SSE broadcast.
 	subsMu   sync.Mutex
@@ -103,6 +103,9 @@ type Server struct {
 	// capture for the /internal/debug/last-sse-capture diagnostic endpoint.
 	sseDebugFn func() []byte
 
+	// discoveryInflight dedups concurrent lazy model-discovery calls, keyed by
+	// provider name, so a burst of requests triggers at most one /v1/models call.
+	discoveryInflight sync.Map
 }
 
 // New creates a management API server.
@@ -426,9 +429,9 @@ func (s *Server) handleBudget(w http.ResponseWriter, r *http.Request) {
 	costTodayUSD := float64(totalCost) / 1_000_000
 
 	resp := map[string]any{
-		"date":             todayStart.Format("2006-01-02"),
-		"requests_today":   requestsToday,
-		"cost_today_usd":   costTodayUSD,
+		"date":              todayStart.Format("2006-01-02"),
+		"requests_today":    requestsToday,
+		"cost_today_usd":    costTodayUSD,
 		"savings_today_usd": float64(totalSavings) / 1_000_000,
 	}
 
@@ -639,11 +642,11 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 		// Routing-decision enrichment for the Router dashboard card.
 		// All optional / zero-valued for legacy daemons or unknown
 		// models — the UI falls back to "—" cleanly.
-		RequestedProvider     string  `json:"requested_provider,omitempty"`
-		RequestedInputPerMTok float64 `json:"requested_input_per_mtok,omitempty"`
+		RequestedProvider      string  `json:"requested_provider,omitempty"`
+		RequestedInputPerMTok  float64 `json:"requested_input_per_mtok,omitempty"`
 		RequestedOutputPerMTok float64 `json:"requested_output_per_mtok,omitempty"`
-		RoutedInputPerMTok    float64 `json:"routed_input_per_mtok,omitempty"`
-		RoutedOutputPerMTok   float64 `json:"routed_output_per_mtok,omitempty"`
+		RoutedInputPerMTok     float64 `json:"routed_input_per_mtok,omitempty"`
+		RoutedOutputPerMTok    float64 `json:"routed_output_per_mtok,omitempty"`
 		// BaselineCostUSD = (requested model's rate) × (actual tokens used).
 		// What the user would have paid if krouter hadn't picked a
 		// cheaper provider/model. UI computes savings = baseline - actual.
@@ -1171,11 +1174,11 @@ type providerInfoJSON struct {
 	// provider. Used by the Providers dashboard page to show "this
 	// provider has handled X requests for $Y" without the user having
 	// to filter the Logs page.
-	RequestsTotal      int     `json:"requests_total"`
-	InputTokensTotal   int64   `json:"input_tokens_total"`
-	OutputTokensTotal  int64   `json:"output_tokens_total"`
-	CachedTokensTotal  int64   `json:"cached_tokens_total"`
-	CostTotalUSD       float64 `json:"cost_total_usd"`
+	RequestsTotal     int     `json:"requests_total"`
+	InputTokensTotal  int64   `json:"input_tokens_total"`
+	OutputTokensTotal int64   `json:"output_tokens_total"`
+	CachedTokensTotal int64   `json:"cached_tokens_total"`
+	CostTotalUSD      float64 `json:"cost_total_usd"`
 
 	// Catalog meta — model count from model_catalog, so the page can
 	// surface "12 models priced" without an extra request.
@@ -1268,7 +1271,6 @@ func (s *Server) doListProviders(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, out)
 }
 
-
 type agentStats struct {
 	RequestsToday   int     `json:"requests_today"`
 	CostTodayUSD    float64 `json:"cost_today_usd"`
@@ -1283,25 +1285,25 @@ type agentWithStats struct {
 	// that have no Scanner registered (Cursor / Hermes etc. still go
 	// through v2.0.47 connect/disconnect for now). All omitempty so older
 	// frontends ignoring these fields keep working.
-	Supported      bool   `json:"supported,omitempty"`        // Scanner is compiled in
-	Enabled        bool   `json:"enabled,omitempty"`          // agent_settings.enabled = 1
-	InheritedCount int    `json:"inherited_count,omitempty"`  // count of inherited_endpoints rows
-	LastScannedAt  *int64 `json:"last_scanned_at,omitempty"`  // ms UTC of most recent scan
-	LastError      string `json:"last_error,omitempty"`       // last scanner error, if any
+	Supported      bool   `json:"supported,omitempty"`       // Scanner is compiled in
+	Enabled        bool   `json:"enabled,omitempty"`         // agent_settings.enabled = 1
+	InheritedCount int    `json:"inherited_count,omitempty"` // count of inherited_endpoints rows
+	LastScannedAt  *int64 `json:"last_scanned_at,omitempty"` // ms UTC of most recent scan
+	LastError      string `json:"last_error,omitempty"`      // last scanner error, if any
 }
 
 // handleAgents handles GET /internal/agents.
 //
 // Returns a unified view spanning two sources, keyed by agent name:
 //
-//   1. v2.0.47 filesystem detection (config.DetectAgentStatuses) — finds AI
-//      agents installed on disk, reports whether their baseUrl already
-//      points at krouter, and which provider names appear in their config.
-//      This list also drives the per-agent today's-stats numbers.
+//  1. v2.0.47 filesystem detection (config.DetectAgentStatuses) — finds AI
+//     agents installed on disk, reports whether their baseUrl already
+//     points at krouter, and which provider names appear in their config.
+//     This list also drives the per-agent today's-stats numbers.
 //
-//   2. The spec/04 inheritance Scanner registry — every agent the daemon
-//      knows how to inherit from, joined against agent_settings (enabled
-//      flag + last scan state) and inherited_endpoints (vendor count).
+//  2. The spec/04 inheritance Scanner registry — every agent the daemon
+//     knows how to inherit from, joined against agent_settings (enabled
+//     flag + last scan state) and inherited_endpoints (vendor count).
 //
 // Agents that appear in either source show up in the output. The Scanner
 // registry is the authoritative list of "known agents"; v2.0.47 detection
@@ -1923,11 +1925,11 @@ func (s *Server) handleProviderModels(w http.ResponseWriter, r *http.Request, pr
 	}
 
 	type row struct {
-		ModelID             string  `json:"model_id"`
-		InputPerMTok        float64 `json:"input_per_mtok"`
-		OutputPerMTok       float64 `json:"output_per_mtok"`
-		CachedInputPerMTok  float64 `json:"cached_input_per_mtok"`
-		MaxTokens           int     `json:"max_tokens"`
+		ModelID            string  `json:"model_id"`
+		InputPerMTok       float64 `json:"input_per_mtok"`
+		OutputPerMTok      float64 `json:"output_per_mtok"`
+		CachedInputPerMTok float64 `json:"cached_input_per_mtok"`
+		MaxTokens          int     `json:"max_tokens"`
 	}
 	out := make([]row, 0)
 	for _, e := range prices {
@@ -2049,21 +2051,21 @@ func (s *Server) handlePricingStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type topModelRow struct {
-		Model          string  `json:"model"`
-		Provider       string  `json:"provider"`
-		Requests       int     `json:"requests"`
-		CostUSD        float64 `json:"cost_usd"`
-		InputPerMTok   float64 `json:"input_per_mtok"`
-		OutputPerMTok  float64 `json:"output_per_mtok"`
+		Model         string  `json:"model"`
+		Provider      string  `json:"provider"`
+		Requests      int     `json:"requests"`
+		CostUSD       float64 `json:"cost_usd"`
+		InputPerMTok  float64 `json:"input_per_mtok"`
+		OutputPerMTok float64 `json:"output_per_mtok"`
 	}
 
 	type pricingStatusResponse struct {
-		LastSyncAt       string        `json:"last_sync_at"`       // RFC3339 or ""
-		Source           string        `json:"source"`             // "live" | "cache" | "static"
-		ModelCount       int           `json:"model_count"`
-		TopModels        []topModelRow `json:"top_models"`
-		CostThisMonthUSD float64       `json:"cost_this_month_usd"`
-		SavedThisMonthUSD float64      `json:"saved_this_month_usd"`
+		LastSyncAt        string        `json:"last_sync_at"` // RFC3339 or ""
+		Source            string        `json:"source"`       // "live" | "cache" | "static"
+		ModelCount        int           `json:"model_count"`
+		TopModels         []topModelRow `json:"top_models"`
+		CostThisMonthUSD  float64       `json:"cost_this_month_usd"`
+		SavedThisMonthUSD float64       `json:"saved_this_month_usd"`
 	}
 
 	resp := pricingStatusResponse{
@@ -2186,6 +2188,7 @@ func (s *Server) discoverOpenClawAnthropic(configPath string) {
 	if err := s.store.SaveDiscoveredModels(ctx, "anthropic", dbModels); err != nil {
 		return
 	}
+	s.applyModelsToRegistry("anthropic", dbModels)
 
 	oclawModels := make([]map[string]any, 0, len(infos))
 	for _, m := range infos {
@@ -2259,6 +2262,7 @@ func (s *Server) discoverOpenClawMiniMax(configPath string) {
 	if err := s.store.SaveDiscoveredModels(ctx, "minimax", dbModels); err != nil {
 		return
 	}
+	s.applyModelsToRegistry("minimax", dbModels)
 
 	oclawModels := make([]map[string]any, 0, len(infos))
 	for _, m := range infos {
@@ -2310,7 +2314,99 @@ func (s *Server) discoverProviderModels(ctx context.Context, providerName string
 			DisplayName: m.DisplayName,
 		})
 	}
-	_ = s.store.SaveDiscoveredModels(ctx, providerName, dbModels)
+	if err := s.store.SaveDiscoveredModels(ctx, providerName, dbModels); err != nil {
+		return
+	}
+	s.applyModelsToRegistry(providerName, dbModels)
+}
+
+// applyModelsToRegistry pushes a provider's discovered model IDs into its
+// adapter's model list, which the routing engine reads via SupportedModels().
+// This is the authoritative availability source — LiteLLM provides pricing
+// only (see spec/04). No-op when the provider has no adapter or the adapter
+// does not support runtime model updates.
+func (s *Server) applyModelsToRegistry(provider string, models []storage.DiscoveredModel) {
+	if s.registry == nil {
+		return
+	}
+	p, ok := s.registry.Get(provider)
+	if !ok {
+		return
+	}
+	ms, ok := p.(providers.ModelSetter)
+	if !ok {
+		return
+	}
+	ids := make([]string, 0, len(models))
+	for _, m := range models {
+		ids = append(ids, m.ModelID)
+	}
+	ms.SetModels(ids)
+}
+
+// DiscoverIfStale lazily discovers a provider's live /v1/models list using a key
+// taken from a proxied request (not from config), when the cached list is
+// missing or older than 24h. Deduplicated per provider so a burst of requests
+// triggers at most one in-flight discovery. Used by the proxy's model observer
+// to cover agents whose key krouter cannot read from config (Cursor keychain,
+// Claude Code env). Safe to call on every request; returns fast in the common
+// (fresh-cache) case.
+func (s *Server) DiscoverIfStale(ctx context.Context, provider, key string) {
+	if s.store == nil || s.registry == nil || provider == "" || key == "" {
+		return
+	}
+	if models, fetchedAt, err := s.store.GetDiscoveredModels(ctx, provider); err == nil &&
+		len(models) > 0 && time.Since(fetchedAt) < 24*time.Hour {
+		return
+	}
+	if _, busy := s.discoveryInflight.LoadOrStore(provider, struct{}{}); busy {
+		return
+	}
+	defer s.discoveryInflight.Delete(provider)
+
+	p, ok := s.registry.Get(provider)
+	if !ok {
+		return
+	}
+	disc, ok := p.(providers.ModelDiscoverer)
+	if !ok {
+		return
+	}
+	cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	infos, err := disc.DiscoverModels(cctx, func() string { return key })
+	if err != nil || len(infos) == 0 {
+		return
+	}
+	dbModels := make([]storage.DiscoveredModel, 0, len(infos))
+	for _, m := range infos {
+		dbModels = append(dbModels, storage.DiscoveredModel{
+			Provider:    provider,
+			ModelID:     m.ID,
+			DisplayName: m.DisplayName,
+		})
+	}
+	if err := s.store.SaveDiscoveredModels(cctx, provider, dbModels); err != nil {
+		return
+	}
+	s.applyModelsToRegistry(provider, dbModels)
+}
+
+// ApplyDiscoveredModelsToRegistry loads every provider's cached /v1/models list
+// from the DB and pushes it into the registry. Called once at startup so the
+// routing engine has accurate availability before any fresh discovery runs
+// (RefreshModelsIfStale only re-discovers stale providers).
+func (s *Server) ApplyDiscoveredModelsToRegistry(ctx context.Context) {
+	if s.store == nil || s.registry == nil {
+		return
+	}
+	all, err := s.store.GetAllDiscoveredModels(ctx)
+	if err != nil {
+		return
+	}
+	for provider, models := range all {
+		s.applyModelsToRegistry(provider, models)
+	}
 }
 
 // RefreshModelsIfStale re-discovers models for any provider with a credential

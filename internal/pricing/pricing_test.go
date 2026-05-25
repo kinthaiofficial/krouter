@@ -17,6 +17,14 @@ func TestNew_NoStore(t *testing.T) {
 	require.NotNil(t, svc)
 }
 
+func TestProviderForModel(t *testing.T) {
+	svc := pricing.New(nil)
+	assert.Equal(t, "anthropic", svc.ProviderForModel("claude-haiku-4-5"))
+	assert.Equal(t, "deepseek", svc.ProviderForModel("deepseek-chat"))
+	assert.Equal(t, "openai", svc.ProviderForModel("gpt-4o"))
+	assert.Equal(t, "", svc.ProviderForModel("totally-unknown-model"), "unknown model returns empty")
+}
+
 func TestCostFor_KnownModel(t *testing.T) {
 	svc := pricing.New(nil)
 	// claude-sonnet-4-5: $3/M input, $15/M output

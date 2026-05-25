@@ -49,7 +49,6 @@ var hopByHopHeaders = map[string]bool{
 	"upgrade":             true,
 }
 
-
 // openAIUsageRE extracts prompt_tokens / completion_tokens from OpenAI SSE data.
 var (
 	promptTokensRE     = regexp.MustCompile(`"prompt_tokens"\s*:\s*(\d+)`)
@@ -67,6 +66,13 @@ type Server struct {
 	store      *storage.Store
 	pricing    *pricing.Service
 	onComplete func(storage.RequestRecord) // optional; called after every logged request
+
+	// modelObserver, when set, is called in a goroutine on each routed request
+	// with (requestedModel, apiKey) so the daemon can lazily discover the live
+	// /v1/models list for the request's provider using the key from the request
+	// itself — covering agents whose key krouter cannot read from config (Cursor
+	// keychain, Claude Code env). Never blocks the request path.
+	modelObserver func(requestedModel, apiKey string)
 
 	// lastSSECaptureMu guards lastSSECapture for the debug endpoint.
 	lastSSECaptureMu sync.RWMutex
@@ -120,6 +126,11 @@ func WithPricing(p *pricing.Service) Option {
 // SetOnComplete registers a callback invoked (in a goroutine) after each
 // request record is written to the store. Used to broadcast SSE events.
 func (s *Server) SetOnComplete(fn func(storage.RequestRecord)) { s.onComplete = fn }
+
+// SetModelObserver registers a callback invoked (in a goroutine) on each routed
+// request with the requested model and the request's API key. Used to trigger
+// lazy /v1/models discovery from live traffic.
+func (s *Server) SetModelObserver(fn func(requestedModel, apiKey string)) { s.modelObserver = fn }
 
 // New creates a proxy server with the given options.
 func New(opts ...Option) *Server {
@@ -182,6 +193,18 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/models", s.handleModels)
 	mux.HandleFunc("/v1/chat/completions", s.handleOpenAICompletions)
 	return mux
+}
+
+// apiKeyFromHeaders extracts the caller's API key, trying the Anthropic
+// x-api-key header first, then a Bearer Authorization header.
+func apiKeyFromHeaders(h http.Header) string {
+	if k := h.Get("x-api-key"); k != "" {
+		return k
+	}
+	if a := h.Get("Authorization"); a != "" {
+		return strings.TrimPrefix(a, "Bearer ")
+	}
+	return ""
 }
 
 // handleHealth handles GET /health.
@@ -387,6 +410,15 @@ func (s *Server) tryWithFallback(
 	if dec.BudgetExceeded {
 		return nil, dec, routing.ErrBudgetExceeded
 	}
+
+	// Lazily learn the request's provider model list from its own key. Fired
+	// async so it never adds latency; the observer dedups and stale-checks.
+	if s.modelObserver != nil {
+		if key := apiKeyFromHeaders(headers); key != "" {
+			go s.modelObserver(req.RequestedModel, key)
+		}
+	}
+
 	tried := make(map[string]bool)
 
 	var lastErrBody []byte
