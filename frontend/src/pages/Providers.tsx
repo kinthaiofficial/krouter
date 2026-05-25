@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   CheckCircle, XCircle, AlertCircle, Plus, Trash2,
@@ -109,7 +110,20 @@ function ProviderCard({
   subscription?: SubscriptionProvider
 }) {
   const { t } = useTranslation()
+  const location = useLocation()
   const [open, setOpen] = useState(false)
+  const cardRef = useRef<HTMLDivElement>(null)
+
+  // Deep-link target: when the page is opened with `#provider-<name>`,
+  // auto-expand that card and scroll it into view. Re-runs on hash
+  // change so clicking another in-page link still works.
+  useEffect(() => {
+    const target = `#provider-${p.name}`
+    if (location.hash === target) {
+      setOpen(true)
+      cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [location.hash, p.name])
 
   const fullEndpoint = (p.base_url || '') + (p.path_prefix || '')
   const healthy = p.configured && p.consecutive_failures === 0 && p.available
@@ -123,8 +137,10 @@ function ProviderCard({
 
   return (
     <div
+      id={`provider-${p.name}`}
+      ref={cardRef}
       className={[
-        'rounded-xl border transition-colors',
+        'rounded-xl border transition-colors scroll-mt-20',
         p.configured ? 'bg-white border-gray-200' : 'bg-gray-50 border-dashed border-gray-200',
       ].join(' ')}
     >

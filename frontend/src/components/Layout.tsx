@@ -50,13 +50,10 @@ export default function Layout() {
       {/* Top nav */}
       <header className="sticky top-0 z-10 bg-surface/85 backdrop-blur border-b border-line">
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center gap-3 flex-wrap">
-          {/* Brand + version */}
+          {/* Brand */}
           <div className="flex items-center gap-2 shrink-0">
             <img src="/krouter/favicon.svg" alt="" className="w-6 h-6 shrink-0 rounded-md" />
             <span className="font-bold text-[15px] tracking-tight text-ink">KRouter</span>
-            {status && (
-              <span className="text-[11px] font-mono text-faint">{status.version}</span>
-            )}
           </div>
 
           {/* LIVE indicator — daemon reachable */}
