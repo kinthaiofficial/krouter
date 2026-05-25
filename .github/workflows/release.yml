@@ -8,20 +8,14 @@ on:
 permissions:
   contents: write
 
-# Run JavaScript-based actions (checkout, setup-node, upload/download-artifact,
-# setup-go, repository-dispatch, …) on Node.js 24 now, ahead of GitHub forcing
-# it on 2026-06-02. Becomes a no-op once Node 24 is the default runner.
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-
 jobs:
   frontend:
     name: Build frontend (dashboard)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '24'
           cache: 'npm'
@@ -32,7 +26,7 @@ jobs:
         run: npm ci && npm run build
 
       - name: Upload dist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: webui-dist
           path: internal/webui/dist/
@@ -41,9 +35,9 @@ jobs:
     name: Build frontend (install wizard)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '24'
           cache: 'npm'
@@ -54,7 +48,7 @@ jobs:
         run: npm ci && npm run build
 
       - name: Upload dist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: installer-dist
           path: internal/webui/installer/dist/
@@ -87,21 +81,21 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Download dashboard dist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: webui-dist
           path: internal/webui/dist/
 
       - name: Download installer dist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: installer-dist
           path: internal/webui/installer/dist/
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.25'
           cache: true
@@ -169,7 +163,7 @@ jobs:
             -o dist/krouter-installer-windows.exe ./cmd/krouter-installer
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: binaries-${{ matrix.name }}
           path: dist/
@@ -180,10 +174,10 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Download darwin binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: binaries-darwin
           path: dist/
@@ -194,7 +188,7 @@ jobs:
           VERSION=${{ github.ref_name }} DIST=dist bash packaging/macos/build-dmg.sh
 
       - name: Upload DMG artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: package-macos
           path: dist/krouter-*-macos.dmg
@@ -205,10 +199,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Download linux-amd64 binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: binaries-linux-amd64
           path: dist/
@@ -219,7 +213,7 @@ jobs:
           VERSION=${{ github.ref_name }} ARCH=x86_64 DIST=dist bash packaging/appimage/build.sh
 
       - name: Upload AppImage artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: package-appimage
           path: dist/krouter-*-x86_64.AppImage
@@ -230,10 +224,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Download windows binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: binaries-windows
           path: dist/
@@ -250,7 +244,7 @@ jobs:
         run: makensis windows_versioned.nsi
 
       - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: package-windows
           path: dist/krouter-*-setup.exe
@@ -261,15 +255,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.25'
           cache: true
 
       - name: Download all binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist/
           merge-multiple: true
@@ -345,7 +339,7 @@ jobs:
             dist/krouter-windows.exe
 
       - name: Trigger krouter-site rebuild
-        uses: peter-evans/repository-dispatch@v3
+        uses: peter-evans/repository-dispatch@v4
         with:
           token: ${{ secrets.SITE_DISPATCH_TOKEN }}
           repository: kinthaiofficial/krouter-site
