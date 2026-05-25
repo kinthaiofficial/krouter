@@ -4,11 +4,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Link2, Link2Off, RefreshCw, ChevronDown, ChevronUp,
   TerminalSquare, RotateCcw, History, Check, Power, Edit2,
+  Users, KeyRound, ShieldCheck,
 } from 'lucide-react'
 import {
   api,
   type BackupInfo, type AgentDiff,
   type SupportedAgent, type ConfiguredAgent,
+  type AgentSubAgent,
 } from '../api/client'
 import { PageHeader } from '../components/ui'
 
@@ -327,6 +329,16 @@ function UnifiedAgentCard({
     staleTime: 10_000,
   })
 
+  // OpenClaw is the only agent today that hosts multiple sub-agent profiles
+  // (`main` / `claude` / `deepseek` / …). The endpoint returns [] for any
+  // other agent, so we can fire the query for every card uniformly — the
+  // SubAgentSection below renders nothing when the list is empty.
+  const { data: subAgents = [] } = useQuery<AgentSubAgent[]>({
+    queryKey: ['agent-sub-agents', a.id],
+    queryFn: () => api.agentSubAgents(a.id),
+    staleTime: 60_000,
+  })
+
   const configPath = a.config?.config_path ?? a.supported?.default_path ?? a.status?.config_path
 
   return (
@@ -546,6 +558,13 @@ function UnifiedAgentCard({
         )}
       </div>
 
+      {/* Sub-agents — surfaced for hosts that support multiple profiles
+          (OpenClaw today). Renders nothing when the list is empty so
+          non-multi-agent cards keep their layout untouched. */}
+      {subAgents.length > 0 && (
+        <SubAgentSection subs={subAgents} t={t} />
+      )}
+
       {/* Logs panel */}
       {logsExpanded && (
         <div className="border-t border-gray-100 bg-gray-50 px-4 py-3">
@@ -623,6 +642,135 @@ function UnifiedAgentCard({
         />
       )}
     </div>
+  )
+}
+
+// ─── SubAgentSection ───────────────────────────────────────────────────────
+//
+// Lists every sub-agent profile inside a multi-agent host (currently only
+// OpenClaw). Each sub-agent has its own primary model and per-provider
+// configuration (different baseURL / key / model list). The dashboard
+// surfaces this so the user can verify "yes, my `claude` sub-agent is
+// wired to anthropic, and my `deepseek` sub-agent is wired to deepseek
+// — krouter sees both and routes accordingly".
+//
+// Provider rows are click-to-expand to reveal model lists; the section
+// header itself collapses so a 4-sub-agent install doesn't dominate the
+// card visually.
+
+function SubAgentSection({
+  subs,
+  t,
+}: {
+  subs: AgentSubAgent[]
+  t: ReturnType<typeof useTranslation>['t']
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="border-t border-gray-100 bg-gray-50/40">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-2 px-4 py-2 text-xs text-gray-600 hover:bg-gray-50"
+      >
+        {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        <Users size={12} />
+        {t('agents.sub_agents_summary', { count: subs.length })}
+      </button>
+      {open && (
+        <ul className="divide-y divide-gray-100 border-t border-gray-100">
+          {subs.map((s) => (
+            <SubAgentRow key={s.id} sub={s} t={t} />
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function SubAgentRow({
+  sub,
+  t,
+}: {
+  sub: AgentSubAgent
+  t: ReturnType<typeof useTranslation>['t']
+}) {
+  const [open, setOpen] = useState(false)
+  const providers = sub.providers ?? []
+  return (
+    <li className="text-xs">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full px-4 py-2 flex items-center gap-2 text-left hover:bg-gray-50"
+      >
+        {open ? <ChevronUp size={11} className="text-gray-400" /> : <ChevronDown size={11} className="text-gray-400" />}
+        <span className="font-medium text-gray-900">{sub.display_name || sub.id}</span>
+        {sub.id !== (sub.display_name || sub.id) && (
+          <span className="text-[10px] text-gray-400 font-mono">{sub.id}</span>
+        )}
+        {sub.primary_model && (
+          <span className="text-[10px] font-mono text-gray-500 bg-white border border-gray-200 rounded px-1.5 py-0.5">
+            {sub.primary_model}
+          </span>
+        )}
+        {sub.has_oauth && (
+          <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-700 bg-emerald-50 rounded-full px-1.5 py-0.5">
+            <ShieldCheck className="w-3 h-3" /> OAuth
+          </span>
+        )}
+        <span className="ml-auto text-[11px] text-gray-400">
+          {t('agents.sub_agent_providers_n', { n: providers.length })}
+        </span>
+      </button>
+      {open && (
+        <div className="px-4 pb-3">
+          {providers.length === 0 ? (
+            <p className="text-[11px] text-gray-400 italic">
+              {t('agents.sub_agent_no_providers')}
+            </p>
+          ) : (
+            <ul className="space-y-1.5">
+              {providers.map((p) => (
+                <li key={p.provider} className="rounded-md border border-gray-200 bg-white p-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-gray-900">{p.provider}</span>
+                    {p.protocol && (
+                      <span className="text-[10px] text-gray-500 bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5">
+                        {p.protocol}
+                      </span>
+                    )}
+                    {p.primary_model && (
+                      <span className="text-[10px] font-mono font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
+                        {p.primary_model}
+                      </span>
+                    )}
+                    {p.has_api_key && (
+                      <span
+                        className="inline-flex items-center gap-0.5 text-[10px] font-medium text-gray-500"
+                        title={t('agents.sub_agent_key_configured')}
+                      >
+                        <KeyRound className="w-3 h-3" />
+                      </span>
+                    )}
+                  </div>
+                  {p.base_url && (
+                    <p className="text-[10px] font-mono text-gray-400 mt-0.5 truncate" title={p.base_url}>
+                      {p.base_url}
+                    </p>
+                  )}
+                  {p.models && p.models.length > 0 && (
+                    <p className="text-[10px] text-gray-500 mt-1 font-mono break-all">
+                      {p.models.join(' · ')}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </li>
   )
 }
 
