@@ -63,11 +63,16 @@ func TestBaselineCostFor_KnownModel(t *testing.T) {
 	assert.Equal(t, int64(6000), baseline)
 }
 
-func TestBaselineCostFor_UnknownModelUsesSonnet(t *testing.T) {
+func TestBaselineCostFor_UnknownModelReturnsZero(t *testing.T) {
 	svc := pricing.New(nil)
-	// Unknown model falls back to claude-sonnet-4-5 pricing.
+	// Issue #53: an unknown model has no comparable baseline. We must NOT
+	// substitute another model's price (that fabricates savings). Returns 0,
+	// consistent with PriceFor("unknown") == (0, 0).
 	baseline := svc.BaselineCostFor("gpt-99-ultra", 1000, 200)
-	assert.Equal(t, int64(6000), baseline) // claude-sonnet-4-5 fallback
+	assert.Equal(t, int64(0), baseline)
+	in, out := svc.PriceFor("gpt-99-ultra")
+	assert.Zero(t, in)
+	assert.Zero(t, out)
 }
 
 func TestSavings_DeepSeekVsSonnet(t *testing.T) {
