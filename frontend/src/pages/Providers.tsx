@@ -55,7 +55,7 @@ export default function Providers() {
   const inactive = providers.filter((p) => !p.configured)
 
   return (
-    <div className="p-6 space-y-4 max-w-4xl mx-auto">
+    <div className="p-6 space-y-4 max-w-6xl mx-auto">
       <PageHeader
         title={t('providers.title')}
         subtitle={t('providers.subtitle')}

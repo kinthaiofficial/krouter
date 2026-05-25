@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Page widths unified for a consistent left edge**: the Free, Providers, and Budget pages widened to `max-w-6xl`, matching Dashboard / Logs / Router / Agents, so content fills the canvas and the left margin no longer jumps when navigating between pages. About also moved to `max-w-6xl` but lays its (sparse) Version / Resources cards in a two-column grid with the update banner full-width below it, so it aligns with the other pages without leaving the right half blank.
+
 ## [2.3.9] - 2026-05-25
 
 ### Changed

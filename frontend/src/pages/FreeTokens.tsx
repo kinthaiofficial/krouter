@@ -32,7 +32,7 @@ export default function FreeTokens() {
   }, [data])
 
   return (
-    <div className="p-6 space-y-4 max-w-4xl mx-auto" data-testid="free-tokens-page">
+    <div className="p-6 space-y-4 max-w-6xl mx-auto" data-testid="free-tokens-page">
       <div className="flex items-end justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-lg font-bold tracking-tight flex items-center gap-2">
