@@ -295,11 +295,12 @@ The daemon listens on two ports:
 
 			// Periodic rescan — picks up config changes the user made to
 			// their agent files between daemon restarts (spec/04 §14
-			// "Hot reload"). 5-minute cadence balances latency against
-			// the cost of re-reading small config files; SSE broadcast
-			// lets the dashboard react before its own refetchInterval
-			// fires.
-			go agentscan.StartPeriodicRescan(ctx, store, logger, 5*time.Minute, func() {
+			// "Hot reload"). 1-minute cadence; each tick stats the agents'
+			// config files and only re-parses/writes when something changed
+			// (see configUnchangedSince), so the poll is near-free when idle.
+			// SSE broadcast lets the dashboard react before its own
+			// refetchInterval fires.
+			go agentscan.StartPeriodicRescan(ctx, store, logger, 1*time.Minute, func() {
 				apiSrv.Broadcast("agents_changed", map[string]any{
 					"source": "periodic_rescan",
 				})
