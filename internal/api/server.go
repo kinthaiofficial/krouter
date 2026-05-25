@@ -1484,7 +1484,22 @@ func (s *Server) doAgentConnect(w http.ResponseWriter, r *http.Request, name str
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, map[string]bool{"ok": true})
+
+	// The agent must be restarted to pick up the rewritten config. We never do
+	// this for the user (killing an editor or shell session would be hostile);
+	// we just tell the UI to show a notice. restart_kind distinguishes apps
+	// that read config at process start ("process") from those that read it
+	// from the shell environment at login ("shell", e.g. Claude Code).
+	restartKind := "process"
+	if name == "claude-code" {
+		restartKind = "shell"
+	}
+	writeJSON(w, map[string]any{
+		"ok":            true,
+		"needs_restart": true,
+		"restart_kind":  restartKind,
+		"agent":         name,
+	})
 }
 
 func (s *Server) doAgentDisconnect(w http.ResponseWriter, r *http.Request, name string) {

@@ -341,6 +341,9 @@ function UnifiedAgentCard({
   const [showBackups, setShowBackups] = useState(false)
   const [showDiff, setShowDiff] = useState(false)
   const [pendingDiff, setPendingDiff] = useState<AgentDiff | null>(null)
+  // Post-connect restart hint, driven by the backend's restart_kind so every
+  // agent (incl. Hermes) is covered and we never guess from the agent id.
+  const [restartKind, setRestartKind] = useState<string | null>(null)
 
   // Inheritance mutations
   const enable = useMutation({
@@ -362,9 +365,12 @@ function UnifiedAgentCard({
       fetch(`/internal/agents/${a.id}/connect`, { method: 'POST', credentials: 'include' })
         .then((r) => {
           if (!r.ok) return r.json().then((e: { error: string }) => { throw new Error(e.error) })
-          return r.json()
+          return r.json() as Promise<{ restart_kind?: string }>
         }),
-    onSuccess: onMutationSuccess,
+    onSuccess: (data) => {
+      setRestartKind(data?.restart_kind ?? 'process')
+      onMutationSuccess()
+    },
   })
   const disconnectMutation = useMutation({
     mutationFn: () =>
@@ -373,7 +379,10 @@ function UnifiedAgentCard({
           if (!r.ok) return r.json().then((e: { error: string }) => { throw new Error(e.error) })
           return r.json()
         }),
-    onSuccess: onMutationSuccess,
+    onSuccess: () => {
+      setRestartKind(null)
+      onMutationSuccess()
+    },
   })
   const getDiff = useMutation({
     mutationFn: () => api.agentDiff(a.id),
@@ -567,14 +576,17 @@ function UnifiedAgentCard({
           </div>
         </div>
 
-        {/* Post-connect hints */}
-        {connectMutation.isSuccess && a.id === 'claude-code' && (
+        {/* Post-connect hint — krouter never restarts the app itself, it only
+            tells the user. restart_kind comes from the connect response:
+            "shell" = re-read env on a new terminal (Claude Code), otherwise
+            restart the app process. */}
+        {restartKind === 'shell' && (
           <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
             <TerminalSquare size={12} className="shrink-0" />
             {t('agents.new_terminal_hint')}
           </div>
         )}
-        {connectMutation.isSuccess && (a.id === 'openclaw' || a.id === 'cursor') && (
+        {restartKind && restartKind !== 'shell' && (
           <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
             <RotateCcw size={12} className="shrink-0" />
             {t('agents.restart_hint', { label: a.displayName })}
