@@ -133,11 +133,14 @@ The daemon listens on two ports:
 			// Per-agent routing overrides from settings.
 			engine.WithOverrides(settings)
 
-			// Free-credit provider routing (spec/06): inherited providers
-			// matching the data/free_tokens.json catalog are preferred over
-			// paid candidates. Source impl reads from free_provider_state ∩
-			// inherited_endpoints, filtering out exhausted rows.
-			engine.WithFreeProviders(newFreeProviderSource(store))
+			// Note: there used to be a `FreeProviderSource` wiring here that
+			// intersected `inherited_endpoints` with the curated
+			// `data/free_tokens.json` catalog and routed to "free credit"
+			// providers first. That bias was wrong — the catalog is only
+			// for dashboard discovery (and can never be exhaustive). The
+			// routing engine now picks cheapest by per-token cost from the
+			// `token_price_api` table; a model priced at $0 wins
+			// automatically, no catalog filter required.
 
 			// Proxy server.
 			proxySrv := proxy.New(
