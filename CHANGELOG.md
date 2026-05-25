@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Dashboard data auto-refreshes every 3 seconds**: the live figures (today's requests / saved / spent / saved-%, quotas, the weekly + provider-distribution panel, and recent requests) now poll every 3s and update in place — no page reload and no flicker (React Query keeps the previous data while refetching, and polling pauses automatically when the tab is hidden). The SSE stream still delivers instant updates between polls. Previously only the weekly panel refreshed (every 30s) and the rest relied solely on SSE.
 - **Dashboard logo unified to the kinthai.ai brand mark**: the top-bar logo and browser favicon now use kinthai.ai's logo instead of the krouter-specific glyph, bringing the dashboard in line with the parent brand (and matching the krouter website).
 
 ## [2.3.10] - 2026-05-25

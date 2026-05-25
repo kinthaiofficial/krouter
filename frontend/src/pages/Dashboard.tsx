@@ -12,15 +12,21 @@ const PROVIDER_COLORS = ['#0fa46a', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', 
 export default function Dashboard() {
   const { t } = useTranslation()
   const qc = useQueryClient()
+  // Live data: poll every 3s so the dashboard numbers stay current without a
+  // full page reload. React Query refetches in place and keeps the previous
+  // data while fetching, so only the changed values re-render (no flicker, no
+  // reload). Polling pauses automatically when the tab is hidden. SSE below
+  // still delivers instant updates between polls.
+  const REFRESH_MS = 3000
   const { data: status } = useQuery({ queryKey: ['status'], queryFn: api.status })
-  const { data: budget } = useQuery({ queryKey: ['budget'], queryFn: api.budget })
-  const { data: quotas } = useQuery({ queryKey: ['quota'], queryFn: api.quota })
-  const { data: logsData } = useQuery({ queryKey: ['logs'], queryFn: () => api.logs(20) })
+  const { data: budget } = useQuery({ queryKey: ['budget'], queryFn: api.budget, refetchInterval: REFRESH_MS })
+  const { data: quotas } = useQuery({ queryKey: ['quota'], queryFn: api.quota, refetchInterval: REFRESH_MS })
+  const { data: logsData } = useQuery({ queryKey: ['logs'], queryFn: () => api.logs(20), refetchInterval: REFRESH_MS })
   const { data: presetData } = useQuery({ queryKey: ['preset'], queryFn: api.preset })
   const { data: dashStats } = useQuery<DashboardStats>({
     queryKey: ['dashboard-stats'],
     queryFn: api.dashboardStats,
-    refetchInterval: 30_000,
+    refetchInterval: REFRESH_MS,
   })
 
   const [recentLogs, setRecentLogs] = useState<LogRecord[]>([])
