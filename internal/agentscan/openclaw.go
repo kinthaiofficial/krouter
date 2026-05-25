@@ -30,6 +30,27 @@ func (OpenClawScanner) DefaultConfigPath() string {
 	return filepath.Join(home, ".openclaw", "openclaw.json")
 }
 
+// WatchPaths reports every file Scan reads: the main config plus each
+// sub-agent's models.json and auth-profiles.json. Lets the periodic rescan
+// notice a sub-agent or OAuth-token change even when the main config is
+// untouched. Implements agentscan.PathWatcher.
+func (OpenClawScanner) WatchPaths(configPath string) []string {
+	paths := []string{configPath}
+	agentsDir := filepath.Join(filepath.Dir(configPath), "agents")
+	entries, err := os.ReadDir(agentsDir)
+	if err != nil {
+		return paths
+	}
+	for _, ent := range entries {
+		if !ent.IsDir() {
+			continue
+		}
+		base := filepath.Join(agentsDir, ent.Name(), "agent")
+		paths = append(paths, filepath.Join(base, "models.json"), filepath.Join(base, "auth-profiles.json"))
+	}
+	return paths
+}
+
 // openClawConfig mirrors only the fields of openclaw.json that this Scanner
 // needs to read. Unknown fields are silently ignored.
 type openClawConfig struct {

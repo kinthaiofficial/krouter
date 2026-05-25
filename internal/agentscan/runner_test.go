@@ -3,6 +3,8 @@ package agentscan_test
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -221,14 +223,46 @@ func TestStartPeriodicRescan_TicksAndStopsOnCtxCancel(t *testing.T) {
 	cancel()
 	<-done // ensure the loop exited before we read the counters
 
-	assert.GreaterOrEqual(t, calls, 2, "scanner should have been invoked at least 2 times across ticks")
-	assert.GreaterOrEqual(t, ticks, 2, "onTick should have fired at least 2 times")
-	// Allow at most one tick where RunAll returned early because ctx was
-	// cancelled mid-call (after the ticker fired but before
-	// store.ListAgentSettings completed). In that race, onTick still fires
-	// but ScanOne is skipped — harmless and unobservable to callers.
-	assert.LessOrEqual(t, ticks-calls, 1,
-		"ticks and scanner calls should agree, allowing at most one cancel-race delta")
+	assert.GreaterOrEqual(t, ticks, 2, "onTick should fire on every tick regardless of short-circuit")
+	assert.GreaterOrEqual(t, calls, 1, "scanner runs on the first tick (no prior scan recorded)")
+	// After the first scan, the mtime short-circuit skips ScanOne on subsequent
+	// ticks because the config file is unchanged (here it is absent), so the
+	// scanner is invoked far fewer times than the loop ticks. This is the
+	// intended 1-minute-poll behavior — onTick still fires every tick.
+	assert.LessOrEqual(t, calls, ticks, "short-circuit means scanner calls never exceed ticks")
+}
+
+func TestRunAll_SkipsUnchangedConfigButRescansAfterChange(t *testing.T) {
+	s := newRunnerStore(t)
+	ctx := context.Background()
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "openclaw.json")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(`{}`), 0644))
+	// Anchor the initial mtime in the past so the first scan's timestamp is
+	// unambiguously newer (avoids a same-millisecond race in the skip check).
+	past := time.Now().Add(-time.Hour)
+	require.NoError(t, os.Chtimes(cfgPath, past, past))
+
+	calls := 0
+	setScannersFor(t, callCountingScanner{id: "openclaw", incr: func() { calls++ }})
+	require.NoError(t, s.UpsertAgentSetting(ctx, storage.AgentSetting{
+		AgentID: "openclaw", Enabled: true, ConfigPath: cfgPath,
+	}))
+
+	agentscan.RunAll(ctx, s, logging.New("error"))
+	require.Equal(t, 1, calls, "first run always scans (no prior scan recorded)")
+
+	agentscan.RunAll(ctx, s, logging.New("error"))
+	require.Equal(t, 1, calls, "unchanged config must be skipped")
+
+	// Bump the config mtime into the future so it is strictly newer than the
+	// last scan timestamp, forcing a rescan.
+	future := time.Now().Add(2 * time.Second)
+	require.NoError(t, os.Chtimes(cfgPath, future, future))
+
+	agentscan.RunAll(ctx, s, logging.New("error"))
+	require.Equal(t, 2, calls, "changed config must be rescanned")
 }
 
 func TestStartPeriodicRescan_ZeroIntervalReturnsImmediately(t *testing.T) {

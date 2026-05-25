@@ -2,11 +2,49 @@ package agentscan
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"github.com/kinthaiofficial/krouter/internal/logging"
 	"github.com/kinthaiofficial/krouter/internal/storage"
 )
+
+// PathWatcher is an optional Scanner extension. A scanner that reads more than
+// its primary config file (e.g. OpenClaw, which also reads per-sub-agent
+// models.json / auth-profiles.json) implements this so the periodic rescan can
+// detect changes across all of them. Scanners that don't implement it are
+// assumed to read only configPath.
+type PathWatcher interface {
+	WatchPaths(configPath string) []string
+}
+
+// configUnchangedSince reports whether none of a scanner's input files have
+// been modified since lastScannedAt (ms UTC). Used by the periodic rescan to
+// skip re-parsing unchanged configs. Returns false ("must scan") when never
+// scanned, on the first sight of any file at-or-after the last scan, or when a
+// watched file's mtime cannot be determined as older. Manual rescans call
+// ScanOne directly and are never gated by this.
+func configUnchangedSince(scanner Scanner, configPath string, lastScannedAt *int64) bool {
+	if lastScannedAt == nil {
+		return false
+	}
+	paths := []string{configPath}
+	if w, ok := scanner.(PathWatcher); ok {
+		if wp := w.WatchPaths(configPath); len(wp) > 0 {
+			paths = wp
+		}
+	}
+	for _, p := range paths {
+		fi, err := os.Stat(p)
+		if err != nil {
+			continue // missing/unreadable file: nothing changed to read there
+		}
+		if fi.ModTime().UnixMilli() >= *lastScannedAt {
+			return false // modified at or after our last scan → rescan
+		}
+	}
+	return true
+}
 
 // RunAll walks every enabled row in agent_settings, invokes the corresponding
 // Scanner against the user-saved config_path, and writes the resulting
@@ -36,6 +74,11 @@ func RunAll(ctx context.Context, store *storage.Store, logger logging.Logger) {
 			// stays so a future upgrade picks it up.
 			continue
 		}
+		// Skip the parse + DB write + SSE broadcast when nothing this scanner
+		// reads has changed since the last scan. Keeps the 1-minute poll cheap.
+		if configUnchangedSince(scanner, setting.ConfigPath, setting.LastScannedAt) {
+			continue
+		}
 		if err := ScanOne(ctx, store, scanner, setting.ConfigPath); err != nil {
 			logger.Warn("agent_inheritance: scan failed",
 				"agent", setting.AgentID, "err", err)
@@ -49,12 +92,11 @@ func RunAll(ctx context.Context, store *storage.Store, logger logging.Logger) {
 // SSE broadcast so the dashboard refetches /internal/agents/configured
 // without waiting for the next react-query refetchInterval).
 //
-// Spec/04 §14 — "Hot reload via SSE broadcast on config change." With no
-// fsnotify dependency, a 5-minute polling cadence is the Phase 1 compromise:
-// the user's config file is small, re-reading it costs microseconds, and
-// the latency between a user editing OpenClaw config and the daemon picking
-// it up is bounded by the interval. Phase 2 can layer fsnotify on top for
-// real-time updates if the polling latency proves annoying.
+// Spec/04 §14 — "Hot reload via SSE broadcast on config change." We poll
+// rather than depend on fsnotify; RunAll stats each agent's config files and
+// skips the parse/DB-write/broadcast when nothing changed (configUnchangedSince),
+// so a tight 1-minute cadence stays near-free when idle while keeping the
+// edit→pickup latency bounded by the interval.
 //
 // Passing interval <= 0 returns immediately (disabled).
 func StartPeriodicRescan(
