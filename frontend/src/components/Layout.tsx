@@ -1,6 +1,6 @@
 import { Outlet, NavLink } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Settings2, Bell } from 'lucide-react'
+import { Settings, Bell } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
 import { storeLang } from '../i18n'
@@ -129,7 +129,7 @@ export default function Layout() {
               }
               title={t('nav.settings')}
             >
-              <Settings2 size={15} />
+              <Settings size={15} />
             </NavLink>
           </div>
         </div>
