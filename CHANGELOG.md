@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Agents page reframed around the AI agent rather than the host app**: the page used to show one card per app (OpenClaw, Claude Code, Cursor, …). Operator framing surfaced the issue — it's the AI agent that calls providers and burns tokens; the host app is configuration metadata for that agent. The page now leads with a "Connected agents" section showing every agent currently routing through krouter, and pushes detected-but-disconnected hosts into a compact "Available" section below. For multi-profile hosts (OpenClaw), each sub-agent profile (`claude`, `deepseek`, `main`, …) is rendered as a prominent stacked panel inside the card rather than buried behind a collapsed toggle. The page container widened from `max-w-3xl` to `max-w-6xl` (Router-page parity) so the left margin no longer wastes screen real estate on dense pages. Every provider name reference (single-profile inherited list + per-sub-agent provider rows) is now a click-to-deep-link chip pointing at `/providers#provider-<name>`.
+- **Providers page supports `#provider-<name>` deep-links**: each `ProviderCard` carries an `id="provider-<name>"` anchor; navigating with that fragment auto-expands the matching card and scrolls it into view (`scroll-mt-20` keeps it clear of the sticky header). Enables one-click jumps from the Agents page (and anywhere else we want to refer to a specific provider) without forcing the user to scroll the active/inactive list.
+- **Top-nav version chip removed**: the `vX.Y.Z` text next to the brand was rarely scanned and crowded the LIVE indicator on narrow viewports. Version information remains on the About page and in `/internal/status`.
+
 ## [2.3.8] - 2026-05-25
 
 ### Added

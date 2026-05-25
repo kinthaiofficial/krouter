@@ -45,11 +45,12 @@ describe('<Layout> (top nav)', () => {
     expect(document.querySelector('aside')).toBeNull()
   })
 
-  it('shows the brand and the version chip', async () => {
+  it('shows the brand without a version chip', async () => {
     renderLayout()
     await waitFor(() => expect(screen.getByText('KRouter')).toBeInTheDocument())
-    // The version chip comes in once the /internal/status query resolves.
-    await waitFor(() => expect(screen.getByText('v2.3.2')).toBeInTheDocument())
+    // The version chip was removed per UX feedback — the top-left is
+    // reserved for branding and the LIVE indicator only.
+    expect(screen.queryByText('v2.3.2')).toBeNull()
   })
 
   it('renders every nav item as a link in document order', async () => {
