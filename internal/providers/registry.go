@@ -69,6 +69,11 @@ const (
 type Registry struct {
 	mu        sync.RWMutex
 	providers map[string]Provider
+	// order preserves registration order so All() / ForProtocol() are
+	// deterministic. Iterating the map directly randomizes order (Go
+	// intentionally randomizes map iteration), which made routing decisions
+	// non-reproducible — see issue #46.
+	order []string
 }
 
 // New creates an empty provider registry.
@@ -76,10 +81,14 @@ func New() *Registry {
 	return &Registry{providers: make(map[string]Provider)}
 }
 
-// Register adds or replaces a provider in the registry.
+// Register adds or replaces a provider in the registry. First registration of
+// a name records its position; re-registering the same name keeps its place.
 func (r *Registry) Register(p Provider) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if _, exists := r.providers[p.Name()]; !exists {
+		r.order = append(r.order, p.Name())
+	}
 	r.providers[p.Name()] = p
 }
 
@@ -96,25 +105,34 @@ func (r *Registry) Unregister(name string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	delete(r.providers, name)
+	for i, n := range r.order {
+		if n == name {
+			r.order = append(r.order[:i], r.order[i+1:]...)
+			break
+		}
+	}
 }
 
-// All returns all registered providers.
+// All returns all registered providers in registration order.
 func (r *Registry) All() []Provider {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	out := make([]Provider, 0, len(r.providers))
-	for _, p := range r.providers {
-		out = append(out, p)
+	out := make([]Provider, 0, len(r.order))
+	for _, name := range r.order {
+		if p, ok := r.providers[name]; ok {
+			out = append(out, p)
+		}
 	}
 	return out
 }
 
-// ForProtocol returns the first provider that speaks the given protocol.
+// ForProtocol returns the first-registered provider that speaks the given
+// protocol (deterministic by registration order).
 func (r *Registry) ForProtocol(proto Protocol) (Provider, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	for _, p := range r.providers {
-		if p.Protocol() == proto {
+	for _, name := range r.order {
+		if p, ok := r.providers[name]; ok && p.Protocol() == proto {
 			return p, true
 		}
 	}

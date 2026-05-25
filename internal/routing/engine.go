@@ -234,13 +234,14 @@ func (e *Engine) isHealthy(providerName string) bool {
 	return e.health.ConsecutiveFailures(providerName) < 3
 }
 
-// pickHealthyProvider returns the first healthy provider for the given protocol,
-// falling back to any provider if all are unhealthy.
+// pickHealthyProvider returns the first healthy provider for the given protocol
+// that has a configured key, falling back to the first key-having provider if
+// all are unhealthy. Providers without a key are never selected — routing to a
+// keyless provider just wastes the request on a guaranteed 401 (issue #47).
 func (e *Engine) pickHealthyProvider(proto providers.Protocol) providers.Provider {
-	all := e.registry.All()
 	var fallback providers.Provider
-	for _, p := range all {
-		if p.Protocol() != proto {
+	for _, p := range e.registry.All() {
+		if p.Protocol() != proto || !e.providerHasKey(p.Name()) {
 			continue
 		}
 		if fallback == nil {
@@ -250,15 +251,16 @@ func (e *Engine) pickHealthyProvider(proto providers.Protocol) providers.Provide
 			return p
 		}
 	}
-	return fallback // nil if no provider for this protocol
+	return fallback // nil if no key-having provider for this protocol
 }
 
-// pickProviderForModel returns the first healthy provider that explicitly supports
-// the requested model. Falls back to pickHealthyProvider if none match.
+// pickProviderForModel returns the first healthy, key-having provider that
+// explicitly supports the requested model. Falls back to pickHealthyProvider
+// if none match. (Key check keeps this consistent with the rest of selection —
+// issue #47.)
 func (e *Engine) pickProviderForModel(proto providers.Protocol, model string) providers.Provider {
-	all := e.registry.All()
-	for _, p := range all {
-		if p.Protocol() != proto {
+	for _, p := range e.registry.All() {
+		if p.Protocol() != proto || !e.providerHasKey(p.Name()) {
 			continue
 		}
 		if modelSupported(p.SupportedModels(), model) && e.isHealthy(p.Name()) {
@@ -373,11 +375,14 @@ func (e *Engine) fallbackAnthropic(_ Request, tried map[string]bool) Decision {
 	return Decision{}
 }
 
-// fallbackOpenAI returns the next healthy same-protocol provider not already tried.
+// fallbackOpenAI returns the next healthy, key-having same-protocol provider
+// not already tried. The key check stops the fallback chain from churning
+// through keyless providers (fireworks/gemini/xai/...) one 401/404 at a time
+// (issue #51).
 func (e *Engine) fallbackOpenAI(req Request, tried map[string]bool) Decision {
 	proto := providers.Protocol(req.Protocol)
 	for _, p := range e.registry.All() {
-		if p.Protocol() != proto || !e.isHealthy(p.Name()) {
+		if p.Protocol() != proto || !e.isHealthy(p.Name()) || !e.providerHasKey(p.Name()) {
 			continue
 		}
 		model := req.RequestedModel

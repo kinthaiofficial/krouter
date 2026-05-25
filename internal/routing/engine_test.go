@@ -25,6 +25,13 @@ func (f *fakeProvider) Forward(_ context.Context, _ *http.Request) (*http.Respon
 	return nil, nil
 }
 
+// keylessProvider is a provider with no configured API key (implements
+// providers.Configurable, HasKey() == false). Selection must never route to it
+// — see issues #47 / #51.
+type keylessProvider struct{ fakeProvider }
+
+func (k *keylessProvider) HasKey() bool { return false }
+
 func anthropicRegistry() *providers.Registry {
 	reg := providers.New()
 	reg.Register(&fakeProvider{
@@ -481,4 +488,22 @@ func TestEngine_Saver_CheapestPerTokenWins(t *testing.T) {
 
 	assert.Equal(t, "moonshot", dec.Provider,
 		"cheapest per-token wins; no catalog-based bias remains")
+}
+
+// Issue #47: provider selection must skip providers without a key, even when a
+// keyless one is registered first. Here an unknown model forces the
+// pickProviderForModel → pickHealthyProvider fallback; the keyless "fireworks"
+// (registered first) must be skipped in favor of the keyed "deepseek".
+func TestEngine_SkipsKeylessProvider(t *testing.T) {
+	reg := providers.New()
+	reg.Register(&keylessProvider{fakeProvider{name: "fireworks", protocol: providers.ProtocolOpenAI, models: []string{"llama-3.3-70b"}}})
+	reg.Register(&fakeProvider{name: "deepseek", protocol: providers.ProtocolOpenAI, models: []string{"deepseek-chat"}})
+	engine := routing.New(reg)
+
+	dec := engine.Decide(routing.Request{
+		Protocol:       "openai",
+		RequestedModel: "some-unknown-model",
+	}, routing.PresetBalanced)
+
+	assert.Equal(t, "deepseek", dec.Provider, "must skip keyless fireworks and pick the keyed provider")
 }

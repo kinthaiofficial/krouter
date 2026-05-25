@@ -71,3 +71,40 @@ func TestRegistry_ForProtocol(t *testing.T) {
 	_, ok = r.ForProtocol(providers.ProtocolGemini)
 	assert.False(t, ok)
 }
+
+// Issue #46: All() and ForProtocol() must be deterministic (registration
+// order), not randomized map iteration.
+func TestRegistry_AllPreservesRegistrationOrder(t *testing.T) {
+	r := providers.New()
+	want := []string{"deepseek", "groq", "fireworks", "anthropic"}
+	for _, n := range want {
+		proto := providers.ProtocolOpenAI
+		if n == "anthropic" {
+			proto = providers.ProtocolAnthropic
+		}
+		r.Register(&fakeProvider{name: n, protocol: proto})
+	}
+	for i := 0; i < 5; i++ {
+		var got []string
+		for _, p := range r.All() {
+			got = append(got, p.Name())
+		}
+		assert.Equal(t, want, got, "All() must return providers in registration order")
+	}
+	p, ok := r.ForProtocol(providers.ProtocolOpenAI)
+	require.True(t, ok)
+	assert.Equal(t, "deepseek", p.Name(), "ForProtocol returns the first-registered match")
+}
+
+func TestRegistry_UnregisterPreservesOrder(t *testing.T) {
+	r := providers.New()
+	r.Register(&fakeProvider{name: "a", protocol: providers.ProtocolOpenAI})
+	r.Register(&fakeProvider{name: "b", protocol: providers.ProtocolOpenAI})
+	r.Register(&fakeProvider{name: "c", protocol: providers.ProtocolOpenAI})
+	r.Unregister("b")
+	var got []string
+	for _, p := range r.All() {
+		got = append(got, p.Name())
+	}
+	assert.Equal(t, []string{"a", "c"}, got)
+}
