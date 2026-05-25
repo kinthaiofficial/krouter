@@ -68,7 +68,7 @@ export default function Announcements() {
   const lang = navigator.language.startsWith('zh') ? 'zh-CN' : 'en'
 
   return (
-    <div className="p-6 space-y-4 max-w-2xl mx-auto">
+    <div className="p-6 space-y-4 max-w-6xl mx-auto">
       <PageHeader title={t('announcements.title')} />
 
       {isLoading ? (
@@ -84,9 +84,9 @@ export default function Announcements() {
             <div
               key={ann.id}
               className={[
-                'bg-white rounded-xl border p-4 transition-opacity',
+                'bg-card rounded-xl border p-4 transition-opacity',
                 ann.read_at
-                  ? 'border-gray-200 opacity-70'
+                  ? 'border-line-strong opacity-70'
                   : 'border-blue-200',
               ].join(' ')}
             >

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { api, type Settings as ISettings } from '../api/client'
 import i18n, { storeLang, settingsLangToI18n } from '../i18n'
-import { PageHeader } from '../components/ui'
+import { PageHeader, Panel } from '../components/ui'
 
 export default function Settings() {
   const { t } = useTranslation()
@@ -42,12 +42,10 @@ export default function Settings() {
   if (isLoading || !settings) return <div className="p-6 text-sm text-gray-400">{t('common.loading')}</div>
 
   return (
-    <div className="p-6 space-y-6 max-w-xl mx-auto">
+    <div className="p-6 space-y-4 max-w-6xl mx-auto">
       <PageHeader title={t('settings.title')} />
 
-      {/* Language */}
-      <section className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
-        <h2 className="text-sm font-medium">{t('settings.language')}</h2>
+      <Panel title={t('settings.language')}>
         <select
           value={settings.language}
           onChange={(e) => {
@@ -57,17 +55,15 @@ export default function Settings() {
             i18n.changeLanguage(i18nLang)
             save.mutate({ language: newLang })
           }}
-          className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white"
+          className="border border-line-strong rounded-lg px-3 py-1.5 text-sm bg-card"
         >
           <option value="en">{t('settings.lang_en')}</option>
           <option value="zh-CN">{t('settings.lang_zh')}</option>
         </select>
-      </section>
+      </Panel>
 
-      {/* Data Management */}
-      <section className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-        <h2 className="text-sm font-medium">{t('settings.data_management')}</h2>
-
+      <Panel title={t('settings.data_management')}>
+        <div className="space-y-4">
         {/* Export logs */}
         <div className="space-y-2">
           <p className="text-xs text-gray-500">{t('settings.export_detail')}</p>
@@ -102,7 +98,7 @@ export default function Settings() {
         </div>
 
         {/* Reset data */}
-        <div className="flex items-center justify-between pt-2 border-t border-gray-50">
+        <div className="flex items-center justify-between pt-3 border-t border-line">
           <div>
             <p className="text-sm font-medium text-gray-700">{t('settings.reset_data')}</p>
             <p className="text-xs text-gray-400">{t('settings.reset_detail')}</p>
@@ -121,7 +117,7 @@ export default function Settings() {
         </div>
 
         {/* Uninstall */}
-        <div className="flex items-center justify-between pt-2 border-t border-gray-50">
+        <div className="flex items-center justify-between pt-3 border-t border-line">
           <div>
             <p className="text-sm font-medium text-gray-700">{t('settings.uninstall')}</p>
             <p className="text-xs text-gray-400">{t('settings.uninstall_detail')}</p>
@@ -141,7 +137,8 @@ export default function Settings() {
         {(resetData.isError || uninstall.isError) && (
           <p className="text-sm text-red-500">{t('settings.op_failed')}</p>
         )}
-      </section>
+        </div>
+      </Panel>
 
       {save.isError && (
         <p className="text-sm text-red-500">{t('settings.save_failed')}</p>
