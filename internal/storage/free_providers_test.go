@@ -90,6 +90,51 @@ func TestFreeProvider_AdditionalProtocolsRoundTrip(t *testing.T) {
 	assert.Equal(t, "openrouter-anthropic", rows[0].AdditionalProtocols[0].KrouterProviderName)
 }
 
+func TestFreeProvider_I18nRoundTrip(t *testing.T) {
+	s := openMigratedStore(t)
+	ctx := context.Background()
+
+	want := newFreeProvider("zhipu-glm", "zai", true)
+	want.I18n = map[string]map[string]string{
+		"zh": {
+			"display_name": "智谱 GLM",
+			"free_summary": "注册赠送 2500万 tokens",
+			"notes":        "GLM-4-Flash 完全免费",
+		},
+	}
+	want.AdditionalProtocols = []storage.FreeProviderProtocol{
+		{
+			Protocol:            "anthropic",
+			KrouterProviderName: "zai-anthropic",
+			KeySetupHint:        "same key, anthropic baseURL",
+			I18n:                map[string]map[string]string{"zh": {"key_setup_hint": "同一个 key, anthropic baseURL"}},
+		},
+	}
+	require.NoError(t, s.UpsertFreeProvider(ctx, want))
+
+	rows, err := s.ListFreeProviders(ctx, true)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "智谱 GLM", rows[0].I18n["zh"]["display_name"])
+	assert.Equal(t, "注册赠送 2500万 tokens", rows[0].I18n["zh"]["free_summary"])
+	require.Len(t, rows[0].AdditionalProtocols, 1)
+	assert.Equal(t, "同一个 key, anthropic baseURL",
+		rows[0].AdditionalProtocols[0].I18n["zh"]["key_setup_hint"],
+		"alternate-protocol i18n must round-trip inside additional_protocols_json")
+}
+
+// A row with no translations must load with an empty (non-panicking) I18n,
+// proving the '{}' default column and lenient decode path work.
+func TestFreeProvider_NoI18nLoadsEmpty(t *testing.T) {
+	s := openMigratedStore(t)
+	ctx := context.Background()
+	require.NoError(t, s.UpsertFreeProvider(ctx, newFreeProvider("groq", "groq", true)))
+	rows, err := s.ListFreeProviders(ctx, true)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Empty(t, rows[0].I18n["zh"]["free_summary"], "absent translation reads as empty, UI falls back to English base")
+}
+
 func TestFreeProvider_KrouterNamesIncludesAlternates(t *testing.T) {
 	// Both the primary krouter_provider_name and every alternate's name
 	// must appear in the union set used by the API handler's "is this

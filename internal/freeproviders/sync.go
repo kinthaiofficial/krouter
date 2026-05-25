@@ -208,6 +208,11 @@ type providerJSON struct {
 	LastVerified        string                 `json:"last_verified"`
 	Notes               string                 `json:"notes"`
 	AdditionalProtocols []protocolEntryJSON    `json:"additional_protocols"`
+	// I18n carries per-language overrides of the human-readable fields,
+	// shaped lang → field → value. Optional: providers with only English
+	// copy omit it. Old daemons ignore this unknown key and keep parsing
+	// the base (English) string fields, so the schema stays version 1.
+	I18n map[string]map[string]string `json:"i18n"`
 }
 
 // protocolEntryJSON describes one alternate-protocol endpoint a vendor
@@ -216,9 +221,10 @@ type providerJSON struct {
 // provider entry inside their agent (different baseURL, same key) so
 // inheritance picks both up.
 type protocolEntryJSON struct {
-	Protocol            string `json:"protocol"`
-	KrouterProviderName string `json:"krouter_provider_name"`
-	KeySetupHint        string `json:"key_setup_hint"`
+	Protocol            string                        `json:"protocol"`
+	KrouterProviderName string                        `json:"krouter_provider_name"`
+	KeySetupHint        string                        `json:"key_setup_hint"`
+	I18n                map[string]map[string]string  `json:"i18n"`
 }
 
 type catalogFile struct {
@@ -310,6 +316,7 @@ func (s *Service) applyBody(ctx context.Context, body []byte) (int, error) {
 			Active:              p.Active,
 			LastVerified:        p.LastVerified,
 			Notes:               p.Notes,
+			I18n:                p.I18n,
 			UpdatedAt:           now,
 		}
 		if len(p.AdditionalProtocols) > 0 {
@@ -319,6 +326,7 @@ func (s *Service) applyBody(ctx context.Context, body []byte) (int, error) {
 					Protocol:            ap.Protocol,
 					KrouterProviderName: ap.KrouterProviderName,
 					KeySetupHint:        ap.KeySetupHint,
+					I18n:                ap.I18n,
 				})
 			}
 		}

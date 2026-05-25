@@ -30,6 +30,14 @@ type FreeProvider struct {
 	LastVerified        string  // ISO date
 	Notes               string
 
+	// I18n holds per-language overrides of the human-readable fields,
+	// shaped lang → field → value, e.g.
+	//   {"zh": {"free_summary": "...", "conditions": "...", "notes": "..."}}.
+	// The struct's own string fields above are the DEFAULT (English) copy;
+	// the dashboard overlays the user's language and falls back to English
+	// when a field/lang is missing. Persisted as the i18n_json column.
+	I18n map[string]map[string]string
+
 	// AdditionalProtocols carries dual-/multi-protocol vendors. When this
 	// catalog entry's primary `Protocol` is e.g. "openai" but the vendor
 	// also exposes an Anthropic-compatible endpoint (OpenRouter, GLM,
@@ -54,6 +62,10 @@ type FreeProviderProtocol struct {
 	Protocol            string `json:"protocol"`
 	KrouterProviderName string `json:"krouter_provider_name"`
 	KeySetupHint        string `json:"key_setup_hint"`
+	// I18n overrides KeySetupHint (the only human-readable field here) per
+	// language: {"zh": {"key_setup_hint": "..."}}. Rides inside the parent's
+	// additional_protocols_json blob, so it needs no dedicated column.
+	I18n map[string]map[string]string `json:"i18n,omitempty"`
 }
 
 // UpsertFreeProvider inserts or replaces a row in free_provider_state.
@@ -63,8 +75,8 @@ func (s *Store) UpsertFreeProvider(ctx context.Context, p FreeProvider) error {
 		(id, display_name, krouter_provider_name, protocol, region, free_type,
 		 free_summary, free_quota_usd, validity, conditions, signup_url,
 		 key_setup_hint, active, last_verified, notes,
-		 additional_protocols_json, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 additional_protocols_json, i18n_json, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			display_name              = excluded.display_name,
 			krouter_provider_name     = excluded.krouter_provider_name,
@@ -81,10 +93,21 @@ func (s *Store) UpsertFreeProvider(ctx context.Context, p FreeProvider) error {
 			last_verified             = excluded.last_verified,
 			notes                     = excluded.notes,
 			additional_protocols_json = excluded.additional_protocols_json,
+			i18n_json                 = excluded.i18n_json,
 			updated_at                = excluded.updated_at`
 	active := 0
 	if p.Active {
 		active = 1
+	}
+	// Serialise i18n overrides; nil/empty round-trips to "{}" so the column
+	// is never NULL and the loaded map is always usable.
+	i18nBytes := []byte("{}")
+	if len(p.I18n) > 0 {
+		var err error
+		i18nBytes, err = json.Marshal(p.I18n)
+		if err != nil {
+			return err
+		}
 	}
 	// Serialise the additional protocols once; an empty slice round-trips
 	// to "[]" so the DB column is never NULL and the loaded slice is
@@ -102,7 +125,7 @@ func (s *Store) UpsertFreeProvider(ctx context.Context, p FreeProvider) error {
 		p.ID, p.DisplayName, p.KrouterProviderName, p.Protocol, p.Region, p.FreeType,
 		p.FreeSummary, p.FreeQuotaUSD, p.Validity, p.Conditions, p.SignupURL,
 		p.KeySetupHint, active, p.LastVerified, p.Notes,
-		string(addBytes), p.UpdatedAt.UnixMilli(),
+		string(addBytes), string(i18nBytes), p.UpdatedAt.UnixMilli(),
 	)
 	return err
 }
@@ -114,7 +137,7 @@ func (s *Store) ListFreeProviders(ctx context.Context, activeOnly bool) ([]FreeP
 	q := `SELECT id, display_name, krouter_provider_name, protocol, region, free_type,
 		         free_summary, free_quota_usd, validity, conditions, signup_url,
 		         key_setup_hint, active, last_verified, notes,
-		         additional_protocols_json, updated_at
+		         additional_protocols_json, i18n_json, updated_at
 		  FROM free_provider_state`
 	if activeOnly {
 		q += ` WHERE active = 1`
@@ -132,11 +155,12 @@ func (s *Store) ListFreeProviders(ctx context.Context, activeOnly bool) ([]FreeP
 		var active int
 		var updatedAtMS int64
 		var addJSON string
+		var i18nJSON string
 		if err := rows.Scan(
 			&p.ID, &p.DisplayName, &p.KrouterProviderName, &p.Protocol, &p.Region, &p.FreeType,
 			&p.FreeSummary, &p.FreeQuotaUSD, &p.Validity, &p.Conditions, &p.SignupURL,
 			&p.KeySetupHint, &active, &p.LastVerified, &p.Notes,
-			&addJSON, &updatedAtMS,
+			&addJSON, &i18nJSON, &updatedAtMS,
 		); err != nil {
 			return nil, err
 		}
@@ -146,6 +170,11 @@ func (s *Store) ListFreeProviders(ctx context.Context, activeOnly bool) ([]FreeP
 		// kill the whole list; we leave the slice empty and continue.
 		if addJSON != "" && addJSON != "[]" {
 			_ = json.Unmarshal([]byte(addJSON), &p.AdditionalProtocols)
+		}
+		// Decode i18n overrides (same lenient policy — bad JSON just means
+		// the row renders in its default English).
+		if i18nJSON != "" && i18nJSON != "{}" {
+			_ = json.Unmarshal([]byte(i18nJSON), &p.I18n)
 		}
 		out = append(out, p)
 	}

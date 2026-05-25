@@ -1,0 +1,14 @@
+-- Bilingual catalog content for the Free-providers dashboard page.
+--
+-- The existing string columns (display_name, free_summary, conditions,
+-- key_setup_hint, notes) hold the DEFAULT copy, which is now English. This
+-- column carries per-language overrides as a JSON object shaped
+--   { "<lang>": { "<field>": "<translation>" } }
+-- e.g. { "zh": { "free_summary": "...", "conditions": "...", "notes": "..." } }.
+--
+-- The dashboard overlays the user's current UI language over the English
+-- base, falling back to English whenever a field/language is absent. Seeded
+-- from data/free_tokens.json's optional per-provider "i18n" object; rows with
+-- no translations store "{}". (Alternate-protocol hint translations ride
+-- inside the existing additional_protocols_json blob, so they need no column.)
+ALTER TABLE free_provider_state ADD COLUMN i18n_json TEXT NOT NULL DEFAULT '{}';

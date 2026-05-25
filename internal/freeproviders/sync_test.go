@@ -337,6 +337,53 @@ func TestSyncOnce_VersionedUserAgent(t *testing.T) {
 	assert.Equal(t, "krouter-freeproviders-sync/v2.3.0", seenUA)
 }
 
+func TestApplyEmbedded_ParsesI18n(t *testing.T) {
+	const payload = `{
+	  "schema_version": 1,
+	  "providers": [
+	    {
+	      "id": "zhipu-glm",
+	      "display_name": "Zhipu GLM",
+	      "krouter_provider_name": "zai",
+	      "protocol": "openai",
+	      "region": "china",
+	      "free_type": "trial_credit",
+	      "free_summary": "25M tokens",
+	      "free_quota_usd": 3.5,
+	      "validity": "30 days",
+	      "conditions": "phone",
+	      "signup_url": "https://open.bigmodel.cn",
+	      "key_setup_hint": "zai key",
+	      "active": true,
+	      "last_verified": "2026-05-23",
+	      "notes": "GLM-4-Flash free",
+	      "i18n": { "zh": { "free_summary": "2500万 tokens", "notes": "GLM-4-Flash 完全免费" } },
+	      "additional_protocols": [
+	        {
+	          "protocol": "anthropic",
+	          "krouter_provider_name": "zai-anthropic",
+	          "key_setup_hint": "same key",
+	          "i18n": { "zh": { "key_setup_hint": "同一个 key" } }
+	        }
+	      ]
+	    }
+	  ]
+	}`
+	store := newTestStore(t)
+	svc := New(store, logging.New("error"))
+	_, err := svc.ApplyEmbedded(context.Background(), []byte(payload))
+	require.NoError(t, err)
+
+	rows, err := store.ListFreeProviders(context.Background(), true)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "25M tokens", rows[0].FreeSummary, "base field stays English")
+	assert.Equal(t, "2500万 tokens", rows[0].I18n["zh"]["free_summary"], "zh override parsed")
+	assert.Equal(t, "GLM-4-Flash 完全免费", rows[0].I18n["zh"]["notes"])
+	require.Len(t, rows[0].AdditionalProtocols, 1)
+	assert.Equal(t, "同一个 key", rows[0].AdditionalProtocols[0].I18n["zh"]["key_setup_hint"])
+}
+
 func TestStartSync_ZeroIntervalReturns(t *testing.T) {
 	done := make(chan struct{})
 	go func() {

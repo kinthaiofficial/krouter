@@ -10,37 +10,59 @@
       "protocol": "openai",
       "region": "china",
       "free_type": "trial_credit",
-      "free_summary": "新用户注册赠送 ¥10 余额 (约可用 5M tokens DeepSeek-V3 / 600k DeepSeek-R1)",
+      "free_summary": "New accounts get ¥10 credit (~5M tokens DeepSeek-V3 / 600k DeepSeek-R1)",
       "free_quota_usd": 1.40,
       "validity": "30 days",
-      "conditions": "手机号 + 实名认证 (国内手机可直接注册)",
+      "conditions": "Phone number + real-name verification (Chinese mobile registers directly)",
       "signup_url": "https://platform.deepseek.com/sign_up",
-      "key_setup_hint": "在 OpenClaw 等 agent 的 deepseek provider 配置里填入 sk- 开头的 key",
+      "key_setup_hint": "Put the sk- key into your agent's deepseek provider config (e.g. OpenClaw)",
       "active": true,
       "last_verified": "2026-05-23",
-      "notes": "国内 vendor 中价格最低 / 上下文最长之一"
+      "notes": "One of the cheapest, longest-context Chinese vendors",
+      "i18n": {
+        "zh": {
+          "free_summary": "新用户注册赠送 ¥10 余额 (约可用 5M tokens DeepSeek-V3 / 600k DeepSeek-R1)",
+          "conditions": "手机号 + 实名认证 (国内手机可直接注册)",
+          "key_setup_hint": "在 OpenClaw 等 agent 的 deepseek provider 配置里填入 sk- 开头的 key",
+          "notes": "国内 vendor 中价格最低 / 上下文最长之一"
+        }
+      }
     },
     {
       "id": "zhipu-glm",
-      "display_name": "智谱 GLM (Zhipu / ZAI)",
+      "display_name": "Zhipu GLM (ZAI)",
       "krouter_provider_name": "zai",
       "protocol": "openai",
       "region": "china",
       "free_type": "trial_credit",
-      "free_summary": "注册赠送 2500万 tokens 额度 (GLM-4-Plus / GLM-4-Flash)",
+      "free_summary": "Sign-up grants 25M tokens (GLM-4-Plus / GLM-4-Flash)",
       "free_quota_usd": 3.50,
       "validity": "30 days",
-      "conditions": "手机号 + 实名",
+      "conditions": "Phone number + real-name",
       "signup_url": "https://open.bigmodel.cn/usercenter/apikeys",
-      "key_setup_hint": "在 agent 里配置 zai (或 zhipu / glm) provider 的 API key",
+      "key_setup_hint": "Configure the API key for the zai (a.k.a. zhipu / glm) provider in your agent",
       "active": true,
       "last_verified": "2026-05-23",
-      "notes": "GLM-4-Flash 模型完全免费 (无 token 上限,有 rate limit)",
+      "notes": "GLM-4-Flash is fully free (no token cap, rate-limited)",
+      "i18n": {
+        "zh": {
+          "display_name": "智谱 GLM (Zhipu / ZAI)",
+          "free_summary": "注册赠送 2500万 tokens 额度 (GLM-4-Plus / GLM-4-Flash)",
+          "conditions": "手机号 + 实名",
+          "key_setup_hint": "在 agent 里配置 zai (或 zhipu / glm) provider 的 API key",
+          "notes": "GLM-4-Flash 模型完全免费 (无 token 上限,有 rate limit)"
+        }
+      },
       "additional_protocols": [
         {
           "protocol": "anthropic",
           "krouter_provider_name": "zai-anthropic",
-          "key_setup_hint": "智谱也提供 Anthropic 兼容 endpoint (用于 Claude Code 等)。在 agent 里再加一个 anthropic provider,命名为 zai-anthropic, baseURL 填 https://open.bigmodel.cn/api/anthropic, 同一个 key — 让 Claude Code 等 Anthropic 协议客户端也享有免费 routing。请去官网核对 endpoint URL 是否变更。"
+          "key_setup_hint": "Zhipu also exposes an Anthropic-compatible endpoint (for Claude Code etc.). Add a second anthropic provider in your agent named zai-anthropic, baseURL https://open.bigmodel.cn/api/anthropic, same key — so Anthropic-protocol clients like Claude Code also get free routing. Verify the endpoint URL on the official site.",
+          "i18n": {
+            "zh": {
+              "key_setup_hint": "智谱也提供 Anthropic 兼容 endpoint (用于 Claude Code 等)。在 agent 里再加一个 anthropic provider,命名为 zai-anthropic, baseURL 填 https://open.bigmodel.cn/api/anthropic, 同一个 key — 让 Claude Code 等 Anthropic 协议客户端也享有免费 routing。请去官网核对 endpoint URL 是否变更。"
+            }
+          }
         }
       ]
     },
@@ -51,73 +73,113 @@
       "protocol": "openai",
       "region": "china",
       "free_type": "trial_credit",
-      "free_summary": "新用户赠送 ¥15 体验额度 (约 100万 tokens moonshot-v1-8k)",
+      "free_summary": "New users get ¥15 trial credit (~1M tokens moonshot-v1-8k)",
       "free_quota_usd": 2.10,
       "validity": "30 days",
-      "conditions": "手机号注册",
+      "conditions": "Phone-number registration",
       "signup_url": "https://platform.moonshot.cn/console/api-keys",
-      "key_setup_hint": "agent 的 moonshot provider API key",
+      "key_setup_hint": "API key for your agent's moonshot provider",
       "active": true,
       "last_verified": "2026-05-23",
-      "notes": "支持 128k 超长上下文",
+      "notes": "Supports 128k long context",
+      "i18n": {
+        "zh": {
+          "free_summary": "新用户赠送 ¥15 体验额度 (约 100万 tokens moonshot-v1-8k)",
+          "conditions": "手机号注册",
+          "key_setup_hint": "agent 的 moonshot provider API key",
+          "notes": "支持 128k 超长上下文"
+        }
+      },
       "additional_protocols": [
         {
           "protocol": "anthropic",
           "krouter_provider_name": "moonshot-anthropic",
-          "key_setup_hint": "Moonshot 历史上为 Claude Code 提供过 Anthropic 兼容 endpoint。在 agent 里加一个 anthropic provider 命名 moonshot-anthropic, 同一个 key, baseURL 请去官网最新文档核对 (可能为 https://api.moonshot.cn/anthropic 或类似路径)。"
+          "key_setup_hint": "Moonshot has historically offered an Anthropic-compatible endpoint for Claude Code. Add an anthropic provider named moonshot-anthropic with the same key; check the latest official docs for the baseURL (may be https://api.moonshot.cn/anthropic or similar).",
+          "i18n": {
+            "zh": {
+              "key_setup_hint": "Moonshot 历史上为 Claude Code 提供过 Anthropic 兼容 endpoint。在 agent 里加一个 anthropic provider 命名 moonshot-anthropic, 同一个 key, baseURL 请去官网最新文档核对 (可能为 https://api.moonshot.cn/anthropic 或类似路径)。"
+            }
+          }
         }
       ]
     },
     {
       "id": "qwen-dashscope",
-      "display_name": "通义千问 (DashScope)",
+      "display_name": "Qwen (DashScope)",
       "krouter_provider_name": "qwen",
       "protocol": "openai",
       "region": "china",
       "free_type": "free_tier",
-      "free_summary": "qwen-turbo / qwen-plus 各送 100万 tokens; qwen-max 送 50万 tokens",
+      "free_summary": "qwen-turbo / qwen-plus get 1M tokens each; qwen-max gets 500k tokens",
       "free_quota_usd": 5.00,
       "validity": "180 days",
-      "conditions": "阿里云账号 + 实名",
+      "conditions": "Alibaba Cloud account + real-name",
       "signup_url": "https://dashscope.console.aliyun.com/apiKey",
-      "key_setup_hint": "agent 的 qwen provider DashScope-compatible API key (sk-...)",
+      "key_setup_hint": "DashScope-compatible API key (sk-...) for your agent's qwen provider",
       "active": true,
       "last_verified": "2026-05-23",
-      "notes": "阿里云生态;长有效期是亮点"
+      "notes": "Alibaba Cloud ecosystem; the long validity window is the highlight",
+      "i18n": {
+        "zh": {
+          "display_name": "通义千问 (DashScope)",
+          "free_summary": "qwen-turbo / qwen-plus 各送 100万 tokens; qwen-max 送 50万 tokens",
+          "conditions": "阿里云账号 + 实名",
+          "key_setup_hint": "agent 的 qwen provider DashScope-compatible API key (sk-...)",
+          "notes": "阿里云生态;长有效期是亮点"
+        }
+      }
     },
     {
       "id": "volcengine",
-      "display_name": "火山引擎 (字节豆包)",
+      "display_name": "Volcengine (ByteDance Doubao)",
       "krouter_provider_name": "volcengine",
       "protocol": "openai",
       "region": "china",
       "free_type": "trial_credit",
-      "free_summary": "豆包 doubao-pro / doubao-lite 注册赠 50万 tokens",
+      "free_summary": "Doubao doubao-pro / doubao-lite: 500k tokens on sign-up",
       "free_quota_usd": 2.00,
       "validity": "30 days",
-      "conditions": "火山引擎账号 + 实名 + 开通模型服务",
+      "conditions": "Volcengine account + real-name + enable the model service",
       "signup_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey",
-      "key_setup_hint": "在 agent 里配置 volcengine / doubao provider (需自定义 base URL)",
+      "key_setup_hint": "Configure a volcengine / doubao provider in your agent (custom base URL required)",
       "active": true,
       "last_verified": "2026-05-23",
-      "notes": "字节自研豆包,定价较低"
+      "notes": "ByteDance's in-house Doubao models; relatively low pricing",
+      "i18n": {
+        "zh": {
+          "display_name": "火山引擎 (字节豆包)",
+          "free_summary": "豆包 doubao-pro / doubao-lite 注册赠 50万 tokens",
+          "conditions": "火山引擎账号 + 实名 + 开通模型服务",
+          "key_setup_hint": "在 agent 里配置 volcengine / doubao provider (需自定义 base URL)",
+          "notes": "字节自研豆包,定价较低"
+        }
+      }
     },
     {
       "id": "baichuan",
-      "display_name": "百川智能 (Baichuan)",
+      "display_name": "Baichuan",
       "krouter_provider_name": "baichuan",
       "protocol": "openai",
       "region": "china",
       "free_type": "trial_credit",
-      "free_summary": "新用户赠送 ¥20 (约 500k tokens Baichuan2-Turbo)",
+      "free_summary": "New users get ¥20 (~500k tokens Baichuan2-Turbo)",
       "free_quota_usd": 2.80,
       "validity": "30 days",
-      "conditions": "手机号注册",
+      "conditions": "Phone-number registration",
       "signup_url": "https://platform.baichuan-ai.com/console/apikey",
-      "key_setup_hint": "agent 的 baichuan provider API key",
+      "key_setup_hint": "API key for your agent's baichuan provider",
       "active": true,
       "last_verified": "2026-05-23",
-      "notes": "中文优化的国内 vendor"
+      "notes": "Chinese-optimized domestic vendor",
+      "i18n": {
+        "zh": {
+          "display_name": "百川智能 (Baichuan)",
+          "free_summary": "新用户赠送 ¥20 (约 500k tokens Baichuan2-Turbo)",
+          "conditions": "手机号注册",
+          "key_setup_hint": "agent 的 baichuan provider API key",
+          "notes": "中文优化的国内 vendor"
+        }
+      }
     },
     {
       "id": "groq",
@@ -126,15 +188,23 @@
       "protocol": "openai",
       "region": "intl",
       "free_type": "daily_quota",
-      "free_summary": "永久免费层 — 14400 req/day (Llama-3.3-70B / Mixtral / Qwen-2.5 等开源模型)",
+      "free_summary": "Permanent free tier — 14,400 req/day (Llama-3.3-70B / Mixtral / Qwen-2.5 and other open models)",
       "free_quota_usd": 999.0,
       "validity": "no_expiry",
-      "conditions": "邮箱注册 (建议 Google/GitHub 第三方登录)",
+      "conditions": "Email registration (Google/GitHub SSO recommended)",
       "signup_url": "https://console.groq.com/keys",
-      "key_setup_hint": "agent 的 groq provider 填入 gsk_ 开头的 key",
+      "key_setup_hint": "Put the gsk_ key into your agent's groq provider",
       "active": true,
       "last_verified": "2026-05-23",
-      "notes": "推理速度极快 (~500 tokens/sec),免费层永久不过期,但有 rate limit"
+      "notes": "Extremely fast inference (~500 tokens/sec); the free tier never expires but is rate-limited",
+      "i18n": {
+        "zh": {
+          "free_summary": "永久免费层 — 14400 req/day (Llama-3.3-70B / Mixtral / Qwen-2.5 等开源模型)",
+          "conditions": "邮箱注册 (建议 Google/GitHub 第三方登录)",
+          "key_setup_hint": "agent 的 groq provider 填入 gsk_ 开头的 key",
+          "notes": "推理速度极快 (~500 tokens/sec),免费层永久不过期,但有 rate limit"
+        }
+      }
     },
     {
       "id": "cerebras",
@@ -143,15 +213,23 @@
       "protocol": "openai",
       "region": "intl",
       "free_type": "daily_quota",
-      "free_summary": "永久免费层 — 8000 req/day (Llama-3.3-70B / Llama-3.1-8B / Qwen)",
+      "free_summary": "Permanent free tier — 8,000 req/day (Llama-3.3-70B / Llama-3.1-8B / Qwen)",
       "free_quota_usd": 999.0,
       "validity": "no_expiry",
-      "conditions": "邮箱注册",
+      "conditions": "Email registration",
       "signup_url": "https://cloud.cerebras.ai/",
-      "key_setup_hint": "agent 的 cerebras provider key (csk_ 开头)",
+      "key_setup_hint": "API key for your agent's cerebras provider (csk_ prefix)",
       "active": true,
       "last_verified": "2026-05-23",
-      "notes": "推理速度比 Groq 更快 (~2000 tokens/sec),晶圆级芯片"
+      "notes": "Even faster than Groq (~2000 tokens/sec); wafer-scale chips",
+      "i18n": {
+        "zh": {
+          "free_summary": "永久免费层 — 8000 req/day (Llama-3.3-70B / Llama-3.1-8B / Qwen)",
+          "conditions": "邮箱注册",
+          "key_setup_hint": "agent 的 cerebras provider key (csk_ 开头)",
+          "notes": "推理速度比 Groq 更快 (~2000 tokens/sec),晶圆级芯片"
+        }
+      }
     },
     {
       "id": "nvidia-nim",
@@ -160,15 +238,23 @@
       "protocol": "openai",
       "region": "intl",
       "free_type": "trial_credit",
-      "free_summary": "免费 1000 credits (约等于 1000 次大模型调用)",
+      "free_summary": "1000 free credits (~1000 large-model calls)",
       "free_quota_usd": 25.0,
       "validity": "no_expiry",
-      "conditions": "NVIDIA 开发者账号 (注册免费)",
+      "conditions": "NVIDIA developer account (free to register)",
       "signup_url": "https://build.nvidia.com/explore/discover",
-      "key_setup_hint": "agent 的 nvidia provider 填入 nvapi- 开头的 key",
+      "key_setup_hint": "Put the nvapi- key into your agent's nvidia provider",
       "active": true,
       "last_verified": "2026-05-23",
-      "notes": "NVIDIA 托管的开源模型矩阵 (Llama / Mistral / Phi / Yi / DeepSeek 等)"
+      "notes": "NVIDIA-hosted open-model lineup (Llama / Mistral / Phi / Yi / DeepSeek etc.)",
+      "i18n": {
+        "zh": {
+          "free_summary": "免费 1000 credits (约等于 1000 次大模型调用)",
+          "conditions": "NVIDIA 开发者账号 (注册免费)",
+          "key_setup_hint": "agent 的 nvidia provider 填入 nvapi- 开头的 key",
+          "notes": "NVIDIA 托管的开源模型矩阵 (Llama / Mistral / Phi / Yi / DeepSeek 等)"
+        }
+      }
     },
     {
       "id": "openrouter-free",
@@ -177,20 +263,33 @@
       "protocol": "openai",
       "region": "intl",
       "free_type": "free_tier",
-      "free_summary": "聚合平台 — 提供 ~20 个 ':free' 后缀模型 (Gemini Flash / Llama / Qwen 免费版)",
+      "free_summary": "Aggregator — ~20 ':free'-suffixed models (Gemini Flash / Llama / Qwen free variants)",
       "free_quota_usd": 999.0,
       "validity": "no_expiry",
-      "conditions": "邮箱注册 (可用 Google/GitHub)",
+      "conditions": "Email registration (Google/GitHub OK)",
       "signup_url": "https://openrouter.ai/keys",
-      "key_setup_hint": "agent 的 openrouter provider 填入 sk-or-v1- 开头的 key;model 名带 :free 后缀",
+      "key_setup_hint": "Put the sk-or-v1- key into your agent's openrouter provider; model names carry the :free suffix",
       "active": true,
       "last_verified": "2026-05-23",
-      "notes": "一个 key 用所有 vendor,免费 model 有 rate limit (20 req/min 共享)",
+      "notes": "One key for every vendor; free models are rate-limited (20 req/min shared)",
+      "i18n": {
+        "zh": {
+          "free_summary": "聚合平台 — 提供 ~20 个 ':free' 后缀模型 (Gemini Flash / Llama / Qwen 免费版)",
+          "conditions": "邮箱注册 (可用 Google/GitHub)",
+          "key_setup_hint": "agent 的 openrouter provider 填入 sk-or-v1- 开头的 key;model 名带 :free 后缀",
+          "notes": "一个 key 用所有 vendor,免费 model 有 rate limit (20 req/min 共享)"
+        }
+      },
       "additional_protocols": [
         {
           "protocol": "anthropic",
           "krouter_provider_name": "openrouter-anthropic",
-          "key_setup_hint": "OpenRouter 同时支持 Anthropic 兼容 endpoint (/v1/messages 路径)。在 agent 里再加一个 anthropic provider 命名 openrouter-anthropic, baseURL https://openrouter.ai/api/v1, 同一个 sk-or-v1- key — Claude Code 等 Anthropic 协议客户端也可享有免费 routing。"
+          "key_setup_hint": "OpenRouter also supports an Anthropic-compatible endpoint (the /v1/messages path). Add a second anthropic provider named openrouter-anthropic, baseURL https://openrouter.ai/api/v1, same sk-or-v1- key — so Anthropic-protocol clients like Claude Code get free routing too.",
+          "i18n": {
+            "zh": {
+              "key_setup_hint": "OpenRouter 同时支持 Anthropic 兼容 endpoint (/v1/messages 路径)。在 agent 里再加一个 anthropic provider 命名 openrouter-anthropic, baseURL https://openrouter.ai/api/v1, 同一个 sk-or-v1- key — Claude Code 等 Anthropic 协议客户端也可享有免费 routing。"
+            }
+          }
         }
       ]
     },
@@ -201,15 +300,23 @@
       "protocol": "openai",
       "region": "intl",
       "free_type": "daily_quota",
-      "free_summary": "Gemini 2.0 Flash 免费 — 1500 req/day / 100万 tokens/min",
+      "free_summary": "Gemini 2.0 Flash free — 1,500 req/day / 1M tokens/min",
       "free_quota_usd": 999.0,
       "validity": "no_expiry",
-      "conditions": "Google 账号 + 区域 (中国大陆 IP 不可访问)",
+      "conditions": "Google account + region (not accessible from mainland-China IPs)",
       "signup_url": "https://aistudio.google.com/apikey",
-      "key_setup_hint": "agent 的 gemini provider 填入 AIza 开头的 key",
+      "key_setup_hint": "Put the AIza key into your agent's gemini provider",
       "active": true,
       "last_verified": "2026-05-23",
-      "notes": "免费层很慷慨,但中国 IP 直接拒绝;需海外网络"
+      "notes": "Very generous free tier, but mainland-China IPs are rejected; needs an overseas network",
+      "i18n": {
+        "zh": {
+          "free_summary": "Gemini 2.0 Flash 免费 — 1500 req/day / 100万 tokens/min",
+          "conditions": "Google 账号 + 区域 (中国大陆 IP 不可访问)",
+          "key_setup_hint": "agent 的 gemini provider 填入 AIza 开头的 key",
+          "notes": "免费层很慷慨,但中国 IP 直接拒绝;需海外网络"
+        }
+      }
     },
     {
       "id": "mistral",
@@ -218,15 +325,23 @@
       "protocol": "openai",
       "region": "intl",
       "free_type": "free_tier",
-      "free_summary": "免费层 — Codestral 22B (代码) / Mistral Small 等模型免费 (rate-limited)",
+      "free_summary": "Free tier — Codestral 22B (code) / Mistral Small and others, rate-limited",
       "free_quota_usd": 999.0,
       "validity": "no_expiry",
-      "conditions": "邮箱注册",
+      "conditions": "Email registration",
       "signup_url": "https://console.mistral.ai/api-keys/",
-      "key_setup_hint": "agent 的 mistral provider key",
+      "key_setup_hint": "API key for your agent's mistral provider",
       "active": true,
       "last_verified": "2026-05-23",
-      "notes": "Codestral 是当前 SOTA 开源代码模型之一"
+      "notes": "Codestral is one of the current SOTA open code models",
+      "i18n": {
+        "zh": {
+          "free_summary": "免费层 — Codestral 22B (代码) / Mistral Small 等模型免费 (rate-limited)",
+          "conditions": "邮箱注册",
+          "key_setup_hint": "agent 的 mistral provider key",
+          "notes": "Codestral 是当前 SOTA 开源代码模型之一"
+        }
+      }
     },
     {
       "id": "together",
@@ -235,15 +350,23 @@
       "protocol": "openai",
       "region": "intl",
       "free_type": "trial_credit",
-      "free_summary": "新用户注册赠 $5 credit (够用 ~5M tokens Llama-3-8B)",
+      "free_summary": "New accounts get $5 credit (~5M tokens Llama-3-8B)",
       "free_quota_usd": 5.00,
       "validity": "no_expiry",
-      "conditions": "邮箱注册",
+      "conditions": "Email registration",
       "signup_url": "https://api.together.xyz/settings/api-keys",
-      "key_setup_hint": "agent 的 together provider key",
+      "key_setup_hint": "API key for your agent's together provider",
       "active": true,
       "last_verified": "2026-05-23",
-      "notes": "聚合 Llama / Qwen / DeepSeek / Mixtral 等开源 model"
+      "notes": "Aggregates open models — Llama / Qwen / DeepSeek / Mixtral etc.",
+      "i18n": {
+        "zh": {
+          "free_summary": "新用户注册赠 $5 credit (够用 ~5M tokens Llama-3-8B)",
+          "conditions": "邮箱注册",
+          "key_setup_hint": "agent 的 together provider key",
+          "notes": "聚合 Llama / Qwen / DeepSeek / Mixtral 等开源 model"
+        }
+      }
     },
     {
       "id": "fireworks",
@@ -252,15 +375,23 @@
       "protocol": "openai",
       "region": "intl",
       "free_type": "trial_credit",
-      "free_summary": "新用户赠 $1 credit (约 1M tokens Llama-3.3-70B)",
+      "free_summary": "New users get $1 credit (~1M tokens Llama-3.3-70B)",
       "free_quota_usd": 1.00,
       "validity": "no_expiry",
-      "conditions": "邮箱注册",
+      "conditions": "Email registration",
       "signup_url": "https://fireworks.ai/account/api-keys",
-      "key_setup_hint": "agent 的 fireworks provider key",
+      "key_setup_hint": "API key for your agent's fireworks provider",
       "active": true,
       "last_verified": "2026-05-23",
-      "notes": "侧重低延迟推理"
+      "notes": "Focused on low-latency inference",
+      "i18n": {
+        "zh": {
+          "free_summary": "新用户赠 $1 credit (约 1M tokens Llama-3.3-70B)",
+          "conditions": "邮箱注册",
+          "key_setup_hint": "agent 的 fireworks provider key",
+          "notes": "侧重低延迟推理"
+        }
+      }
     },
     {
       "id": "hyperbolic",
@@ -269,15 +400,23 @@
       "protocol": "openai",
       "region": "intl",
       "free_type": "trial_credit",
-      "free_summary": "新用户赠 $1 credit (约可用 Llama 3 系列, DeepSeek-V3 等)",
+      "free_summary": "New users get $1 credit (Llama 3 series, DeepSeek-V3, etc.)",
       "free_quota_usd": 1.00,
       "validity": "no_expiry",
-      "conditions": "邮箱注册",
+      "conditions": "Email registration",
       "signup_url": "https://app.hyperbolic.xyz/settings",
-      "key_setup_hint": "agent 的 hyperbolic provider key",
+      "key_setup_hint": "API key for your agent's hyperbolic provider",
       "active": true,
       "last_verified": "2026-05-23",
-      "notes": "可提供 BF16 精度的 Llama 3 405B 等大模型"
+      "notes": "Offers BF16-precision large models like Llama 3 405B",
+      "i18n": {
+        "zh": {
+          "free_summary": "新用户赠 $1 credit (约可用 Llama 3 系列, DeepSeek-V3 等)",
+          "conditions": "邮箱注册",
+          "key_setup_hint": "agent 的 hyperbolic provider key",
+          "notes": "可提供 BF16 精度的 Llama 3 405B 等大模型"
+        }
+      }
     },
     {
       "id": "sambanova",
@@ -286,15 +425,23 @@
       "protocol": "openai",
       "region": "intl",
       "free_type": "daily_quota",
-      "free_summary": "免费层 — Llama-3.3-70B / 405B / Qwen 等高速推理 (rate-limited)",
+      "free_summary": "Free tier — high-speed Llama-3.3-70B / 405B / Qwen inference, rate-limited",
       "free_quota_usd": 999.0,
       "validity": "no_expiry",
-      "conditions": "邮箱注册",
+      "conditions": "Email registration",
       "signup_url": "https://cloud.sambanova.ai/apis",
-      "key_setup_hint": "agent 的 sambanova provider key",
+      "key_setup_hint": "API key for your agent's sambanova provider",
       "active": true,
       "last_verified": "2026-05-23",
-      "notes": "用 RDU (Reconfigurable Dataflow Unit) 跑大模型,延迟极低"
+      "notes": "Runs large models on RDUs (Reconfigurable Dataflow Units) with very low latency",
+      "i18n": {
+        "zh": {
+          "free_summary": "免费层 — Llama-3.3-70B / 405B / Qwen 等高速推理 (rate-limited)",
+          "conditions": "邮箱注册",
+          "key_setup_hint": "agent 的 sambanova provider key",
+          "notes": "用 RDU (Reconfigurable Dataflow Unit) 跑大模型,延迟极低"
+        }
+      }
     },
     {
       "id": "deepinfra",
@@ -303,15 +450,23 @@
       "protocol": "openai",
       "region": "intl",
       "free_type": "trial_credit",
-      "free_summary": "新用户赠 $1.80 credit (Llama / Qwen / DeepSeek 等开源)",
+      "free_summary": "New users get $1.80 credit (Llama / Qwen / DeepSeek and other open models)",
       "free_quota_usd": 1.80,
       "validity": "no_expiry",
-      "conditions": "邮箱注册",
+      "conditions": "Email registration",
       "signup_url": "https://deepinfra.com/dash/api_keys",
-      "key_setup_hint": "agent 的 deepinfra provider key",
+      "key_setup_hint": "API key for your agent's deepinfra provider",
       "active": true,
       "last_verified": "2026-05-23",
-      "notes": "定价亲民,聚合多家开源 model"
+      "notes": "Wallet-friendly pricing; aggregates many open models",
+      "i18n": {
+        "zh": {
+          "free_summary": "新用户赠 $1.80 credit (Llama / Qwen / DeepSeek 等开源)",
+          "conditions": "邮箱注册",
+          "key_setup_hint": "agent 的 deepinfra provider key",
+          "notes": "定价亲民,聚合多家开源 model"
+        }
+      }
     },
     {
       "id": "huggingface",
@@ -320,15 +475,23 @@
       "protocol": "openai",
       "region": "intl",
       "free_type": "daily_quota",
-      "free_summary": "免费 Serverless Inference (社区 hosted, rate-limited)",
+      "free_summary": "Free Serverless Inference (community-hosted, rate-limited)",
       "free_quota_usd": 999.0,
       "validity": "no_expiry",
-      "conditions": "Hugging Face 账号 (邮箱注册)",
+      "conditions": "Hugging Face account (email registration)",
       "signup_url": "https://huggingface.co/settings/tokens",
-      "key_setup_hint": "agent 的 huggingface provider key (hf_ 开头)",
+      "key_setup_hint": "API key for your agent's huggingface provider (hf_ prefix)",
       "active": true,
       "last_verified": "2026-05-23",
-      "notes": "支持几乎任意 HF Hub 上的模型,但 cold-start 慢"
+      "notes": "Supports almost any model on the HF Hub, but cold-starts are slow",
+      "i18n": {
+        "zh": {
+          "free_summary": "免费 Serverless Inference (社区 hosted, rate-limited)",
+          "conditions": "Hugging Face 账号 (邮箱注册)",
+          "key_setup_hint": "agent 的 huggingface provider key (hf_ 开头)",
+          "notes": "支持几乎任意 HF Hub 上的模型,但 cold-start 慢"
+        }
+      }
     },
     {
       "id": "perplexity",
@@ -337,15 +500,23 @@
       "protocol": "openai",
       "region": "intl",
       "free_type": "trial_credit",
-      "free_summary": "Pro 订阅用户每月赠 $5 API credit",
+      "free_summary": "Pro subscribers get $5 API credit each month",
       "free_quota_usd": 5.00,
       "validity": "30 days",
-      "conditions": "Perplexity Pro 订阅 ($20/月)",
+      "conditions": "Perplexity Pro subscription ($20/month)",
       "signup_url": "https://www.perplexity.ai/settings/api",
-      "key_setup_hint": "agent 的 perplexity provider key (pplx- 开头)",
+      "key_setup_hint": "API key for your agent's perplexity provider (pplx- prefix)",
       "active": true,
       "last_verified": "2026-05-23",
-      "notes": "适合实时信息查询;模型自带 web 搜索"
+      "notes": "Good for real-time lookups; models include built-in web search",
+      "i18n": {
+        "zh": {
+          "free_summary": "Pro 订阅用户每月赠 $5 API credit",
+          "conditions": "Perplexity Pro 订阅 ($20/月)",
+          "key_setup_hint": "agent 的 perplexity provider key (pplx- 开头)",
+          "notes": "适合实时信息查询;模型自带 web 搜索"
+        }
+      }
     }
   ]
 }
