@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.11] - 2026-05-25
+
 ### Changed
 - **Dashboard logo unified to the kinthai.ai brand mark**: the top-bar logo and browser favicon now use kinthai.ai's logo instead of the krouter-specific glyph, bringing the dashboard in line with the parent brand (and matching the krouter website).
 
