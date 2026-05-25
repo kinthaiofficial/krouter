@@ -385,15 +385,21 @@ func TestApplyEmbedded_ParsesI18n(t *testing.T) {
 }
 
 func TestStartSync_ZeroIntervalReturns(t *testing.T) {
+	// Build the service (which opens a sqlite store) OUTSIDE the timed
+	// goroutine — only StartSync's `interval <= 0` early-return should be in
+	// the timed path. Previously newTestStore ran inside the goroutine, so a
+	// cold/contended CI runner (macOS especially) could blow the deadline on
+	// DB setup and flake this test. Budget is also generous now since the
+	// timed work is just a guard clause.
+	svc := New(newTestStore(t), logging.New("error"))
 	done := make(chan struct{})
 	go func() {
-		New(newTestStore(t), logging.New("error")).
-			StartSync(context.Background(), 0)
+		svc.StartSync(context.Background(), 0)
 		close(done)
 	}()
 	select {
 	case <-done:
-	case <-time.After(200 * time.Millisecond):
+	case <-time.After(2 * time.Second):
 		t.Fatal("zero interval should return immediately")
 	}
 }
