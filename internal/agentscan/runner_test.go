@@ -232,17 +232,22 @@ func TestStartPeriodicRescan_TicksAndStopsOnCtxCancel(t *testing.T) {
 }
 
 func TestStartPeriodicRescan_ZeroIntervalReturnsImmediately(t *testing.T) {
+	// Build the store OUTSIDE the timed goroutine so only the interval<=0
+	// early-return is measured. Store setup in the timed path flaked the 200ms
+	// budget on slow/cold CI runners — same root cause/fix as the freeproviders
+	// sibling test.
+	store := newRunnerStore(t)
 	done := make(chan struct{})
 	go func() {
 		agentscan.StartPeriodicRescan(
-			context.Background(), newRunnerStore(t), logging.New("error"),
+			context.Background(), store, logging.New("error"),
 			0, func() {})
 		close(done)
 	}()
 	select {
 	case <-done:
 		// good — function returned without entering the loop
-	case <-time.After(200 * time.Millisecond):
+	case <-time.After(2 * time.Second):
 		t.Fatal("StartPeriodicRescan with interval=0 did not return immediately")
 	}
 }
