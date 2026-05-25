@@ -81,6 +81,41 @@ func TestEngine_Balanced_UnknownModelFallback(t *testing.T) {
 	assert.Contains(t, dec.Reason, "claude-future-9000")
 }
 
+// Regression for the routing bug observed on a v2.3.0 dev box: an
+// OpenAI-protocol request with an unknown requested_model (e.g.
+// `baidu/cobuddy:free`) was falling back to the global
+// `claude-haiku-4-5-20251001` constant — an Anthropic-only model name —
+// and sending it to an OpenAI provider like mistral or groq. The
+// upstream then rejected with HTTP 401 / 400. The fallback must pick
+// a protocol-appropriate cheap default.
+func TestEngine_Balanced_UnknownOpenAIModelFallsBackToOpenAIModel(t *testing.T) {
+	engine := routing.New(multiProviderRegistry())
+
+	dec := engine.Decide(routing.Request{
+		Protocol:       "openai",
+		RequestedModel: "baidu/cobuddy:free",
+	}, routing.PresetBalanced)
+
+	assert.Equal(t, "deepseek", dec.Provider, "must route to an openai-protocol provider")
+	assert.Equal(t, "deepseek-chat", dec.Model,
+		"must use the openai-protocol fallback (saverOpenAIModel) — NOT claude-haiku")
+	assert.NotContains(t, dec.Model, "claude",
+		"openai-protocol path must never end up with a claude-* model name")
+}
+
+func TestEngine_Quality_UnknownOpenAIModelFallsBackToOpenAIModel(t *testing.T) {
+	engine := routing.New(multiProviderRegistry())
+
+	dec := engine.Decide(routing.Request{
+		Protocol:       "openai",
+		RequestedModel: "baidu/cobuddy:free",
+	}, routing.PresetQuality)
+
+	assert.Equal(t, "deepseek", dec.Provider)
+	assert.Equal(t, "deepseek-chat", dec.Model)
+	assert.NotContains(t, dec.Model, "claude")
+}
+
 func TestEngine_Balanced_NoProviderForProtocol(t *testing.T) {
 	engine := routing.New(anthropicRegistry())
 
