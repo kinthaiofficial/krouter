@@ -301,3 +301,50 @@ func TestBudgetExceeded_OpenAI_Returns429(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	assert.Contains(t, string(body), "budget")
 }
+
+// Issue #52: when the fallback chain is exhausted (here: the only provider is
+// unreachable), the proxy returns 502 but must still produce a durable log
+// record, so the failed request isn't silently missing from the Router/Logs
+// dashboards. We assert via the onComplete hook (fired by logRequest) rather
+// than reading the :memory: store, whose per-connection isolation makes a
+// cross-goroutine read flaky.
+func TestRouting_FallbackExhausted_StillLogsRow(t *testing.T) {
+	upstream := httptest.NewServer(http.NotFoundHandler())
+
+	store, err := storage.Open(":memory:")
+	require.NoError(t, err)
+	require.NoError(t, store.Migrate())
+	t.Cleanup(func() { _ = store.Close() })
+
+	reg := providers.New()
+	reg.Register(anthropicadapter.New(upstream.URL, upstream.Client()))
+	engine := routing.New(reg)
+
+	logged := make(chan storage.RequestRecord, 8)
+	srv := proxy.New(
+		proxy.WithLogger(logging.NewWithWriter("error", &bytes.Buffer{})),
+		proxy.WithEngine(engine),
+		proxy.WithRegistry(reg),
+		proxy.WithStore(store),
+	)
+	srv.SetOnComplete(func(rec storage.RequestRecord) { logged <- rec })
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+
+	upstream.Close() // unreachable → every fallback attempt errors out → 502
+
+	reqBody := `{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"Hi"}],"max_tokens":10}`
+	resp, err := http.Post(ts.URL+"/v1/messages", "application/json", strings.NewReader(reqBody)) //nolint:noctx
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusBadGateway, resp.StatusCode)
+
+	select {
+	case rec := <-logged:
+		assert.Equal(t, http.StatusBadGateway, rec.StatusCode, "fallback exhaustion must log a 502 row (#52)")
+		assert.Equal(t, "anthropic", rec.Protocol)
+		assert.Equal(t, "claude-sonnet-4-5", rec.RequestedModel)
+	case <-time.After(2 * time.Second):
+		t.Fatal("fallback-exhausted request was not logged (#52)")
+	}
+}
