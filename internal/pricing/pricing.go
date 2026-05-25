@@ -14,7 +14,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -27,8 +26,8 @@ const defaultLiteLLMURL = "https://raw.githubusercontent.com/BerriAI/litellm/mai
 // adapter name when the two names differ. Providers not listed here use the
 // litellm_provider value directly as the adapter name.
 var LiteLLMToKrouterProvider = map[string]string{
-	"dashscope":   "qwen",      // Aliyun DashScope → krouter qwen adapter
-	"together_ai": "together",  // Together AI
+	"dashscope":    "qwen",      // Aliyun DashScope → krouter qwen adapter
+	"together_ai":  "together",  // Together AI
 	"fireworks_ai": "fireworks", // Fireworks AI
 	// All other new providers use the same name in both LiteLLM and krouter:
 	// gemini, xai, mistral, perplexity, groq, moonshot, zai, openai, deepseek, anthropic
@@ -47,23 +46,23 @@ type PriceEntry struct {
 // Values are cost-per-token in USD (divide $N/M by 1_000_000).
 var staticPrices = map[string]PriceEntry{
 	// Anthropic
-	"claude-opus-4-7":          {Provider: "anthropic", InputCostPerToken: 15.0 / 1e6, OutputCostPerToken: 75.0 / 1e6, CachedInputCostPerToken: 1.5 / 1e6},
-	"claude-sonnet-4-6":        {Provider: "anthropic", InputCostPerToken: 3.0 / 1e6, OutputCostPerToken: 15.0 / 1e6, CachedInputCostPerToken: 0.3 / 1e6},
-	"claude-opus-4-5":          {Provider: "anthropic", InputCostPerToken: 15.0 / 1e6, OutputCostPerToken: 75.0 / 1e6, CachedInputCostPerToken: 1.5 / 1e6},
-	"claude-sonnet-4-5":        {Provider: "anthropic", InputCostPerToken: 3.0 / 1e6, OutputCostPerToken: 15.0 / 1e6, CachedInputCostPerToken: 0.3 / 1e6},
-	"claude-haiku-4-5":         {Provider: "anthropic", InputCostPerToken: 0.8 / 1e6, OutputCostPerToken: 4.0 / 1e6, CachedInputCostPerToken: 0.08 / 1e6},
-	"claude-haiku-4-5-20251001": {Provider: "anthropic", InputCostPerToken: 0.8 / 1e6, OutputCostPerToken: 4.0 / 1e6, CachedInputCostPerToken: 0.08 / 1e6},
+	"claude-opus-4-7":            {Provider: "anthropic", InputCostPerToken: 15.0 / 1e6, OutputCostPerToken: 75.0 / 1e6, CachedInputCostPerToken: 1.5 / 1e6},
+	"claude-sonnet-4-6":          {Provider: "anthropic", InputCostPerToken: 3.0 / 1e6, OutputCostPerToken: 15.0 / 1e6, CachedInputCostPerToken: 0.3 / 1e6},
+	"claude-opus-4-5":            {Provider: "anthropic", InputCostPerToken: 15.0 / 1e6, OutputCostPerToken: 75.0 / 1e6, CachedInputCostPerToken: 1.5 / 1e6},
+	"claude-sonnet-4-5":          {Provider: "anthropic", InputCostPerToken: 3.0 / 1e6, OutputCostPerToken: 15.0 / 1e6, CachedInputCostPerToken: 0.3 / 1e6},
+	"claude-haiku-4-5":           {Provider: "anthropic", InputCostPerToken: 0.8 / 1e6, OutputCostPerToken: 4.0 / 1e6, CachedInputCostPerToken: 0.08 / 1e6},
+	"claude-haiku-4-5-20251001":  {Provider: "anthropic", InputCostPerToken: 0.8 / 1e6, OutputCostPerToken: 4.0 / 1e6, CachedInputCostPerToken: 0.08 / 1e6},
 	"claude-3-5-sonnet-20241022": {Provider: "anthropic", InputCostPerToken: 3.0 / 1e6, OutputCostPerToken: 15.0 / 1e6, CachedInputCostPerToken: 0.3 / 1e6},
-	"claude-3-5-haiku-20241022": {Provider: "anthropic", InputCostPerToken: 0.8 / 1e6, OutputCostPerToken: 4.0 / 1e6, CachedInputCostPerToken: 0.08 / 1e6},
-	"claude-3-opus-20240229":    {Provider: "anthropic", InputCostPerToken: 15.0 / 1e6, OutputCostPerToken: 75.0 / 1e6, CachedInputCostPerToken: 1.5 / 1e6},
+	"claude-3-5-haiku-20241022":  {Provider: "anthropic", InputCostPerToken: 0.8 / 1e6, OutputCostPerToken: 4.0 / 1e6, CachedInputCostPerToken: 0.08 / 1e6},
+	"claude-3-opus-20240229":     {Provider: "anthropic", InputCostPerToken: 15.0 / 1e6, OutputCostPerToken: 75.0 / 1e6, CachedInputCostPerToken: 1.5 / 1e6},
 	// DeepSeek
 	"deepseek-chat":  {Provider: "deepseek", InputCostPerToken: 0.14 / 1e6, OutputCostPerToken: 0.28 / 1e6},
 	"deepseek-coder": {Provider: "deepseek", InputCostPerToken: 0.14 / 1e6, OutputCostPerToken: 0.28 / 1e6},
 	// OpenAI
-	"gpt-4o":          {Provider: "openai", InputCostPerToken: 2.5 / 1e6, OutputCostPerToken: 10.0 / 1e6},
-	"gpt-4o-mini":     {Provider: "openai", InputCostPerToken: 0.15 / 1e6, OutputCostPerToken: 0.6 / 1e6},
-	"gpt-4-turbo":     {Provider: "openai", InputCostPerToken: 10.0 / 1e6, OutputCostPerToken: 30.0 / 1e6},
-	"gpt-3.5-turbo":   {Provider: "openai", InputCostPerToken: 0.5 / 1e6, OutputCostPerToken: 1.5 / 1e6},
+	"gpt-4o":        {Provider: "openai", InputCostPerToken: 2.5 / 1e6, OutputCostPerToken: 10.0 / 1e6},
+	"gpt-4o-mini":   {Provider: "openai", InputCostPerToken: 0.15 / 1e6, OutputCostPerToken: 0.6 / 1e6},
+	"gpt-4-turbo":   {Provider: "openai", InputCostPerToken: 10.0 / 1e6, OutputCostPerToken: 30.0 / 1e6},
+	"gpt-3.5-turbo": {Provider: "openai", InputCostPerToken: 0.5 / 1e6, OutputCostPerToken: 1.5 / 1e6},
 	// MiniMax (LiteLLM does not include these; static fallback from MiniMax API platform)
 	"MiniMax-M2.7":           {Provider: "minimax", InputCostPerToken: 0.30 / 1e6, OutputCostPerToken: 1.20 / 1e6},
 	"MiniMax-M2.7-highspeed": {Provider: "minimax", InputCostPerToken: 0.30 / 1e6, OutputCostPerToken: 1.20 / 1e6},
@@ -77,7 +76,6 @@ type Service struct {
 	httpClient *http.Client
 	logger     *slog.Logger
 	syncURL    string
-	onSync     func(catalog map[string][]string) // optional: called after each successful sync
 }
 
 // New creates a pricing service. store may be nil (disables SQLite caching).
@@ -105,14 +103,6 @@ func NewWithSyncURL(store *storage.Store, syncURL string) *Service {
 func (s *Service) WithHTTPClient(c *http.Client) *Service {
 	s.httpClient = c
 	return s
-}
-
-// OnSync registers a callback that is invoked after each successful LiteLLM
-// sync. The argument is a map of litellm_provider → []model_id derived from
-// the catalog (all models, not just priced ones). Used by serve.go to update
-// provider adapter model lists at runtime.
-func (s *Service) OnSync(fn func(catalog map[string][]string)) {
-	s.onSync = fn
 }
 
 // SyncOnceForTest triggers a single sync immediately (test helper).
@@ -261,10 +251,9 @@ func (s *Service) syncOnce(ctx context.Context) {
 
 	s.logger.Info("pricing: sync complete", "models", len(updated))
 
-	// Build full model catalog from all entries (including cost=0).
-	catalog := parseCatalogEntries(body)
-
-	// Persist pricing + catalog to SQLite and update sync meta.
+	// Persist per-token pricing to SQLite and update sync meta. LiteLLM is the
+	// source for *pricing only*; the routable model list comes from live
+	// /v1/models discovery, not from this sync.
 	if s.store != nil {
 		now := time.Now().UTC()
 		for modelID, entry := range updated {
@@ -279,24 +268,12 @@ func (s *Service) syncOnce(ctx context.Context) {
 				UpdatedAt:               now,
 			})
 		}
-		if len(catalog) > 0 {
-			_ = s.store.UpsertModelCatalogBatch(ctx, catalog)
-		}
 		_ = s.store.SetSyncMeta(ctx, "last_sync_at", now.Format(time.RFC3339))
 		_ = s.store.SetSyncMeta(ctx, "last_sha256", hash)
 		_ = s.store.SetSyncMeta(ctx, "source_url", s.syncURL)
 		if etag := resp.Header.Get("ETag"); etag != "" {
 			_ = s.store.SetSyncMeta(ctx, "last_etag", etag)
 		}
-	}
-
-	// Notify listeners with the grouped catalog (litellm_provider → model IDs).
-	if s.onSync != nil {
-		grouped := make(map[string][]string)
-		for _, e := range catalog {
-			grouped[e.LiteLLMProvider] = append(grouped[e.LiteLLMProvider], e.ModelID)
-		}
-		s.onSync(grouped)
 	}
 }
 
@@ -347,43 +324,6 @@ func (s *Service) parseLiteLLM(data []byte) (map[string]parsedEntry, error) {
 	return out, nil
 }
 
-// parseCatalogEntries parses ALL model entries from the LiteLLM JSON into
-// ModelCatalogEntry records (including cost=0 entries skipped by parseLiteLLM).
-// The provider prefix is stripped from the JSON key:
-//
-//	"dashscope/qwen-max" → LiteLLMProvider="dashscope", ModelID="qwen-max"
-//	"kimi-latest" (litellm_provider="moonshot") → LiteLLMProvider="moonshot", ModelID="kimi-latest"
-func parseCatalogEntries(data []byte) []storage.ModelCatalogEntry {
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return nil
-	}
-	out := make([]storage.ModelCatalogEntry, 0, len(raw))
-	for key, entryRaw := range raw {
-		var e liteLLMEntry
-		if err := json.Unmarshal(entryRaw, &e); err != nil {
-			continue
-		}
-		if e.Provider == "" {
-			continue // skip entries without a provider (top-level metadata keys)
-		}
-		// Derive model_id by stripping the provider prefix from the JSON key.
-		modelID := key
-		if idx := strings.IndexByte(key, '/'); idx >= 0 {
-			modelID = key[idx+1:]
-		}
-		out = append(out, storage.ModelCatalogEntry{
-			LiteLLMProvider:    e.Provider,
-			ModelID:            modelID,
-			RawKey:             key,
-			InputCostPerToken:  e.InputCostPerToken,
-			OutputCostPerToken: e.OutputCostPerToken,
-			MaxTokens:          e.MaxTokens,
-		})
-	}
-	return out
-}
-
 // InputCostPerToken returns the input cost per token in USD for the given model.
 // Returns 0 if the model is not in the pricing table. Used by the routing engine
 // to rank models by cost without constructing a full request record.
@@ -395,6 +335,24 @@ func (s *Service) InputCostPerToken(model string) float64 {
 		return 0
 	}
 	return e.InputCostPerToken
+}
+
+// ProviderForModel returns the krouter provider/adapter name associated with a
+// model in the pricing table, or "" if the model is unknown. The LiteLLM vendor
+// string is mapped to the krouter adapter name where they differ. Used to
+// attribute a proxied request to the provider whose key it carries, for lazy
+// model discovery.
+func (s *Service) ProviderForModel(model string) string {
+	s.mu.RLock()
+	e, ok := s.prices[model]
+	s.mu.RUnlock()
+	if !ok {
+		return ""
+	}
+	if mapped, ok := LiteLLMToKrouterProvider[e.Provider]; ok {
+		return mapped
+	}
+	return e.Provider
 }
 
 // ModelCount returns the number of models currently in the pricing table.
