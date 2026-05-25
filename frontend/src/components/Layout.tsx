@@ -52,7 +52,7 @@ export default function Layout() {
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center gap-3 flex-wrap">
           {/* Brand */}
           <div className="flex items-center gap-2 shrink-0">
-            <img src="/krouter/favicon.svg" alt="" className="w-6 h-6 shrink-0 rounded-md" />
+            <img src="/krouter/favicon.png" alt="" className="w-6 h-6 shrink-0 rounded-md" />
             <span className="font-bold text-[15px] tracking-tight text-ink">KRouter</span>
           </div>
 
