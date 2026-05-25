@@ -15,7 +15,10 @@ func TestWaitForProcessExit_ReturnsImmediatelyWhenProcessGone(t *testing.T) {
 	start := time.Now()
 	config.WaitForProcessExit("noproc", 2*time.Second, 10*time.Millisecond,
 		func(string) bool { return false })
-	assert.Less(t, time.Since(start), 100*time.Millisecond,
+	// Generous budget: the call returns on the first check (the 2s max never
+	// elapses), but a tight 100ms assert can flake on a cold/contended CI
+	// runner. 1s still proves it didn't poll/wait.
+	assert.Less(t, time.Since(start), 1*time.Second,
 		"should return immediately when process is already gone")
 }
 

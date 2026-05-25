@@ -359,15 +359,18 @@ func TestWithVersion_EmptyStringPreservesDefault(t *testing.T) {
 // ─── StartSync lifecycle ───────────────────────────────────────────────────
 
 func TestStartSync_ZeroIntervalReturnsImmediately(t *testing.T) {
+	// Build the service (opens a store) OUTSIDE the timed goroutine — only the
+	// interval<=0 early-return should be measured. Store setup in the timed
+	// path flaked the 200ms budget on slow/cold CI runners.
+	svc := New(newSyncTestStore(t), logging.New("error"))
 	done := make(chan struct{})
 	go func() {
-		New(newSyncTestStore(t), logging.New("error")).
-			StartSync(context.Background(), 0)
+		svc.StartSync(context.Background(), 0)
 		close(done)
 	}()
 	select {
 	case <-done:
-	case <-time.After(200 * time.Millisecond):
+	case <-time.After(2 * time.Second):
 		t.Fatal("StartSync with interval=0 did not return immediately")
 	}
 }
