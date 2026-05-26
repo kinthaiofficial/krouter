@@ -156,9 +156,9 @@ func (s *Store) ListRequestsSince(ctx context.Context, since time.Time, limit in
 	const q = `SELECT id, ts_utc,
 		COALESCE(agent,''), protocol,
 		COALESCE(requested_model,''), COALESCE(actual_provider,''), COALESCE(actual_model,''),
-		COALESCE(input_tokens,0), COALESCE(output_tokens,0), COALESCE(cached_tokens,0),
+		COALESCE(input_tokens,0), COALESCE(output_tokens,0), COALESCE(cached_tokens,0), COALESCE(cache_write_tokens,0),
 		COALESCE(cost_micro_usd,0), COALESCE(latency_ms,0),
-		COALESCE(status_code,0), COALESCE(error_message,'')
+		COALESCE(status_code,0), COALESCE(error_message,''), COALESCE(routing_preset,'')
 		FROM requests WHERE ts_utc >= ? ORDER BY ts_utc DESC LIMIT ?`
 	rows, err := s.db.QueryContext(ctx, q, since.UTC().Format(time.RFC3339), limit)
 	if err != nil {
@@ -172,9 +172,9 @@ func (s *Store) ListRequestsSince(ctx context.Context, since time.Time, limit in
 		if err := rows.Scan(
 			&r.ID, &tsStr, &r.Agent, &r.Protocol,
 			&r.RequestedModel, &r.Provider, &r.Model,
-			&r.InputTokens, &r.OutputTokens, &r.CachedTokens,
+			&r.InputTokens, &r.OutputTokens, &r.CachedTokens, &r.CacheWriteTokens,
 			&r.CostMicroUSD, &r.LatencyMS,
-			&r.StatusCode, &r.ErrorMessage,
+			&r.StatusCode, &r.ErrorMessage, &r.RoutingPreset,
 		); err != nil {
 			return nil, err
 		}

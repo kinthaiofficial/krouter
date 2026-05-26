@@ -376,6 +376,7 @@ func (s *Server) handleAnthropicWithRouting(
 				StatusCode:     http.StatusTooManyRequests,
 				LatencyMS:      time.Since(start).Milliseconds(),
 				ErrorMessage:   err.Error(),
+				RoutingPreset:  preset,
 			})
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusTooManyRequests)
@@ -402,6 +403,7 @@ func (s *Server) handleAnthropicWithRouting(
 			StatusCode:     http.StatusBadGateway,
 			LatencyMS:      time.Since(start).Milliseconds(),
 			ErrorMessage:   err.Error(),
+			RoutingPreset:  preset,
 		})
 		http.Error(w, "bad gateway", http.StatusBadGateway)
 		return
@@ -465,6 +467,7 @@ func (s *Server) handleAnthropicWithRouting(
 				CostMicroUSD:     cost,
 				LatencyMS:        time.Since(start).Milliseconds(),
 				StatusCode:       statusCode,
+				RoutingPreset:    preset,
 			})
 			s.updateSessionFromResponse(sessionKey, dec.Provider, dec.Model, in, out, cached, cacheWrite)
 		})
@@ -496,6 +499,7 @@ func (s *Server) handleAnthropicWithRouting(
 			CostMicroUSD:     cost,
 			LatencyMS:        latencyMS,
 			StatusCode:       statusCode,
+			RoutingPreset:    preset,
 		})
 		s.updateSessionFromResponse(sessionKey, dec.Provider, dec.Model, in, out, cached, cacheWrite)
 	}
@@ -884,6 +888,7 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 				StatusCode:     http.StatusTooManyRequests,
 				LatencyMS:      time.Since(start).Milliseconds(),
 				ErrorMessage:   err.Error(),
+				RoutingPreset:  preset,
 			})
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusTooManyRequests)
@@ -906,6 +911,7 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 			StatusCode:     http.StatusBadGateway,
 			LatencyMS:      time.Since(start).Milliseconds(),
 			ErrorMessage:   err.Error(),
+			RoutingPreset:  preset,
 		})
 		http.Error(w, "bad gateway", http.StatusBadGateway)
 		return
@@ -947,6 +953,7 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 				CostMicroUSD:     cost,
 				LatencyMS:        time.Since(start).Milliseconds(),
 				StatusCode:       statusCode,
+				RoutingPreset:    preset,
 			})
 			s.updateSessionFromResponse(sessionKey, dec.Provider, dec.Model, in, out, cached, cacheWrite)
 		})
@@ -976,6 +983,7 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 			CostMicroUSD:     cost,
 			LatencyMS:        latencyMS,
 			StatusCode:       statusCode,
+			RoutingPreset:    preset,
 		})
 		s.updateSessionFromResponse(sessionKey, dec.Provider, dec.Model, in, out, cached, cacheWrite)
 	}

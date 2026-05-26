@@ -36,6 +36,8 @@
     "quota": "配额",
     "today": "今日",
     "requests": "请求数",
+    "routes": "路由数",
+    "no_savings": "—",
     "saved": "已节省",
     "spent": "已消费",
     "this_week": "本周",
@@ -378,7 +380,9 @@
     "balanced": "均衡",
     "balanced_desc": "质量与成本兼顾",
     "quality": "高质量",
-    "quality_desc": "最佳可用模型"
+    "quality_desc": "最佳可用模型",
+    "passthrough": "直通",
+    "passthrough_desc": "原样转发，不做路由改写"
   },
   "quota": {
     "window_5h": "5 小时窗口",

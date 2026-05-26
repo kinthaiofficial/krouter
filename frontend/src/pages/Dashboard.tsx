@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { useTranslation } from 'react-i18next'
-import { api, type Preset, type DashboardStats } from '../api/client'
+import { api, type Preset, type DashboardStats, type PresetStat } from '../api/client'
 import PresetSwitcher from '../components/PresetSwitcher'
 import QuotaBar from '../components/QuotaBar'
 import { Panel, Badge } from '../components/ui'
@@ -63,11 +63,20 @@ export default function Dashboard() {
 
       {/* KPI strip — today, real numbers only */}
       <div className="grid grid-cols-2 md:grid-cols-4 bg-card border border-line rounded-xl overflow-hidden mb-4">
-        <Kpi rail="#767c89" label={t('dashboard.requests')} value={String(budget?.requests_today ?? 0)} />
+        <Kpi rail="#767c89" label={t('dashboard.routes')} value={String(budget?.requests_today ?? 0)} />
         <Kpi rail="#0fa46a" label={t('dashboard.saved')} value={`$${savings.toFixed(3)}`} accent />
         <Kpi rail="#3b82f6" label={t('dashboard.spent')} value={`$${cost.toFixed(3)}`} />
         <Kpi rail="#f59e0b" label={t('dashboard.saved_label')} value={`${savedPct}%`} />
       </div>
+
+      {/* Preset breakdown — routes by routing mode */}
+      {dashStats?.preset_breakdown && dashStats.preset_breakdown.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 bg-card border border-line rounded-xl overflow-hidden mb-4">
+          {dashStats.preset_breakdown.map((ps) => (
+            <PresetKpi key={ps.preset} stat={ps} t={t} />
+          ))}
+        </div>
+      )}
 
       {/* Preset + provider distribution */}
       <div className="grid md:grid-cols-[300px_1fr] gap-4 items-start">
@@ -128,6 +137,29 @@ function Kpi({ rail, label, value, accent }: { rail: string; label: string; valu
       <p className="text-[11px] font-semibold uppercase tracking-wide text-faint">{label}</p>
       <p className={['text-2xl font-bold tabular-nums mt-1.5 font-mono', accent ? 'text-brand-ink' : 'text-ink'].join(' ')}>
         {value}
+      </p>
+    </div>
+  )
+}
+
+const PRESET_RAIL: Record<string, string> = {
+  saver:       '#0fa46a',
+  balanced:    '#3b82f6',
+  quality:     '#8b5cf6',
+  passthrough: '#767c89',
+}
+
+function PresetKpi({ stat, t }: { stat: PresetStat; t: ReturnType<typeof useTranslation>['t'] }) {
+  const rail = PRESET_RAIL[stat.preset] ?? '#767c89'
+  return (
+    <div className="relative px-4 py-4 border-r border-b border-line last:border-r-0 md:border-b-0 [&:nth-child(2)]:border-r-0 md:[&:nth-child(2)]:border-r [&:nth-child(3)]:border-b-0">
+      <span className="absolute left-0 top-3.5 bottom-3.5 w-[3px] rounded-r" style={{ background: rail }} />
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-faint">{t(`preset.${stat.preset}`)}</p>
+      <p className="text-2xl font-bold tabular-nums mt-1.5 font-mono text-ink">{stat.requests.toLocaleString()}</p>
+      <p className="text-xs text-faint mt-1 tabular-nums">
+        {stat.savings_usd > 0
+          ? `$${stat.savings_usd.toFixed(3)} · ${stat.savings_pct.toFixed(0)}%`
+          : t('dashboard.no_savings')}
       </p>
     </div>
   )

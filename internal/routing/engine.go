@@ -65,9 +65,10 @@ func ComplexityScore(req Request) float64 {
 
 // Preset constants match the values stored in settings_kv.
 const (
-	PresetSaver    = "saver"
-	PresetBalanced = "balanced"
-	PresetQuality  = "quality"
+	PresetSaver       = "saver"
+	PresetBalanced    = "balanced"
+	PresetQuality     = "quality"
+	PresetPassthrough = "passthrough"
 )
 
 // saverAnthropicModel is the cheapest Anthropic model used by the Saver preset.
@@ -334,7 +335,9 @@ func (e *Engine) Decide(req Request, preset string) Decision {
 	// cache hit rate is high enough that staying on the bound (provider, model)
 	// is mathematically cheaper than switching to a cheaper alternative.
 	// Only active for saver/balanced — quality users prioritise capability.
-	if e.session != nil && req.SessionKey != "" &&
+	// Passthrough never does sticky routing — it always forwards the original model.
+	if preset != PresetPassthrough &&
+		e.session != nil && req.SessionKey != "" &&
 		(preset == PresetSaver || preset == PresetBalanced || preset == "") {
 		if sess, ok := e.session.Get(req.SessionKey); ok && sess.RequestCount > 0 {
 			if dec, sticky := e.tryStickyRoute(req, sess); sticky {
@@ -351,6 +354,8 @@ func (e *Engine) Decide(req Request, preset string) Decision {
 		dec = e.decideSaver(req)
 	case PresetQuality:
 		dec = e.decideQuality(req)
+	case PresetPassthrough:
+		dec = e.decidePassthrough(req)
 	default:
 		dec = e.decideBalanced(req)
 	}
@@ -596,8 +601,11 @@ func (e *Engine) buildStickyDecisionWithThreshold(
 //	DailyPercent or WeeklyPercent >= 0.95 → force "saver" (cheapest model)
 //	DailyPercent or WeeklyPercent >= 0.80 → downgrade balanced/quality by one tier
 //	OpusPercent >= 0.90                   → block Opus (handled in decideQuality)
+//
+// Passthrough is never downgraded — quota pressure does not override the user's
+// explicit intent to forward the original model unchanged.
 func (e *Engine) applyQuotaDowngrade(preset string) string {
-	if e.quota == nil {
+	if e.quota == nil || preset == PresetPassthrough {
 		return preset
 	}
 	qs := e.quota.CurrentQuota(context.Background())
@@ -622,6 +630,27 @@ func (e *Engine) isOpusBlocked() bool {
 		return false
 	}
 	return e.quota.CurrentQuota(context.Background()).OpusPercent >= 0.90
+}
+
+// decidePassthrough forwards the request with the original model unchanged.
+// It resolves the provider that supports the requested model, then returns
+// that provider + the original model as-is. Falls through to balanced when
+// no provider is found.
+func (e *Engine) decidePassthrough(req Request) Decision {
+	proto := providers.Protocol(req.Protocol)
+	provider := e.pickProviderForModel(proto, req.RequestedModel)
+	if provider == nil {
+		return Decision{
+			Provider: req.Protocol,
+			Model:    req.RequestedModel,
+			Reason:   fmt.Sprintf("passthrough: no provider for protocol %q, forwarding as-is", req.Protocol),
+		}
+	}
+	return Decision{
+		Provider: provider.Name(),
+		Model:    req.RequestedModel,
+		Reason:   fmt.Sprintf("passthrough: forwarding %s via %s unchanged", req.RequestedModel, provider.Name()),
+	}
 }
 
 // decideBalanced honours the requested model; prefers the provider that explicitly

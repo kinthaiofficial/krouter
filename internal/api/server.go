@@ -67,9 +67,10 @@ import (
 const defaultPreset = "balanced"
 
 var validPresets = map[string]bool{
-	"saver":    true,
-	"balanced": true,
-	"quality":  true,
+	"saver":       true,
+	"balanced":    true,
+	"quality":     true,
+	"passthrough": true,
 }
 
 // sseEvent is a single Server-Sent Event.
@@ -353,7 +354,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		if patch.Preset != nil {
 			if !validPresets[*patch.Preset] {
-				http.Error(w, `{"error":"preset must be one of: saver, balanced, quality"}`, http.StatusBadRequest)
+				http.Error(w, `{"error":"preset must be one of: saver, balanced, quality, passthrough"}`, http.StatusBadRequest)
 				return
 			}
 			current.Preset = *patch.Preset
@@ -720,7 +721,7 @@ func (s *Server) setPreset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !validPresets[body.Preset] {
-		http.Error(w, `{"error":"preset must be one of: saver, balanced, quality"}`, http.StatusBadRequest)
+		http.Error(w, `{"error":"preset must be one of: saver, balanced, quality, passthrough"}`, http.StatusBadRequest)
 		return
 	}
 	if s.store != nil {
@@ -1706,14 +1707,32 @@ func (s *Server) handleDashboardStats(w http.ResponseWriter, r *http.Request) {
 		CostUSD    float64 `json:"cost_usd"`
 		SavingsUSD float64 `json:"savings_usd"`
 	}
+	type presetStat struct {
+		Preset     string  `json:"preset"`
+		Requests   int     `json:"requests"`
+		SavingsUSD float64 `json:"savings_usd"`
+		SavingsPct float64 `json:"savings_pct"`
+	}
 	type response struct {
 		Weekly          weeklyStats    `json:"weekly"`
 		Providers       []providerDist `json:"providers"`
 		AgentsConnected int            `json:"agents_connected"`
+		PresetBreakdown []presetStat   `json:"preset_breakdown"`
 	}
 
 	var resp response
 	resp.Providers = []providerDist{}
+
+	presetOrder := []string{"saver", "balanced", "quality", "passthrough"}
+	type presetAccum struct {
+		req      int
+		cost     float64
+		baseline float64
+	}
+	byPreset := make(map[string]*presetAccum, len(presetOrder))
+	for _, p := range presetOrder {
+		byPreset[p] = &presetAccum{}
+	}
 
 	if s.store != nil {
 		weekAgo := time.Now().UTC().Add(-7 * 24 * time.Hour)
@@ -1724,12 +1743,26 @@ func (s *Server) handleDashboardStats(w http.ResponseWriter, r *http.Request) {
 				resp.Weekly.Requests++
 				cost := float64(rec.CostMicroUSD) / 1_000_000
 				resp.Weekly.CostUSD += cost
+
+				var baselineMicro int64
 				if s.pricing != nil {
-					baseline := s.pricing.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens, rec.CachedTokens, rec.CacheWriteTokens)
-					if saved := baseline - rec.CostMicroUSD; saved > 0 {
+					baselineMicro = s.pricing.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens, rec.CachedTokens, rec.CacheWriteTokens)
+					if saved := baselineMicro - rec.CostMicroUSD; saved > 0 {
 						resp.Weekly.SavingsUSD += float64(saved) / 1_000_000
 					}
 				}
+
+				// Accumulate per-preset stats.
+				ps := rec.RoutingPreset
+				if ps == "" {
+					ps = "balanced" // legacy records without preset default to balanced
+				}
+				if acc, ok := byPreset[ps]; ok {
+					acc.req++
+					acc.cost += cost
+					acc.baseline += float64(baselineMicro) / 1_000_000
+				}
+
 				pd, ok := byProvider[rec.Provider]
 				if !ok {
 					pd = &providerDist{Name: rec.Provider}
@@ -1746,6 +1779,25 @@ func (s *Server) handleDashboardStats(w http.ResponseWriter, r *http.Request) {
 				return resp.Providers[i].Requests > resp.Providers[j].Requests
 			})
 		}
+	}
+
+	// Build preset_breakdown in fixed order.
+	for _, p := range presetOrder {
+		acc := byPreset[p]
+		saved := acc.baseline - acc.cost
+		if saved < 0 {
+			saved = 0
+		}
+		var pct float64
+		if acc.baseline > 0 {
+			pct = (saved / acc.baseline) * 100
+		}
+		resp.PresetBreakdown = append(resp.PresetBreakdown, presetStat{
+			Preset:     p,
+			Requests:   acc.req,
+			SavingsUSD: saved,
+			SavingsPct: pct,
+		})
 	}
 
 	// Count connected agents.

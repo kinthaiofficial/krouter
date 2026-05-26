@@ -38,7 +38,7 @@ async function patchReq<T>(path: string, body: unknown): Promise<T> {
   return resp.json() as Promise<T>
 }
 
-export type Preset = 'saver' | 'balanced' | 'quality'
+export type Preset = 'saver' | 'balanced' | 'quality' | 'passthrough'
 
 export interface Settings {
   preset: Preset
@@ -138,10 +138,18 @@ export interface PricingStatus {
   saved_this_month_usd: number
 }
 
+export interface PresetStat {
+  preset: string
+  requests: number
+  savings_usd: number
+  savings_pct: number
+}
+
 export interface DashboardStats {
   weekly: { requests: number; cost_usd: number; savings_usd: number }
   providers: { name: string; requests: number; cost_usd: number }[]
   agents_connected: number
+  preset_breakdown: PresetStat[]
 }
 
 export interface ProviderInfo {

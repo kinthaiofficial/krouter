@@ -36,6 +36,8 @@
     "quota": "Quota",
     "today": "Today",
     "requests": "requests",
+    "routes": "routes",
+    "no_savings": "—",
     "saved": "saved",
     "spent": "spent",
     "this_week": "This Week",
@@ -378,7 +380,9 @@
     "balanced": "Balanced",
     "balanced_desc": "Quality vs cost tradeoff",
     "quality": "Quality",
-    "quality_desc": "Best available models"
+    "quality_desc": "Best available models",
+    "passthrough": "Passthrough",
+    "passthrough_desc": "Forward model unchanged, no routing"
   },
   "quota": {
     "window_5h": "5-Hour Window",

@@ -27,6 +27,7 @@ type RequestRecord struct {
 	LatencyMS        int64
 	StatusCode       int
 	ErrorMessage     string
+	RoutingPreset    string // "saver" | "balanced" | "quality" | "passthrough" | ""
 }
 
 // InsertRequest writes a completed request record to the database.
@@ -35,8 +36,8 @@ func (s *Store) InsertRequest(ctx context.Context, r RequestRecord) error {
 		(id, ts_utc, agent, protocol, requested_model,
 		 actual_provider, actual_model,
 		 input_tokens, output_tokens, cached_tokens, cache_write_tokens,
-		 cost_micro_usd, latency_ms, status_code, error_message)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+		 cost_micro_usd, latency_ms, status_code, error_message, routing_preset)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
 
 	_, err := s.db.ExecContext(ctx, q,
 		r.ID,
@@ -54,6 +55,7 @@ func (s *Store) InsertRequest(ctx context.Context, r RequestRecord) error {
 		r.LatencyMS,
 		r.StatusCode,
 		r.ErrorMessage,
+		r.RoutingPreset,
 	)
 	return err
 }
@@ -68,7 +70,7 @@ func (s *Store) ListRequestsByAgent(ctx context.Context, agent string, limit int
 		COALESCE(requested_model,''), COALESCE(actual_provider,''), COALESCE(actual_model,''),
 		COALESCE(input_tokens,0), COALESCE(output_tokens,0), COALESCE(cached_tokens,0), COALESCE(cache_write_tokens,0),
 		COALESCE(cost_micro_usd,0), COALESCE(latency_ms,0),
-		COALESCE(status_code,0), COALESCE(error_message,'')
+		COALESCE(status_code,0), COALESCE(error_message,''), COALESCE(routing_preset,'')
 		FROM requests
 		WHERE agent = ?
 		ORDER BY ts_utc DESC
@@ -89,7 +91,7 @@ func (s *Store) ListRequestsByAgent(ctx context.Context, agent string, limit int
 			&r.RequestedModel, &r.Provider, &r.Model,
 			&r.InputTokens, &r.OutputTokens, &r.CachedTokens, &r.CacheWriteTokens,
 			&r.CostMicroUSD, &r.LatencyMS,
-			&r.StatusCode, &r.ErrorMessage,
+			&r.StatusCode, &r.ErrorMessage, &r.RoutingPreset,
 		); err != nil {
 			return nil, err
 		}
@@ -111,7 +113,7 @@ func (s *Store) ListRequests(ctx context.Context, limit int) ([]RequestRecord, e
 		COALESCE(requested_model,''), COALESCE(actual_provider,''), COALESCE(actual_model,''),
 		COALESCE(input_tokens,0), COALESCE(output_tokens,0), COALESCE(cached_tokens,0), COALESCE(cache_write_tokens,0),
 		COALESCE(cost_micro_usd,0), COALESCE(latency_ms,0),
-		COALESCE(status_code,0), COALESCE(error_message,'')
+		COALESCE(status_code,0), COALESCE(error_message,''), COALESCE(routing_preset,'')
 		FROM requests
 		ORDER BY ts_utc DESC
 		LIMIT ?`
@@ -131,7 +133,7 @@ func (s *Store) ListRequests(ctx context.Context, limit int) ([]RequestRecord, e
 			&r.RequestedModel, &r.Provider, &r.Model,
 			&r.InputTokens, &r.OutputTokens, &r.CachedTokens, &r.CacheWriteTokens,
 			&r.CostMicroUSD, &r.LatencyMS,
-			&r.StatusCode, &r.ErrorMessage,
+			&r.StatusCode, &r.ErrorMessage, &r.RoutingPreset,
 		); err != nil {
 			return nil, err
 		}
@@ -232,7 +234,7 @@ func (s *Store) ListRequestsInRange(ctx context.Context, from, to time.Time, age
 			COALESCE(requested_model,''), COALESCE(actual_provider,''), COALESCE(actual_model,''),
 			COALESCE(input_tokens,0), COALESCE(output_tokens,0), COALESCE(cached_tokens,0), COALESCE(cache_write_tokens,0),
 			COALESCE(cost_micro_usd,0), COALESCE(latency_ms,0),
-			COALESCE(status_code,0), COALESCE(error_message,'')
+			COALESCE(status_code,0), COALESCE(error_message,''), COALESCE(routing_preset,'')
 			FROM requests WHERE ts_utc >= ? AND ts_utc <= ? AND agent = ? ORDER BY ts_utc DESC LIMIT ?`
 		args = []any{fromStr, toStr, agent, limit}
 	} else {
@@ -241,7 +243,7 @@ func (s *Store) ListRequestsInRange(ctx context.Context, from, to time.Time, age
 			COALESCE(requested_model,''), COALESCE(actual_provider,''), COALESCE(actual_model,''),
 			COALESCE(input_tokens,0), COALESCE(output_tokens,0), COALESCE(cached_tokens,0), COALESCE(cache_write_tokens,0),
 			COALESCE(cost_micro_usd,0), COALESCE(latency_ms,0),
-			COALESCE(status_code,0), COALESCE(error_message,'')
+			COALESCE(status_code,0), COALESCE(error_message,''), COALESCE(routing_preset,'')
 			FROM requests WHERE ts_utc >= ? AND ts_utc <= ? ORDER BY ts_utc DESC LIMIT ?`
 		args = []any{fromStr, toStr, limit}
 	}
@@ -261,7 +263,7 @@ func (s *Store) ListRequestsInRange(ctx context.Context, from, to time.Time, age
 			&r.RequestedModel, &r.Provider, &r.Model,
 			&r.InputTokens, &r.OutputTokens, &r.CachedTokens, &r.CacheWriteTokens,
 			&r.CostMicroUSD, &r.LatencyMS,
-			&r.StatusCode, &r.ErrorMessage,
+			&r.StatusCode, &r.ErrorMessage, &r.RoutingPreset,
 		); err != nil {
 			return nil, err
 		}

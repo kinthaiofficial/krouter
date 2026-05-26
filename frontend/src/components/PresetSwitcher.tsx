@@ -16,6 +16,7 @@ export default function PresetSwitcher({ current, onSelect }: Props) {
     { value: 'saver', label: t('preset.saver'), description: t('preset.saver_desc') },
     { value: 'balanced', label: t('preset.balanced'), description: t('preset.balanced_desc') },
     { value: 'quality', label: t('preset.quality'), description: t('preset.quality_desc') },
+    { value: 'passthrough', label: t('preset.passthrough'), description: t('preset.passthrough_desc') },
   ]
 
   useEffect(() => {
