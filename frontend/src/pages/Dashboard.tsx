@@ -1,11 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { useTranslation } from 'react-i18next'
-import { api, type LogRecord, type Preset, type DashboardStats } from '../api/client'
+import { api, type Preset, type DashboardStats } from '../api/client'
 import PresetSwitcher from '../components/PresetSwitcher'
 import QuotaBar from '../components/QuotaBar'
-import { Panel, Badge, StatusDot } from '../components/ui'
+import { Panel, Badge } from '../components/ui'
 
 const PROVIDER_COLORS = ['#0fa46a', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#06b6d4']
 
@@ -15,7 +15,6 @@ export default function Dashboard() {
   const { data: status } = useQuery({ queryKey: ['status'], queryFn: api.status })
   const { data: budget } = useQuery({ queryKey: ['budget'], queryFn: api.budget })
   const { data: quotas } = useQuery({ queryKey: ['quota'], queryFn: api.quota })
-  const { data: logsData } = useQuery({ queryKey: ['logs'], queryFn: () => api.logs(20) })
   const { data: presetData } = useQuery({ queryKey: ['preset'], queryFn: api.preset })
   const { data: dashStats } = useQuery<DashboardStats>({
     queryKey: ['dashboard-stats'],
@@ -23,23 +22,14 @@ export default function Dashboard() {
     refetchInterval: 30_000,
   })
 
-  const [recentLogs, setRecentLogs] = useState<LogRecord[]>([])
   const esRef = useRef<EventSource | null>(null)
-
-  useEffect(() => {
-    if (logsData) setRecentLogs(logsData)
-  }, [logsData])
 
   useEffect(() => {
     const es = new EventSource('/internal/events', { withCredentials: true })
     esRef.current = es
-    es.addEventListener('request_completed', (e) => {
-      try {
-        const rec = JSON.parse(e.data) as LogRecord
-        setRecentLogs((prev) => [rec, ...prev].slice(0, 50))
-        qc.invalidateQueries({ queryKey: ['budget'] })
-        qc.invalidateQueries({ queryKey: ['quota'] })
-      } catch { /* ignore */ }
+    es.addEventListener('request_completed', () => {
+      qc.invalidateQueries({ queryKey: ['budget'] })
+      qc.invalidateQueries({ queryKey: ['quota'] })
     })
     es.addEventListener('settings_changed', () => {
       qc.invalidateQueries({ queryKey: ['preset'] })
@@ -127,10 +117,6 @@ export default function Dashboard() {
         </Panel>
       )}
 
-      {/* Recent requests */}
-      <Panel className="mt-4" title={t('dashboard.recent_requests')} right={<Badge tone="subtle">{t('router.live')}</Badge>} flush>
-        <RequestTable logs={recentLogs} />
-      </Panel>
     </div>
   )
 }
@@ -228,41 +214,3 @@ function BudgetBar({ costUSD, limitUSD, pct, blocked }: {
   )
 }
 
-function RequestTable({ logs }: { logs: LogRecord[] }) {
-  const { t } = useTranslation()
-  if (logs.length === 0) return <p className="p-4 text-sm text-faint">{t('dashboard.no_requests')}</p>
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-[11px] uppercase tracking-wide text-faint font-semibold bg-gray-50">
-            {[
-              t('dashboard.col_time'),
-              t('dashboard.col_agent'),
-              t('dashboard.col_model'),
-              t('dashboard.col_provider'),
-              t('dashboard.col_cost'),
-              t('dashboard.col_latency'),
-              t('logs.col_status'),
-            ].map((h) => (
-              <th key={h} className="px-4 py-2.5 first:pl-4 last:text-right border-b border-line">{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {logs.map((log) => (
-            <tr key={log.id} className="hover:bg-gray-50 border-b border-line last:border-b-0">
-              <td className="px-4 py-2.5 text-faint font-mono tabular-nums text-xs whitespace-nowrap">{new Date(log.ts).toLocaleTimeString()}</td>
-              <td className="px-4 py-2.5">{log.agent ?? '—'}</td>
-              <td className="px-4 py-2.5 font-mono text-xs">{log.model}</td>
-              <td className="px-4 py-2.5 capitalize">{log.provider}</td>
-              <td className="px-4 py-2.5 font-mono tabular-nums text-xs">${log.cost_usd.toFixed(4)}</td>
-              <td className="px-4 py-2.5 font-mono tabular-nums text-xs">{log.latency_ms}ms</td>
-              <td className="px-4 py-2.5 text-right text-xs"><StatusDot code={log.status_code} /></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
