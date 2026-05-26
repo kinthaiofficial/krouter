@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.6] - 2026-05-26
+
+### Changed
+- **Renamed "agent" → "app" throughout**: the word "agent" was ambiguous — it referred to both the AI applications (openclaw / claude-code / cursor / codex) that are krouter's direct clients, and to named configuration profiles *inside* those applications. The canonical term is now "app" at every layer: DB columns (`agent_settings` → `app_settings`, `agent_id` → `app_id`, `requests.agent` → `requests.app`), Go types and function names, HTTP routes (`/internal/agents/*` → `/internal/apps/*`), SSE / JSON field names, the web dashboard ("Agents" page → "Apps" page), and i18n keys (`agents.*` → `apps.*`). The `SubAgentSection` component is removed — individual agent profiles inside an app are not observable from HTTP traffic and are not shown in the UI.
+
+### Added
+- **Key-hint routing channels on the Apps page**: the `requests` table gains a `key_hint` column (last 4 characters of the api_key extracted from `x-api-key` or `Authorization: Bearer` headers). The Apps page now shows the distinct routing channels used by each app — each channel corresponds to one api_key suffix, its request count, and its cost. `NULL` for pre-migration rows; `""` for requests with no api_key. Migrations 018 and 019.
+
+## [2.4.5] - 2026-05-26
+
+### Changed
+- **DecisionCard header redesigned**: savings pill, routing summary line, and app chip moved into the card header with a shadow separator between the latest card and the history list.
+
+## [2.4.4] - 2026-05-26
+
+### Added
+- **Passthrough preset**: new fourth routing mode (`passthrough`) that forwards the exact model the client requested without any substitution. The routing engine resolves which provider serves the model and passes through unchanged; quota downgrade and cache-sticky routing both skip passthrough. Migration 017 adds a `routing_preset` column to the `requests` table; all four `logRequest` call sites record the active preset. The Dashboard KPI strip relabels "requests" as "routes" and adds a per-preset breakdown row (saver / balanced / quality / passthrough) showing request count, savings USD, and savings percentage.
+
+### Removed
+- **Dashboard "Recent Requests" section**: the Router page already surfaces this data in a better format; the duplicated table on the Dashboard was removed.
+
+## [2.4.3] - 2026-05-26
+
+### Changed
+- **Router page redesigned**: routing history is now a scrollable list of inline cards with infinite scroll (replaces the fixed-height table). A "Logs" button in the header links to the full searchable archive. Token breakdown split into 4 labelled rows (input / output / cache-read / cache-write).
+
+## [2.4.2] - 2026-05-26
+
+### Added
+- **Cache read/write pricing in routing decision card**: `cache_read_per_mtok` and `cache_write_per_mtok` appear in the Request section of each decision card. Rows are hidden for models without prompt-caching support (e.g. DeepSeek, MiniMax), so non-Anthropic cards are unaffected.
+- **Per-request cache hit rate in response card**: observed hit rate (`cache_read / total`) is displayed alongside the token breakdown in the expanded card.
+- **Gzip-compressed upstream response support**: krouter now handles `Content-Encoding: gzip` responses by forwarding the original compressed bytes to the client unchanged while decompressing a separate in-memory copy for token parsing.
+
+### Fixed
+- **Cache hit rate math corrected**: `ObservedHitRate` (this turn: `cache_read / total`) and `PredictedHitRate` (next-turn estimate: `(cache_read + cache_write) / total`) are now distinct. Sticky routing uses the predicted rate; the decision reason string shows the observed rate. `OutputShare` denominator now correctly includes `CacheWriteTokens`.
+- **Transparent gzip passthrough**: the `decodeResponseBody` helper that was stripping `Content-Encoding` before forwarding is replaced by `decompressForParsing`, which reads a separate in-memory copy for token counting while leaving the original bytes and headers intact for the client.
+
+### Removed
+- **`X-Krouter-Provider` and `X-Krouter-Model` response headers**: these headers were injected into every forwarded response, modifying transparent passthrough silently. Routing information is available via `/internal/logs` instead.
+
 ## [2.4.1] - 2026-05-26
 
 ### Added
