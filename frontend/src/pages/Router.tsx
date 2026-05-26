@@ -1,19 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, CircleDot } from 'lucide-react'
+import { CircleDot, ScrollText } from 'lucide-react'
 import { api, type LogRecord } from '../api/client'
-import { DecisionCard, DecisionRow } from '../components/RoutingDecision'
+import { DecisionCard } from '../components/RoutingDecision'
 import { PageHeader } from '../components/ui'
 
-const HISTORY_CAP = 50
+const HISTORY_CAP = 200
+const INITIAL_VISIBLE = 5
+const LOAD_MORE_STEP = 5
 
 export default function Router() {
   const { t } = useTranslation()
   const [sseAlive, setSseAlive] = useState(false)
-  const [showHistory, setShowHistory] = useState(false)
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE)
+  const sentinelRef = useRef<HTMLDivElement>(null)
 
-  // Seed from the last 50 records — same source the Logs page reads from.
+  // Seed from recent records.
   // NOTE: do NOT default `data` to []; the new array reference each render
   // would re-fire the seed-merge useEffect and create a setState loop.
   const { data: seed } = useQuery({
@@ -54,13 +57,42 @@ export default function Router() {
 
   const latest = feed[0]
   const history = feed.slice(1)
+  const visibleHistory = history.slice(0, visibleCount)
+  const hasMore = visibleCount < history.length
+
+  // Infinite scroll: load more history when sentinel enters viewport.
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore) {
+          setVisibleCount((v) => v + LOAD_MORE_STEP)
+        }
+      },
+      { rootMargin: '300px' },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [hasMore])
 
   return (
     <div className="p-6 space-y-4 max-w-6xl mx-auto">
       <PageHeader
         title={t('router.title')}
         subtitle={t('router.subtitle')}
-        right={<LiveBadge alive={sseAlive} t={t} />}
+        right={
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => window.open('/krouter/logs', '_blank')}
+              className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors font-medium"
+            >
+              <ScrollText size={13} />
+              {t('router.open_logs')}
+            </button>
+            <LiveBadge alive={sseAlive} t={t} />
+          </div>
+        }
       />
 
       {!latest ? (
@@ -69,27 +101,17 @@ export default function Router() {
         <DecisionCard rec={latest} pulse={pulseId === latest.id} showLatestBadge />
       )}
 
-      {history.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200">
-          <button
-            onClick={() => setShowHistory((v) => !v)}
-            className="w-full flex items-center justify-between px-4 py-3 text-sm text-gray-600 hover:bg-gray-50 rounded-xl"
-          >
-            <span className="flex items-center gap-2">
-              {showHistory ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              {showHistory
-                ? t('router.hide_history')
-                : t('router.show_n_more', { n: history.length })}
-            </span>
-          </button>
-          {showHistory && (
-            <ul className="divide-y divide-gray-50 border-t border-gray-100">
-              {history.map((r) => (
-                <DecisionRow key={r.id} r={r} />
-              ))}
-            </ul>
-          )}
-        </div>
+      {visibleHistory.map((r) => (
+        <DecisionCard key={r.id} rec={r} pulse={pulseId === r.id} />
+      ))}
+
+      {/* Sentinel — IntersectionObserver attaches here to trigger load-more */}
+      <div ref={sentinelRef} className="h-1" />
+
+      {!hasMore && history.length > 0 && (
+        <p className="text-center text-xs text-gray-400 pb-4">
+          {t('router.all_loaded', { n: feed.length })}
+        </p>
       )}
     </div>
   )
