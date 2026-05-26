@@ -180,9 +180,11 @@ func TestDecision_ReasonContainsSavings(t *testing.T) {
 		InputTokenEst:  5000,
 	}, routing.PresetSaver)
 
-	// Saver downgrades to haiku — reason should mention savings vs opus.
+	// Saver downgrades to haiku; savings % display is intentionally omitted
+	// until Phase 3 restores a cache-aware version (see enrichDecision).
 	assert.Equal(t, "claude-haiku-4-5-20251001", dec.Model)
-	assert.Contains(t, dec.Reason, "便宜")
+	assert.NotEmpty(t, dec.Reason)
+	assert.Greater(t, dec.EstimatedCostUSD, 0.0)
 }
 
 // ── per-agent routing override ────────────────────────────────────────────────

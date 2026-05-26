@@ -6,21 +6,27 @@ import (
 )
 
 // RequestRecord mirrors the `requests` table schema (spec/05-storage.md).
+//
+// Token bucket semantics (post-Phase1):
+//   InputTokens:     fresh input tokens (not cached, not written to cache)
+//   CachedTokens:    cache_read_input_tokens (billed at ~10% of input price)
+//   CacheWriteTokens: cache_creation_input_tokens (billed at 1.25× input price, 5m TTL)
 type RequestRecord struct {
-	ID             string
-	Timestamp      time.Time
-	Agent          string // "openclaw" | "claude-code" | "cursor" | "unknown"
-	Protocol       string // "anthropic" | "openai"
-	RequestedModel string
-	Provider       string // actual_provider
-	Model          string // actual_model
-	InputTokens    int
-	OutputTokens   int
-	CachedTokens   int
-	CostMicroUSD   int64 // 1 000 000 = $1.00
-	LatencyMS      int64
-	StatusCode     int
-	ErrorMessage   string
+	ID               string
+	Timestamp        time.Time
+	Agent            string // "openclaw" | "claude-code" | "cursor" | "unknown"
+	Protocol         string // "anthropic" | "openai"
+	RequestedModel   string
+	Provider         string // actual_provider
+	Model            string // actual_model
+	InputTokens      int
+	OutputTokens     int
+	CachedTokens     int
+	CacheWriteTokens int
+	CostMicroUSD     int64 // 1 000 000 = $1.00
+	LatencyMS        int64
+	StatusCode       int
+	ErrorMessage     string
 }
 
 // InsertRequest writes a completed request record to the database.
@@ -28,9 +34,9 @@ func (s *Store) InsertRequest(ctx context.Context, r RequestRecord) error {
 	const q = `INSERT INTO requests
 		(id, ts_utc, agent, protocol, requested_model,
 		 actual_provider, actual_model,
-		 input_tokens, output_tokens, cached_tokens,
+		 input_tokens, output_tokens, cached_tokens, cache_write_tokens,
 		 cost_micro_usd, latency_ms, status_code, error_message)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
 
 	_, err := s.db.ExecContext(ctx, q,
 		r.ID,
@@ -43,6 +49,7 @@ func (s *Store) InsertRequest(ctx context.Context, r RequestRecord) error {
 		r.InputTokens,
 		r.OutputTokens,
 		r.CachedTokens,
+		r.CacheWriteTokens,
 		r.CostMicroUSD,
 		r.LatencyMS,
 		r.StatusCode,
@@ -59,7 +66,7 @@ func (s *Store) ListRequestsByAgent(ctx context.Context, agent string, limit int
 	const q = `SELECT
 		id, ts_utc, COALESCE(agent,''), protocol,
 		COALESCE(requested_model,''), COALESCE(actual_provider,''), COALESCE(actual_model,''),
-		COALESCE(input_tokens,0), COALESCE(output_tokens,0), COALESCE(cached_tokens,0),
+		COALESCE(input_tokens,0), COALESCE(output_tokens,0), COALESCE(cached_tokens,0), COALESCE(cache_write_tokens,0),
 		COALESCE(cost_micro_usd,0), COALESCE(latency_ms,0),
 		COALESCE(status_code,0), COALESCE(error_message,'')
 		FROM requests
@@ -80,7 +87,7 @@ func (s *Store) ListRequestsByAgent(ctx context.Context, agent string, limit int
 		if err := rows.Scan(
 			&r.ID, &tsStr, &r.Agent, &r.Protocol,
 			&r.RequestedModel, &r.Provider, &r.Model,
-			&r.InputTokens, &r.OutputTokens, &r.CachedTokens,
+			&r.InputTokens, &r.OutputTokens, &r.CachedTokens, &r.CacheWriteTokens,
 			&r.CostMicroUSD, &r.LatencyMS,
 			&r.StatusCode, &r.ErrorMessage,
 		); err != nil {
@@ -102,7 +109,7 @@ func (s *Store) ListRequests(ctx context.Context, limit int) ([]RequestRecord, e
 	const q = `SELECT
 		id, ts_utc, COALESCE(agent,''), protocol,
 		COALESCE(requested_model,''), COALESCE(actual_provider,''), COALESCE(actual_model,''),
-		COALESCE(input_tokens,0), COALESCE(output_tokens,0), COALESCE(cached_tokens,0),
+		COALESCE(input_tokens,0), COALESCE(output_tokens,0), COALESCE(cached_tokens,0), COALESCE(cache_write_tokens,0),
 		COALESCE(cost_micro_usd,0), COALESCE(latency_ms,0),
 		COALESCE(status_code,0), COALESCE(error_message,'')
 		FROM requests
@@ -122,7 +129,7 @@ func (s *Store) ListRequests(ctx context.Context, limit int) ([]RequestRecord, e
 		if err := rows.Scan(
 			&r.ID, &tsStr, &r.Agent, &r.Protocol,
 			&r.RequestedModel, &r.Provider, &r.Model,
-			&r.InputTokens, &r.OutputTokens, &r.CachedTokens,
+			&r.InputTokens, &r.OutputTokens, &r.CachedTokens, &r.CacheWriteTokens,
 			&r.CostMicroUSD, &r.LatencyMS,
 			&r.StatusCode, &r.ErrorMessage,
 		); err != nil {
@@ -220,7 +227,7 @@ func (s *Store) ListRequestsInRange(ctx context.Context, from, to time.Time, age
 		q = `SELECT id, ts_utc,
 			COALESCE(agent,''), protocol,
 			COALESCE(requested_model,''), COALESCE(actual_provider,''), COALESCE(actual_model,''),
-			COALESCE(input_tokens,0), COALESCE(output_tokens,0), COALESCE(cached_tokens,0),
+			COALESCE(input_tokens,0), COALESCE(output_tokens,0), COALESCE(cached_tokens,0), COALESCE(cache_write_tokens,0),
 			COALESCE(cost_micro_usd,0), COALESCE(latency_ms,0),
 			COALESCE(status_code,0), COALESCE(error_message,'')
 			FROM requests WHERE ts_utc >= ? AND ts_utc <= ? AND agent = ? ORDER BY ts_utc DESC LIMIT ?`
@@ -229,7 +236,7 @@ func (s *Store) ListRequestsInRange(ctx context.Context, from, to time.Time, age
 		q = `SELECT id, ts_utc,
 			COALESCE(agent,''), protocol,
 			COALESCE(requested_model,''), COALESCE(actual_provider,''), COALESCE(actual_model,''),
-			COALESCE(input_tokens,0), COALESCE(output_tokens,0), COALESCE(cached_tokens,0),
+			COALESCE(input_tokens,0), COALESCE(output_tokens,0), COALESCE(cached_tokens,0), COALESCE(cache_write_tokens,0),
 			COALESCE(cost_micro_usd,0), COALESCE(latency_ms,0),
 			COALESCE(status_code,0), COALESCE(error_message,'')
 			FROM requests WHERE ts_utc >= ? AND ts_utc <= ? ORDER BY ts_utc DESC LIMIT ?`
@@ -249,7 +256,7 @@ func (s *Store) ListRequestsInRange(ctx context.Context, from, to time.Time, age
 		if err := rows.Scan(
 			&r.ID, &tsStr, &r.Agent, &r.Protocol,
 			&r.RequestedModel, &r.Provider, &r.Model,
-			&r.InputTokens, &r.OutputTokens, &r.CachedTokens,
+			&r.InputTokens, &r.OutputTokens, &r.CachedTokens, &r.CacheWriteTokens,
 			&r.CostMicroUSD, &r.LatencyMS,
 			&r.StatusCode, &r.ErrorMessage,
 		); err != nil {

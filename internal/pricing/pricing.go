@@ -111,8 +111,13 @@ func (s *Service) SyncOnceForTest(ctx context.Context) {
 }
 
 // CostFor returns the cost of a completed request in micro-USD (1e6 = $1.00).
+//
+// inputTokens: fresh tokens (neither cached nor written to cache)
+// cachedTokens: cache_read_input_tokens (billed at ~10% of input price)
+// cacheWriteTokens: cache_creation_input_tokens (billed at 1.25× input price, 5m TTL)
+//
 // Returns 0 for unknown models (logged as warning).
-func (s *Service) CostFor(provider, model string, inputTokens, outputTokens, cachedTokens int) int64 {
+func (s *Service) CostFor(provider, model string, inputTokens, outputTokens, cachedTokens, cacheWriteTokens int) int64 {
 	s.mu.RLock()
 	entry, ok := s.prices[model]
 	s.mu.RUnlock()
@@ -122,13 +127,13 @@ func (s *Service) CostFor(provider, model string, inputTokens, outputTokens, cac
 		return 0
 	}
 
-	regularInput := inputTokens - cachedTokens
-	if regularInput < 0 {
-		regularInput = 0
+	if inputTokens < 0 {
+		inputTokens = 0
 	}
 
-	cost := float64(regularInput)*entry.InputCostPerToken +
+	cost := float64(inputTokens)*entry.InputCostPerToken +
 		float64(cachedTokens)*entry.CachedInputCostPerToken +
+		float64(cacheWriteTokens)*entry.InputCostPerToken*1.25 +
 		float64(outputTokens)*entry.OutputCostPerToken
 
 	return int64(cost * 1_000_000)
@@ -394,6 +399,10 @@ func (s *Service) ProviderFor(model string) string {
 // model's OWN catalog price (micro-USD) — the basis for the savings figure
 // (baseline − actual). Returns 0 for a model not in the catalog.
 //
+// inputTokens: fresh tokens (not cached, not written to cache)
+// cachedTokens: cache_read_input_tokens (billed at ~10% of input price)
+// cacheWriteTokens: cache_creation_input_tokens (billed at 1.25× input price)
+//
 // It deliberately does NOT substitute another model's price (it used to fall
 // back to claude-sonnet-4-5): comparing the user's actual cost against a model
 // they never asked for fabricates a savings number, and is inconsistent with
@@ -401,7 +410,7 @@ func (s *Service) ProviderFor(model string) string {
 // treat a 0 baseline as "no comparable baseline" — the savings aggregator only
 // sums positive (baseline − actual) deltas, so an unknown model contributes no
 // fabricated savings.
-func (s *Service) BaselineCostFor(requestedModel string, inputTokens, outputTokens int) int64 {
+func (s *Service) BaselineCostFor(requestedModel string, inputTokens, outputTokens, cachedTokens, cacheWriteTokens int) int64 {
 	s.mu.RLock()
 	entry, ok := s.prices[requestedModel]
 	s.mu.RUnlock()
@@ -409,6 +418,8 @@ func (s *Service) BaselineCostFor(requestedModel string, inputTokens, outputToke
 		return 0
 	}
 	cost := float64(inputTokens)*entry.InputCostPerToken +
+		float64(cachedTokens)*entry.CachedInputCostPerToken +
+		float64(cacheWriteTokens)*entry.InputCostPerToken*1.25 +
 		float64(outputTokens)*entry.OutputCostPerToken
 	return int64(cost * 1_000_000)
 }
