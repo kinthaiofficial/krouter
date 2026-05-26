@@ -34,8 +34,6 @@ export function DecisionCard({ rec, pulse = false, showLatestBadge = false }: De
   const requestedProvider = rec.requested_provider || rec.provider
   const routedProvider = rec.provider
   const providerChanged = requestedProvider !== routedProvider
-  const sameRoute = !modelChanged && !providerChanged
-
   const baseline = rec.baseline_cost_usd
   const actual = rec.cost_usd
   const priced = baseline !== undefined && baseline > 0
@@ -71,56 +69,32 @@ export function DecisionCard({ rec, pulse = false, showLatestBadge = false }: De
               </span>
             </>
           )}
-          <span className="text-gray-300 text-xs">·</span>
-          <span className="text-[11px] font-mono text-gray-400 truncate max-w-[180px]" title={rec.id}>
-            {rec.id}
-          </span>
-          <span className="ml-auto flex items-center gap-2 shrink-0">
-            {savings !== undefined && savings > 0 && savingsPct !== undefined && (
+          {savings !== undefined && savings > 0 && savingsPct !== undefined && (
+            <>
+              <span className="text-gray-300 text-xs">·</span>
               <span className="inline-flex items-center gap-1 bg-green-100 text-green-700 text-xs font-semibold px-2.5 py-0.5 rounded-full border border-green-200">
                 <TrendingDown size={11} />
                 ${savings.toFixed(4)} · {savingsPct.toFixed(1)}%
               </span>
-            )}
-            {savings !== undefined && savings < -0.000001 && savingsPct !== undefined && (
+            </>
+          )}
+          {savings !== undefined && savings < -0.000001 && savingsPct !== undefined && (
+            <>
+              <span className="text-gray-300 text-xs">·</span>
               <span className="inline-flex items-center gap-1 bg-red-50 text-red-600 text-xs font-semibold px-2.5 py-0.5 rounded-full border border-red-200">
                 <TrendingUp size={11} />
                 ${Math.abs(savings).toFixed(4)} · {Math.abs(savingsPct).toFixed(1)}%
               </span>
-            )}
+            </>
+          )}
+          <span className="ml-auto flex items-center gap-2 shrink-0">
+            <span className="text-[10px] font-mono text-gray-300" title={rec.id}>
+              #{rec.id.slice(-8)}
+            </span>
             <StatusPill code={rec.status_code} ok={ok} />
           </span>
         </div>
 
-        {/* Row 2: routing summary — model A → model B */}
-        <div className="flex items-center gap-2 mt-2 flex-wrap">
-          <span className="text-xs font-mono text-gray-500 bg-white border border-gray-200 px-2 py-0.5 rounded">
-            {requestedProvider}
-          </span>
-          <span className={[
-            'text-sm font-mono font-medium',
-            modelChanged ? 'text-gray-500 line-through decoration-gray-400' : 'text-gray-800',
-          ].join(' ')}>
-            {requestedModel}
-          </span>
-          {(modelChanged || providerChanged) && (
-            <>
-              <ArrowRight size={13} className="text-gray-400 shrink-0" />
-              <span className="text-xs font-mono text-gray-500 bg-white border border-gray-200 px-2 py-0.5 rounded">
-                {routedProvider}
-              </span>
-              <span className="text-sm font-mono font-semibold text-green-700">
-                {routedModel}
-              </span>
-            </>
-          )}
-          {sameRoute && (
-            <span className="text-xs text-gray-400 italic">{t('router.no_routing_change')}</span>
-          )}
-          <span className="ml-1 text-[11px] text-gray-400 uppercase tracking-wider font-semibold">
-            {rec.protocol}
-          </span>
-        </div>
       </div>
 
       {/* ── Card body ───────────────────────────────────────────────── */}
