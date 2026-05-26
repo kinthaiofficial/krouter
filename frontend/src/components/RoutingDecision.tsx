@@ -306,14 +306,6 @@ function ResponseCard({
     blue: 'bg-blue-50 border-blue-200',
     green: 'bg-green-50 border-green-200',
   }[tone]
-  const tokenStr = [
-    t('router.tokens_breakdown', {
-      in: inputTokens.toLocaleString(),
-      out: outputTokens.toLocaleString(),
-    }),
-    `${cachedTokens.toLocaleString()} ${t('router.tokens_read')}`,
-    `${cacheWriteTokens.toLocaleString()} ${t('router.tokens_write')}`,
-  ].join(' · ')
   const totalInput = inputTokens + cachedTokens + cacheWriteTokens
   const hitRateStr = totalInput > 0
     ? `${((cachedTokens / totalInput) * 100).toFixed(1)}%`
@@ -324,11 +316,10 @@ function ResponseCard({
         {label}
       </p>
       <dl className="space-y-1.5 text-sm">
-        <Field
-          k={t('router.actual_tokens')}
-          v={tokenStr}
-          mono
-        />
+        <Field k={t('router.tokens_in')} v={inputTokens.toLocaleString()} mono />
+        <Field k={t('router.tokens_out')} v={outputTokens.toLocaleString()} mono />
+        <Field k={t('router.tokens_read')} v={cachedTokens.toLocaleString()} mono />
+        <Field k={t('router.tokens_write')} v={cacheWriteTokens.toLocaleString()} mono />
         <Field
           k={t('router.cache_hit_rate')}
           v={hitRateStr}
