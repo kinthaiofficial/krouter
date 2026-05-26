@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.13] - 2026-05-26
+
+### Changed
+- **Application attribution is now decided at connect time, not guessed from headers** (#49): connecting an app bakes its id into every base URL krouter writes — the origin (`scheme://host:port`) is replaced with `http://127.0.0.1:8402/a/<appid>` while the original path is preserved verbatim (so `/v4`, `/anthropic/v1`, … survive; no protocol guessing, no `/v1` insertion). The proxy strips the `/a/<appid>` prefix, attributes the request to that application deterministically, and dispatches to the protocol handler by path suffix (`/messages`, `/chat/completions`, `/models`). Requests without the prefix fall back to the legacy `User-Agent`/header sniff; an unknown app id or unsupported suffix returns 404. OpenClaw's OpenAI-protocol traffic (DeepSeek / Z.AI / …) is now logged under `openclaw` instead of `unknown`. Applies to all six connectable apps (OpenClaw global + per-agent providers, Claude Code, Cursor, Codex, OpenCode, Hermes), with the user's original endpoint saved for exact restore on disconnect. Internal: `routing.Request.AgentName` renamed to `AppID` (the `requests.agent` column is unchanged).
+
 ## [2.3.12] - 2026-05-26
 
 ### Added
