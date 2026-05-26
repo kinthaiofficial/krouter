@@ -145,6 +145,12 @@ The daemon listens on two ports:
 			// Per-agent routing overrides from settings.
 			engine.WithOverrides(settings)
 
+			// Session store — Phase 2 shadow mode: track per-session token
+			// bucket stats to observe cache hit rates without affecting routing.
+			sessionStore := routing.NewMemSessionStore()
+			defer sessionStore.Close()
+			engine.WithSession(sessionStore)
+
 			// Note: there used to be a `FreeProviderSource` wiring here that
 			// intersected `inherited_endpoints` with the curated
 			// `data/free_tokens.json` catalog and routed to "free credit"
@@ -164,6 +170,7 @@ The daemon listens on two ports:
 				// Recognise the /a/<appid> attribution prefix for every app krouter
 				// can connect (spec/12 §6.3).
 				proxy.WithKnownApps(agentscan.IDs()),
+				proxy.WithSessionStore(sessionStore),
 			)
 
 			// Proxy refresh — re-detects OS proxy every 60s (handles VPN/network changes).

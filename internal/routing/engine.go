@@ -104,6 +104,7 @@ type Request struct {
 	SystemPrompt   string // first 300 chars of system prompt, for complexity classification
 	AppID          string // application id: "openclaw" | "claude-code" | "cursor" | … ; "unknown" = unrecognised source
 	UserAPIKey     string // forwarded at request time — DO NOT LOG
+	SessionKey     string // stable 16-char hex fingerprint of the conversation thread (Phase 2+)
 }
 
 // Decision is the routing engine output.
@@ -179,6 +180,7 @@ type Engine struct {
 	subscription SubscriptionSource // optional; nil means no subscription-aware routing
 	quota        QuotaSource        // optional; nil means no quota-based downgrade
 	overrides    OverrideSource     // optional; nil means no per-agent overrides
+	session      SessionSource      // optional; Phase 2 shadow-mode session tracking
 }
 
 // New creates a routing engine backed by the given provider registry.
@@ -212,6 +214,13 @@ func (e *Engine) WithQuota(q QuotaSource) {
 // WithOverrides attaches a per-agent routing override source.
 func (e *Engine) WithOverrides(o OverrideSource) {
 	e.overrides = o
+}
+
+// WithSession attaches a session store for Phase 2 shadow-mode cache tracking.
+// The engine reads session state in Phase 3; in Phase 2 it is write-only from
+// the proxy layer and does not influence routing decisions.
+func (e *Engine) WithSession(s SessionSource) {
+	e.session = s
 }
 
 // subscriptionInfo returns quota info for a provider, or zero value if not available.

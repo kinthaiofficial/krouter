@@ -19,6 +19,8 @@ package proxy
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -80,6 +82,10 @@ type Server struct {
 	// "claude-code"). Used to validate the /a/<appid> request-path prefix that
 	// connect bakes into each app's base URL.
 	knownApps map[string]bool
+
+	// sessionStore, when set, receives token-bucket updates after each successful
+	// response. Phase 2 shadow mode — does not affect routing decisions.
+	sessionStore routing.SessionSource
 
 	// lastSSECaptureMu guards lastSSECapture for the debug endpoint.
 	lastSSECaptureMu sync.RWMutex
@@ -149,6 +155,12 @@ func WithKnownApps(ids []string) Option {
 			s.knownApps[id] = true
 		}
 	}
+}
+
+// WithSessionStore attaches an in-memory session store for Phase 2 shadow-mode
+// cache hit rate tracking. Does not affect routing decisions.
+func WithSessionStore(ss routing.SessionSource) Option {
+	return func(s *Server) { s.sessionStore = ss }
 }
 
 // New creates a proxy server with the given options.
@@ -315,6 +327,7 @@ func (s *Server) handleAnthropicWithRouting(
 	start time.Time, preset string,
 ) {
 	hasImages, systemPrompt := extractAnthropicMeta(body)
+	sessionKey := computeSessionKey(r.Header, body)
 	req := routing.Request{
 		Protocol:       "anthropic",
 		RequestedModel: requestedModel,
@@ -323,6 +336,7 @@ func (s *Server) handleAnthropicWithRouting(
 		HasTools:       hasTools,
 		SystemPrompt:   systemPrompt,
 		AppID:          requestAppID(r),
+		SessionKey:     sessionKey,
 	}
 
 	upstreamResp, dec, err := s.tryWithFallback(r.Context(), r.Header, body, req, preset, "/v1/messages")
@@ -433,6 +447,7 @@ func (s *Server) handleAnthropicWithRouting(
 				LatencyMS:        time.Since(start).Milliseconds(),
 				StatusCode:       statusCode,
 			})
+			s.updateSessionFromResponse(sessionKey, dec.Provider, dec.Model, in, out, cached, cacheWrite)
 		})
 	} else {
 		// Non-streaming or error: read full body, parse usage if success, then write.
@@ -461,6 +476,7 @@ func (s *Server) handleAnthropicWithRouting(
 			LatencyMS:        latencyMS,
 			StatusCode:       statusCode,
 		})
+		s.updateSessionFromResponse(sessionKey, dec.Provider, dec.Model, in, out, cached, cacheWrite)
 	}
 }
 
@@ -822,6 +838,7 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 	preset := s.currentPreset(r.Context())
 
 	hasImages, systemPrompt := extractOpenAIMeta(body)
+	sessionKey := computeSessionKey(r.Header, body)
 	req := routing.Request{
 		Protocol:       "openai",
 		RequestedModel: parsed.Model,
@@ -830,6 +847,7 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 		HasTools:       len(parsed.Tools) > 0,
 		SystemPrompt:   systemPrompt,
 		AppID:          requestAppID(r),
+		SessionKey:     sessionKey,
 	}
 
 	upstreamResp, dec, err := s.tryWithFallback(r.Context(), r.Header, body, req, preset, "/v1/chat/completions")
@@ -909,6 +927,7 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 				LatencyMS:        time.Since(start).Milliseconds(),
 				StatusCode:       statusCode,
 			})
+			s.updateSessionFromResponse(sessionKey, dec.Provider, dec.Model, in, out, cached, cacheWrite)
 		})
 	} else {
 		respData, _ := io.ReadAll(upstreamResp.Body)
@@ -933,9 +952,10 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 			CachedTokens:     cached,
 			CacheWriteTokens: cacheWrite,
 			CostMicroUSD:     cost,
-			LatencyMS:      latencyMS,
-			StatusCode:     statusCode,
+			LatencyMS:        latencyMS,
+			StatusCode:       statusCode,
 		})
+		s.updateSessionFromResponse(sessionKey, dec.Provider, dec.Model, in, out, cached, cacheWrite)
 	}
 }
 
@@ -1095,6 +1115,74 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return string(runes[:n])
+}
+
+// computeSessionKey derives a stable 16-char hex key from the request.
+// It hashes the API key, system prompt, tool names, and first user message —
+// the fields that are stable across turns in the same agent conversation and
+// that LLM providers use to key their prompt cache.
+func computeSessionKey(headers http.Header, body []byte) string {
+	h := sha256.New()
+
+	// API key — differentiates users; never logged.
+	if auth := headers.Get("Authorization"); auth != "" {
+		h.Write([]byte(auth))
+	} else if key := headers.Get("X-Api-Key"); key != "" {
+		h.Write([]byte(key))
+	}
+	h.Write([]byte{0})
+
+	// Extract structured fields from the body in a single unmarshal.
+	var req struct {
+		System   json.RawMessage `json:"system"`
+		Tools    []struct {
+			Name string `json:"name"`
+		} `json:"tools"`
+		Messages []struct {
+			Role    string          `json:"role"`
+			Content json.RawMessage `json:"content"`
+		} `json:"messages"`
+	}
+	_ = json.Unmarshal(body, &req)
+
+	// System prompt bytes.
+	h.Write(req.System)
+	h.Write([]byte{0})
+
+	// Tool names (stable across turns; order matters for cache keying).
+	for _, t := range req.Tools {
+		h.Write([]byte(t.Name))
+		h.Write([]byte{0})
+	}
+	h.Write([]byte{0})
+
+	// First user message — the conversation anchor.
+	for _, msg := range req.Messages {
+		if msg.Role == "user" || msg.Role == "human" {
+			h.Write(msg.Content)
+			break
+		}
+	}
+
+	return hex.EncodeToString(h.Sum(nil))[:16]
+}
+
+// updateSessionFromResponse records token-bucket counts into the session store.
+// Called after every successful response (both streaming and non-streaming).
+// No-op when sessionStore is nil or key is empty.
+func (s *Server) updateSessionFromResponse(key, provider, model string, in, out, cached, cacheWrite int) {
+	if s.sessionStore == nil || key == "" {
+		return
+	}
+	s.sessionStore.Update(key, func(st *routing.SessionState) {
+		st.Requests++
+		st.FreshInputTokens += in
+		st.CachedTokens += cached
+		st.OutputTokens += out
+		st.CacheWriteTokens += cacheWrite
+		st.LastProvider = provider
+		st.LastModel = model
+	})
 }
 
 // appIDCtxKey carries the application id parsed from a /a/<appid> request path
