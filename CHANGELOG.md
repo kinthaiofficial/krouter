@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-05-26
+
+### Added
+- **Cache-write tokens surfaced in all UI pages**: `cache_write_tokens` is now tracked end-to-end from database to the browser. Logs CSV export gains a `cache_write_tokens` column; the Providers page shows a "Lifetime cache-write" row when non-zero; the Agents page token-total column now sums all four token buckets (fresh input + output + cached + cache-write); the RoutingDecision card appends "N cache-write" to the token breakdown when cache writes occurred. SSE `request_completed` events carry the field so live views update without a page refresh. Translations added for both English and Chinese.
+
 ## [2.4.0] - 2026-05-26
 
 ### Added
