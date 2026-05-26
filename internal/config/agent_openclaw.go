@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -12,9 +13,9 @@ import (
 
 const proxyBase = "http://127.0.0.1:8402"
 
-// proxyBaseOpenAI is the krouter proxy base for OpenAI-protocol providers, which
-// expect the /v1 path segment (matching the Claude Code / Cursor connect logic).
-const proxyBaseOpenAI = proxyBase + "/v1"
+// krouterHost is the proxy authority (host:port); used to tell whether a base
+// URL already points at krouter.
+const krouterHost = "127.0.0.1:8402"
 
 // krouterOrigBaseURLKey is a krouter-managed sidecar field written next to a
 // provider's baseUrl so DisconnectOpenClaw can restore the user's original
@@ -94,12 +95,17 @@ func applyOpenClawConnectToRoot(root map[string]any) {
 	// anthropic-protocol proxy and OpenClaw without an explicit provider still
 	// talks Claude through it.
 	anthropic := ensureMap(providers, "anthropic")
-	if cur, _ := anthropic["baseUrl"].(string); cur != "" && cur != proxyBase && cur != proxyBaseOpenAI {
+	curA, _ := anthropic["baseUrl"].(string)
+	if curA != "" && !isKrouterBase(curA) {
 		if _, has := anthropic[krouterOrigBaseURLKey]; !has {
-			anthropic[krouterOrigBaseURLKey] = cur
+			anthropic[krouterOrigBaseURLKey] = curA
 		}
 	}
-	anthropic["baseUrl"] = proxyBase
+	baseA := curA
+	if baseA == "" {
+		baseA = "https://api.anthropic.com" // synthesize when krouter introduces the route
+	}
+	anthropic["baseUrl"] = krouterAppBaseURL("openclaw", baseA)
 	anthropic["api"] = "anthropic-messages"
 	// Ensure models is a non-nil array (OpenClaw schema requires it); preserve
 	// an existing user-configured list.
@@ -128,13 +134,13 @@ func applyOpenClawConnectToRoot(root map[string]any) {
 // saving its original baseUrl in the krouter sidecar key. Only baseUrl (and the
 // sidecar) is written; apiKey / authHeader / models / api are left untouched.
 func redirectProviderBaseURL(p map[string]any) {
-	target := proxyBaseForProvider(p)
-	if cur, _ := p["baseUrl"].(string); cur != "" && cur != proxyBase && cur != proxyBaseOpenAI {
+	cur, _ := p["baseUrl"].(string)
+	if cur != "" && !isKrouterBase(cur) {
 		if _, has := p[krouterOrigBaseURLKey]; !has {
 			p[krouterOrigBaseURLKey] = cur
 		}
 	}
-	p["baseUrl"] = target
+	p["baseUrl"] = krouterAppBaseURL("openclaw", cur)
 }
 
 // restoreProviderBaseURL reverses redirectProviderBaseURL: restores baseUrl from
@@ -148,22 +154,30 @@ func restoreProviderBaseURL(p map[string]any) bool {
 	return false
 }
 
-// proxyBaseForProvider returns the krouter proxy base appropriate for a
-// provider's wire protocol. OpenAI-family providers need the /v1 suffix;
-// anthropic-family providers post to /v1/messages off the bare base. The
-// provider's declared `api` is authoritative; when absent we fall back to a
-// hint from the current baseUrl (e.g. MiniMax's .../anthropic/v1).
-func proxyBaseForProvider(p map[string]any) string {
-	if api, _ := p["api"].(string); api != "" {
-		if strings.HasPrefix(strings.ToLower(api), "anthropic") {
-			return proxyBase
-		}
-		return proxyBaseOpenAI
+// krouterAppBaseURL rewrites a provider base URL to route through the krouter
+// proxy, tagging it with the application id: the origin (scheme://host[:port])
+// is replaced with http://127.0.0.1:8402/a/<appid> and the original path is
+// preserved verbatim (so per-provider conventions like /v4 or /anthropic/v1
+// survive, and no protocol guessing / no /v1 insertion is needed). `localhost`
+// is normalised to `127.0.0.1` because the origin is replaced wholesale.
+// Idempotent: a base already pointing at krouter with this app's prefix is
+// returned unchanged. See spec/12 §6.3.
+func krouterAppBaseURL(appid, base string) string {
+	prefix := "/a/" + appid
+	u, err := url.Parse(base)
+	if err != nil || u.Host == "" {
+		return proxyBase + prefix
 	}
-	if base, _ := p["baseUrl"].(string); strings.Contains(strings.ToLower(base), "anthropic") {
-		return proxyBase
+	if u.Host == krouterHost && strings.HasPrefix(u.Path, prefix) {
+		return base
 	}
-	return proxyBaseOpenAI
+	return proxyBase + prefix + strings.TrimRight(u.Path, "/")
+}
+
+// isKrouterBase reports whether a base URL already points at the krouter proxy
+// (either 127.0.0.1 or the localhost alias older configs may carry).
+func isKrouterBase(s string) bool {
+	return strings.HasPrefix(s, "http://127.0.0.1:8402") || strings.HasPrefix(s, "http://localhost:8402")
 }
 
 // redirectOpenClawSubAgents rewrites the providers in every
@@ -258,7 +272,7 @@ func IsOpenClawConnected(configPath string) bool {
 		return false
 	}
 	baseURL, _ := provider["baseUrl"].(string)
-	return baseURL == proxyBase
+	return isKrouterBase(baseURL)
 }
 
 // ReadOpenClawProviderNames returns the names of LLM providers configured in

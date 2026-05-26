@@ -74,6 +74,11 @@ type Server struct {
 	// keychain, Claude Code env). Never blocks the request path.
 	modelObserver func(requestedModel, apiKey string)
 
+	// knownApps is the set of application ids krouter connects (e.g. "openclaw",
+	// "claude-code"). Used to validate the /a/<appid> request-path prefix that
+	// connect bakes into each app's base URL.
+	knownApps map[string]bool
+
 	// lastSSECaptureMu guards lastSSECapture for the debug endpoint.
 	lastSSECaptureMu sync.RWMutex
 	lastSSECapture   []byte
@@ -131,6 +136,18 @@ func (s *Server) SetOnComplete(fn func(storage.RequestRecord)) { s.onComplete = 
 // request with the requested model and the request's API key. Used to trigger
 // lazy /v1/models discovery from live traffic.
 func (s *Server) SetModelObserver(fn func(requestedModel, apiKey string)) { s.modelObserver = fn }
+
+// WithKnownApps sets the application ids the proxy recognises in the /a/<appid>
+// request-path prefix. Sourced from the agent scanner registry so it stays in
+// sync with the apps krouter can connect.
+func WithKnownApps(ids []string) Option {
+	return func(s *Server) {
+		s.knownApps = make(map[string]bool, len(ids))
+		for _, id := range ids {
+			s.knownApps[id] = true
+		}
+	}
+}
 
 // New creates a proxy server with the given options.
 func New(opts ...Option) *Server {
@@ -192,7 +209,43 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/messages", s.handleAnthropicMessages)
 	mux.HandleFunc("/v1/models", s.handleModels)
 	mux.HandleFunc("/v1/chat/completions", s.handleOpenAICompletions)
+	// Application-prefixed routes (/a/<appid>/...) carry connect-time attribution.
+	mux.HandleFunc("/a/", s.handlePrefixed)
 	return mux
+}
+
+// handlePrefixed serves requests whose path carries the krouter application
+// prefix /a/<appid>/... that connect bakes into each app's base URL. It records
+// the application id for deterministic attribution (spec/12 §6.3), strips the
+// prefix, and dispatches to the protocol handler by path suffix — the client
+// always appends a canonical sub-path (/messages, /chat/completions, /models)
+// regardless of any provider-specific base path that precedes it.
+func (s *Server) handlePrefixed(w http.ResponseWriter, r *http.Request) {
+	rest := strings.TrimPrefix(r.URL.Path, "/a/")
+	i := strings.IndexByte(rest, '/')
+	if i <= 0 {
+		http.NotFound(w, r)
+		return
+	}
+	appID := rest[:i]
+	if !s.knownApps[appID] {
+		http.NotFound(w, r)
+		return
+	}
+	stripped := rest[i:] // leading slash retained, e.g. /api/paas/v4/chat/completions
+	r = r.WithContext(context.WithValue(r.Context(), appIDCtxKey{}, appID))
+	r.URL.Path = stripped
+
+	switch {
+	case strings.HasSuffix(stripped, "/messages"):
+		s.handleAnthropicMessages(w, r)
+	case strings.HasSuffix(stripped, "/chat/completions"):
+		s.handleOpenAICompletions(w, r)
+	case strings.HasSuffix(stripped, "/models"):
+		s.handleModels(w, r)
+	default:
+		http.NotFound(w, r)
+	}
 }
 
 // apiKeyFromHeaders extracts the caller's API key, trying the Anthropic
@@ -267,7 +320,7 @@ func (s *Server) handleAnthropicWithRouting(
 		HasImages:      hasImages,
 		HasTools:       hasTools,
 		SystemPrompt:   systemPrompt,
-		AgentName:      agentName(r),
+		AppID:          requestAppID(r),
 	}
 
 	upstreamResp, dec, err := s.tryWithFallback(r.Context(), r.Header, body, req, preset, "/v1/messages")
@@ -290,7 +343,7 @@ func (s *Server) handleAnthropicWithRouting(
 		s.logRequest(r.Context(), storage.RequestRecord{
 			ID:             s.storeNewULID(),
 			Timestamp:      start,
-			Agent:          agentName(r),
+			Agent:          requestAppID(r),
 			Protocol:       "anthropic",
 			RequestedModel: req.RequestedModel,
 			Provider:       dec.Provider,
@@ -353,7 +406,7 @@ func (s *Server) handleAnthropicWithRouting(
 			s.logRequest(r.Context(), storage.RequestRecord{
 				ID:             s.storeNewULID(),
 				Timestamp:      start,
-				Agent:          agentName(r),
+				Agent:          requestAppID(r),
 				Protocol:       "anthropic",
 				RequestedModel: requestedModel,
 				Provider:       dec.Provider,
@@ -379,7 +432,7 @@ func (s *Server) handleAnthropicWithRouting(
 		s.logRequest(r.Context(), storage.RequestRecord{
 			ID:             s.storeNewULID(),
 			Timestamp:      start,
-			Agent:          agentName(r),
+			Agent:          requestAppID(r),
 			Protocol:       "anthropic",
 			RequestedModel: requestedModel,
 			Provider:       dec.Provider,
@@ -758,7 +811,7 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 		HasImages:      hasImages,
 		HasTools:       len(parsed.Tools) > 0,
 		SystemPrompt:   systemPrompt,
-		AgentName:      agentName(r),
+		AppID:          requestAppID(r),
 	}
 
 	upstreamResp, dec, err := s.tryWithFallback(r.Context(), r.Header, body, req, preset, "/v1/chat/completions")
@@ -777,7 +830,7 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 		s.logRequest(r.Context(), storage.RequestRecord{
 			ID:             s.storeNewULID(),
 			Timestamp:      start,
-			Agent:          agentName(r),
+			Agent:          requestAppID(r),
 			Protocol:       "openai",
 			RequestedModel: req.RequestedModel,
 			Provider:       dec.Provider,
@@ -814,7 +867,7 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 			s.logRequest(r.Context(), storage.RequestRecord{
 				ID:             s.storeNewULID(),
 				Timestamp:      start,
-				Agent:          agentName(r),
+				Agent:          requestAppID(r),
 				Protocol:       "openai",
 				RequestedModel: parsed.Model,
 				Provider:       dec.Provider,
@@ -839,7 +892,7 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 		s.logRequest(r.Context(), storage.RequestRecord{
 			ID:             s.storeNewULID(),
 			Timestamp:      start,
-			Agent:          agentName(r),
+			Agent:          requestAppID(r),
 			Protocol:       "openai",
 			RequestedModel: parsed.Model,
 			Provider:       dec.Provider,
@@ -1011,14 +1064,30 @@ func truncate(s string, n int) string {
 	return string(runes[:n])
 }
 
-// agentName extracts a best-effort agent identifier from the request.
+// appIDCtxKey carries the application id parsed from a /a/<appid> request path
+// (set by handlePrefixed) through to the routing handlers.
+type appIDCtxKey struct{}
+
+// requestAppID resolves the application that sent the request. The authoritative
+// source is the /a/<appid> path prefix krouter baked into the app's config at
+// connect time (carried in the request context); only when that is absent — a
+// source krouter never connected — do we fall back to the legacy header sniff.
+func requestAppID(r *http.Request) string {
+	if v, ok := r.Context().Value(appIDCtxKey{}).(string); ok && v != "" {
+		return v
+	}
+	return sniffAppID(r)
+}
+
+// sniffAppID is the best-effort header-based fallback for requests that carry no
+// /a/<appid> prefix (e.g. a source krouter didn't connect).
 //
 // OpenClaw uses the Anthropic TypeScript SDK which sends "Anthropic/JS X.Y.Z" as
 // User-Agent — the string "openclaw" does NOT appear. The
 // "anthropic-dangerous-direct-browser-access" header is set by OpenClaw's SDK
 // client in every Anthropic-provider request and is absent from CLI tools like
 // Claude Code, making it the reliable secondary signal.
-func agentName(r *http.Request) string {
+func sniffAppID(r *http.Request) string {
 	ua := strings.ToLower(r.Header.Get("User-Agent"))
 	switch {
 	case strings.Contains(ua, "openclaw"):

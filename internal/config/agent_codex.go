@@ -44,7 +44,7 @@ func ConnectCodex(configPath string) error {
 	providers := ensureMap(root, "model_providers")
 	providers["krouter"] = map[string]any{
 		"name":     "krouter",
-		"base_url": proxyBase + "/v1",
+		"base_url": krouterAppBaseURL("codex", "https://api.openai.com/v1"),
 		"env_key":  envKey,
 		"wire_api": "chat",
 	}

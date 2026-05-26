@@ -105,7 +105,7 @@ func TestConfigCorruptFallsBackToDefaults(t *testing.T) {
 
 func TestShellInitBash(t *testing.T) {
 	out := config.ShellInitOutput("bash")
-	want := `export ANTHROPIC_BASE_URL="http://localhost:8402"`
+	want := `export ANTHROPIC_BASE_URL="http://127.0.0.1:8402/a/claude-code"`
 	if !contains(out, want) {
 		t.Errorf("bash output missing %q\ngot: %s", want, out)
 	}
@@ -113,7 +113,7 @@ func TestShellInitBash(t *testing.T) {
 
 func TestShellInitZsh(t *testing.T) {
 	out := config.ShellInitOutput("zsh")
-	want := `export OPENAI_BASE_URL="http://localhost:8402/v1"`
+	want := `export OPENAI_BASE_URL="http://127.0.0.1:8402/a/claude-code/v1"`
 	if !contains(out, want) {
 		t.Errorf("zsh output missing %q\ngot: %s", want, out)
 	}
@@ -121,7 +121,7 @@ func TestShellInitZsh(t *testing.T) {
 
 func TestShellInitFish(t *testing.T) {
 	out := config.ShellInitOutput("fish")
-	want := `set -gx ANTHROPIC_BASE_URL "http://localhost:8402"`
+	want := `set -gx ANTHROPIC_BASE_URL "http://127.0.0.1:8402/a/claude-code"`
 	if !contains(out, want) {
 		t.Errorf("fish output missing %q\ngot: %s", want, out)
 	}
