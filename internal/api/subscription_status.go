@@ -29,7 +29,7 @@ type subscriptionTierJSON struct {
 
 type subscriptionProviderJSON struct {
 	Provider     string                 `json:"provider"`
-	SourceAgent  string                 `json:"source_agent,omitempty"`  // which agent supplied the OAuth/API key
+	SourceApp  string                 `json:"source_app,omitempty"`  // which agent supplied the OAuth/API key
 	OAuthPresent bool                   `json:"oauth_present"`
 	LastPolledAt string                 `json:"last_polled_at,omitempty"` // RFC3339 of newest tier row
 	Tiers        []subscriptionTierJSON `json:"tiers"`
@@ -70,7 +70,7 @@ func (s *Server) writeSubscriptionStatus(w http.ResponseWriter, ctx context.Cont
 		sourceAgent, oauthPresent := s.subscriptionAuthSource(ctx, provider)
 		out = append(out, subscriptionProviderJSON{
 			Provider:     provider,
-			SourceAgent:  sourceAgent,
+			SourceApp:  sourceAgent,
 			OAuthPresent: oauthPresent,
 			LastPolledAt: newestFetchedAt(tiers),
 			Tiers:        tiersToJSON(ctx, s.store, tiers),
@@ -205,11 +205,11 @@ func (s *Server) subscriptionAuthSource(ctx context.Context, provider string) (a
 			if ep.ExtrasJSON != "" {
 				var extras map[string]string
 				if json.Unmarshal([]byte(ep.ExtrasJSON), &extras) == nil && extras["oauth_token"] != "" {
-					return ep.AgentID, true
+					return ep.AppID, true
 				}
 			}
 			if ep.APIKey != "" && agentID == "" {
-				agentID = ep.AgentID
+				agentID = ep.AppID
 			}
 		}
 	}

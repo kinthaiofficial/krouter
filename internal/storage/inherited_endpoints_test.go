@@ -12,8 +12,8 @@ import (
 
 func setupAgent(t *testing.T, s *storage.Store, agentID string, enabled bool) {
 	t.Helper()
-	require.NoError(t, s.UpsertAgentSetting(context.Background(), storage.AgentSetting{
-		AgentID: agentID, Enabled: enabled, ConfigPath: "/tmp/" + agentID,
+	require.NoError(t, s.UpsertAppSetting(context.Background(), storage.AppSetting{
+		AppID: agentID, Enabled: enabled, ConfigPath: "/tmp/" + agentID,
 	}))
 }
 
@@ -32,7 +32,7 @@ func TestInheritedEndpoints_ReplaceAtomic(t *testing.T) {
 	}
 	require.NoError(t, s.ReplaceInheritedEndpoints(ctx, "openclaw", first))
 
-	got, err := s.ListInheritedEndpointsByAgent(ctx, "openclaw")
+	got, err := s.ListInheritedEndpointsByApp(ctx, "openclaw")
 	require.NoError(t, err)
 	require.Len(t, got, 3)
 
@@ -42,7 +42,7 @@ func TestInheritedEndpoints_ReplaceAtomic(t *testing.T) {
 	}
 	require.NoError(t, s.ReplaceInheritedEndpoints(ctx, "openclaw", second))
 
-	got, err = s.ListInheritedEndpointsByAgent(ctx, "openclaw")
+	got, err = s.ListInheritedEndpointsByApp(ctx, "openclaw")
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	assert.Equal(t, "deepseek", got[0].Provider)
@@ -58,7 +58,7 @@ func TestInheritedEndpoints_ReplaceWithEmptyDeletesAll(t *testing.T) {
 	}))
 	require.NoError(t, s.ReplaceInheritedEndpoints(ctx, "openclaw", nil))
 
-	got, err := s.ListInheritedEndpointsByAgent(ctx, "openclaw")
+	got, err := s.ListInheritedEndpointsByApp(ctx, "openclaw")
 	require.NoError(t, err)
 	assert.Empty(t, got)
 }
@@ -80,7 +80,7 @@ func TestInheritedEndpoints_ScopedQuery(t *testing.T) {
 	}))
 
 	// per-agent
-	got, _ := s.ListInheritedEndpointsByAgent(ctx, "openclaw")
+	got, _ := s.ListInheritedEndpointsByApp(ctx, "openclaw")
 	assert.Len(t, got, 2)
 
 	// global
@@ -111,7 +111,7 @@ func TestInheritedEndpoints_FindByProvider_RespectsEnabledFlag(t *testing.T) {
 	got, err := s.FindInheritedEndpointsByProvider(ctx, "anthropic")
 	require.NoError(t, err)
 	require.Len(t, got, 1)
-	assert.Equal(t, "openclaw", got[0].AgentID)
+	assert.Equal(t, "openclaw", got[0].AppID)
 }
 
 func TestInheritedEndpoints_DeleteAgentClearsInheritedRows(t *testing.T) {
@@ -123,13 +123,13 @@ func TestInheritedEndpoints_DeleteAgentClearsInheritedRows(t *testing.T) {
 		{Provider: "anthropic", EndpointURL: "u", CapturedAt: 1},
 	}))
 
-	require.NoError(t, s.DeleteAgentSetting(ctx, "openclaw"))
+	require.NoError(t, s.DeleteAppSetting(ctx, "openclaw"))
 
-	// DeleteAgentSetting runs its own transactional cleanup of
+	// DeleteAppSetting runs its own transactional cleanup of
 	// inherited_endpoints because SQLite FOREIGN KEYS are not enforced under
 	// the default PRAGMA (see storage.Open). The user-observable behaviour is
 	// identical to ON DELETE CASCADE.
-	got, err := s.ListInheritedEndpointsByAgent(ctx, "openclaw")
+	got, err := s.ListInheritedEndpointsByApp(ctx, "openclaw")
 	require.NoError(t, err)
 	assert.Empty(t, got)
 }

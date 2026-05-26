@@ -8,7 +8,7 @@ import { PageHeader } from '../components/ui'
 
 const PAGE_SIZE = 50
 
-interface AgentOption {
+interface AppOption {
   name: string
   label: string
 }
@@ -23,19 +23,19 @@ const AGENT_LABELS: Record<string, string> = {
 export default function Logs() {
   const { t } = useTranslation()
   const [search, setSearch] = useState('')
-  const [agentFilter, setAgentFilter] = useState('')
+  const [appFilter, setAppFilter] = useState('')
   const [protocolFilter, setProtocolFilter] = useState('')
   const [page, setPage] = useState(0)
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
-  const agentFilterRef = useRef(agentFilter)
-  useEffect(() => { agentFilterRef.current = agentFilter }, [agentFilter])
+  const appFilterRef = useRef(appFilter)
+  useEffect(() => { appFilterRef.current = appFilter }, [appFilter])
 
   // Detected agents for the dropdown.
-  const { data: agentsRaw = [] } = useQuery<AgentOption[]>({
-    queryKey: ['agents-names'],
+  const { data: appsRaw = [] } = useQuery<AppOption[]>({
+    queryKey: ['apps-names'],
     queryFn: () =>
-      fetch('/internal/agents', { credentials: 'include' })
+      fetch('/internal/apps', { credentials: 'include' })
         .then((r) => r.json())
         .then((list: { name: string }[]) =>
           list.map((a) => ({ name: a.name, label: AGENT_LABELS[a.name] ?? a.name }))
@@ -43,16 +43,16 @@ export default function Logs() {
     staleTime: 60_000,
   })
 
-  // Initial log fetch — keyed by agentFilter and date range so it refetches on change.
+  // Initial log fetch — keyed by appFilter and date range so it refetches on change.
   // NOTE: do NOT default `data` to []; the new array reference each render
   // would re-fire the seed-merge useEffect and create a setState loop.
   const { data: fetchedLogs, isLoading } = useQuery({
-    queryKey: ['logs', 'full', agentFilter, fromDate, toDate],
+    queryKey: ['logs', 'full', appFilter, fromDate, toDate],
     queryFn: () => {
       if (fromDate && toDate) {
-        return api.logsInRange(fromDate, toDate, agentFilter || undefined)
+        return api.logsInRange(fromDate, toDate, appFilter || undefined)
       }
-      return api.logs(500, agentFilter || undefined)
+      return api.logs(500, appFilter || undefined)
     },
     staleTime: fromDate && toDate ? 30_000 : Infinity,
   })
@@ -68,8 +68,8 @@ export default function Logs() {
     es.addEventListener('request_completed', (e) => {
       try {
         const rec = JSON.parse(e.data) as LogRecord
-        const filter = agentFilterRef.current
-        if (!filter || rec.agent === filter) {
+        const filter = appFilterRef.current
+        if (!filter || rec.app === filter) {
           setLiveLogs((prev) => {
             if (prev.some((r) => r.id === rec.id)) return prev
             return [rec, ...prev].slice(0, 2000)
@@ -102,7 +102,7 @@ export default function Logs() {
         r.model.toLowerCase().includes(q) ||
         (r.requested_model ?? '').toLowerCase().includes(q) ||
         r.provider.toLowerCase().includes(q) ||
-        (r.agent ?? '').toLowerCase().includes(q) ||
+        (r.app ?? '').toLowerCase().includes(q) ||
         r.id.toLowerCase().includes(q)
       )
     })
@@ -114,13 +114,13 @@ export default function Logs() {
 
   function exportCSV() {
     const header =
-      'id,time,agent,protocol,requested_model,routed_model,provider,input_tokens,output_tokens,cached_tokens,cache_write_tokens,cost_usd,latency_ms,status_code\n'
+      'id,time,app,protocol,requested_model,routed_model,provider,input_tokens,output_tokens,cached_tokens,cache_write_tokens,cost_usd,latency_ms,status_code\n'
     const body = filtered
       .map((r) =>
         [
           r.id,
           r.ts,
-          r.agent ?? '',
+          r.app ?? '',
           r.protocol,
           r.requested_model ?? '',
           r.model,
@@ -169,14 +169,14 @@ export default function Logs() {
           className="w-full max-w-xs border border-line-strong rounded-lg px-3 py-1.5 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand"
         />
 
-        {agentsRaw.length > 0 && (
+        {appsRaw.length > 0 && (
           <select
-            value={agentFilter}
-            onChange={(e) => { setAgentFilter(e.target.value); setPage(0) }}
+            value={appFilter}
+            onChange={(e) => { setAppFilter(e.target.value); setPage(0) }}
             className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white"
           >
-            <option value="">{t('logs.all_agents')}</option>
-            {agentsRaw.map((a) => (
+            <option value="">{t('logs.all_apps')}</option>
+            {appsRaw.map((a) => (
               <option key={a.name} value={a.name}>{a.label}</option>
             ))}
           </select>

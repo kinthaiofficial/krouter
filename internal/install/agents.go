@@ -9,15 +9,15 @@ import (
 
 // ─── DTOs ─────────────────────────────────────────────────────────────────
 
-type supportedAgentResp struct {
-	AgentID     string `json:"agent_id"`
+type supportedAppResp struct {
+	AppID       string `json:"app_id"`
 	DisplayName string `json:"display_name"`
 	DefaultPath string `json:"default_path"`
 }
 
 type previewRequest struct {
-	AgentID string `json:"agent_id"`
-	Path    string `json:"path"`
+	AppID string `json:"app_id"`
+	Path  string `json:"path"`
 }
 
 type previewResp struct {
@@ -36,20 +36,20 @@ type selectRequest struct {
 	Agents []agentscan.PendingAgent `json:"agents"`
 }
 
-// ─── GET /api/install/agents/supported ────────────────────────────────────
+// ─── GET /api/install/apps/supported ──────────────────────────────────────
 
-// handleAgentsSupported returns the Scanner registry compiled into this
-// installer binary. Equivalent to the daemon's /internal/agents/supported
+// handleAppsSupported returns the Scanner registry compiled into this
+// installer binary. Equivalent to the daemon's /internal/apps/supported
 // but reachable before the daemon is installed.
-func (s *Server) handleAgentsSupported(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleAppsSupported(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	out := make([]supportedAgentResp, 0, len(agentscan.Scanners))
+	out := make([]supportedAppResp, 0, len(agentscan.Scanners))
 	for _, sc := range agentscan.Scanners {
-		out = append(out, supportedAgentResp{
-			AgentID:     sc.AgentID(),
+		out = append(out, supportedAppResp{
+			AppID:       sc.AppID(),
 			DisplayName: sc.DisplayName(),
 			DefaultPath: sc.DefaultConfigPath(),
 		})
@@ -57,13 +57,13 @@ func (s *Server) handleAgentsSupported(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, out)
 }
 
-// ─── POST /api/install/agents/preview ─────────────────────────────────────
+// ─── POST /api/install/apps/preview ───────────────────────────────────────
 //
-// Body: {agent_id, path}
+// Body: {app_id, path}
 // Runs the Scanner without persisting anything; used by the wizard to show
 // "we'd inherit N vendors" before the user commits.
 
-func (s *Server) handleAgentsPreview(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleAppsPreview(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -73,9 +73,9 @@ func (s *Server) handleAgentsPreview(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	scanner := agentscan.Get(body.AgentID)
+	scanner := agentscan.Get(body.AppID)
 	if scanner == nil {
-		writeError(w, http.StatusNotFound, "unknown agent")
+		writeError(w, http.StatusNotFound, "unknown app")
 		return
 	}
 	path := body.Path
@@ -106,14 +106,14 @@ func (s *Server) handleAgentsPreview(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, previewResp{Endpoints: out})
 }
 
-// ─── POST /api/install/agents/select ──────────────────────────────────────
+// ─── POST /api/install/apps/select ────────────────────────────────────────
 //
-// Body: {agents: [{agent_id, enabled, config_path}, ...]}
+// Body: {agents: [{app_id, enabled, config_path}, ...]}
 //
 // Persists the wizard's selection by writing pending-agents.json. The
 // daemon picks it up on startup (see agentscan.ImportPending).
 
-func (s *Server) handleAgentsSelect(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleAppsSelect(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return

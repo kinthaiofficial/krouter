@@ -91,8 +91,8 @@ func TestWritePending_RoundTrips(t *testing.T) {
 	dir := pinPendingDir(t)
 
 	want := []agentscan.PendingAgent{
-		{AgentID: "openclaw", Enabled: true, ConfigPath: "/u/.openclaw/openclaw.json"},
-		{AgentID: "claude-code", Enabled: false, ConfigPath: "/u/.zshrc"},
+		{AppID: "openclaw", Enabled: true, ConfigPath: "/u/.openclaw/openclaw.json"},
+		{AppID: "claude-code", Enabled: false, ConfigPath: "/u/.zshrc"},
 	}
 	require.NoError(t, agentscan.WritePending(want))
 
@@ -113,7 +113,7 @@ func TestImportPending_NoFileIsNoOp(t *testing.T) {
 	// Must not panic, must not error visibly.
 	agentscan.ImportPending(context.Background(), s, logging.New("error"))
 
-	all, _ := s.ListAgentSettings(context.Background())
+	all, _ := s.ListAppSettings(context.Background())
 	assert.Empty(t, all)
 }
 
@@ -132,20 +132,20 @@ func TestImportPending_AppliesSelectionsAndRemovesFile(t *testing.T) {
 	defer func() { agentscan.Scanners = savedScanners }()
 
 	require.NoError(t, agentscan.WritePending([]agentscan.PendingAgent{
-		{AgentID: "openclaw", Enabled: true, ConfigPath: "/custom/path"},
+		{AppID: "openclaw", Enabled: true, ConfigPath: "/custom/path"},
 	}))
 
 	agentscan.ImportPending(context.Background(), s, logging.New("error"))
 
 	// agent_settings row is present, enabled, with the path from the file.
-	row, err := s.GetAgentSetting(context.Background(), "openclaw")
+	row, err := s.GetAppSetting(context.Background(), "openclaw")
 	require.NoError(t, err)
 	require.NotNil(t, row)
 	assert.True(t, row.Enabled)
 	assert.Equal(t, "/custom/path", row.ConfigPath)
 
 	// inherited_endpoints has been written by the ScanOne call.
-	eps, _ := s.ListInheritedEndpointsByAgent(context.Background(), "openclaw")
+	eps, _ := s.ListInheritedEndpointsByApp(context.Background(), "openclaw")
 	require.Len(t, eps, 1)
 	assert.Equal(t, "anthropic", eps[0].Provider)
 
@@ -161,22 +161,22 @@ func TestImportPending_DisabledClearsInheritedRows(t *testing.T) {
 
 	// Pre-seed an enabled row + endpoints that the wizard then chooses to
 	// disable.
-	require.NoError(t, s.UpsertAgentSetting(ctx, storage.AgentSetting{
-		AgentID: "openclaw", Enabled: true, ConfigPath: "/x",
+	require.NoError(t, s.UpsertAppSetting(ctx, storage.AppSetting{
+		AppID: "openclaw", Enabled: true, ConfigPath: "/x",
 	}))
 	require.NoError(t, s.ReplaceInheritedEndpoints(ctx, "openclaw", []storage.InheritedEndpoint{
 		{Provider: "anthropic", EndpointURL: "u", CapturedAt: 1},
 	}))
 
 	require.NoError(t, agentscan.WritePending([]agentscan.PendingAgent{
-		{AgentID: "openclaw", Enabled: false, ConfigPath: "/x"},
+		{AppID: "openclaw", Enabled: false, ConfigPath: "/x"},
 	}))
 
 	agentscan.ImportPending(ctx, s, logging.New("error"))
 
-	row, _ := s.GetAgentSetting(ctx, "openclaw")
+	row, _ := s.GetAppSetting(ctx, "openclaw")
 	assert.False(t, row.Enabled)
-	eps, _ := s.ListInheritedEndpointsByAgent(ctx, "openclaw")
+	eps, _ := s.ListInheritedEndpointsByApp(ctx, "openclaw")
 	assert.Empty(t, eps, "disable should drop inherited endpoints")
 }
 
@@ -195,18 +195,18 @@ func TestImportPending_ScanFailureStillRemovesFile(t *testing.T) {
 	defer func() { agentscan.Scanners = savedScanners }()
 
 	require.NoError(t, agentscan.WritePending([]agentscan.PendingAgent{
-		{AgentID: "openclaw", Enabled: true, ConfigPath: "/missing.json"},
+		{AppID: "openclaw", Enabled: true, ConfigPath: "/missing.json"},
 	}))
 
 	agentscan.ImportPending(context.Background(), s, logging.New("error"))
 
 	// agent_settings row still recorded, last_error captures the scan failure.
-	row, _ := s.GetAgentSetting(context.Background(), "openclaw")
+	row, _ := s.GetAppSetting(context.Background(), "openclaw")
 	require.NotNil(t, row)
 	assert.True(t, row.Enabled)
 	assert.NotEmpty(t, row.LastError, "ScanOne should still record the error")
 
-	// Pending file IS removed because UpsertAgentSetting succeeded.
+	// Pending file IS removed because UpsertAppSetting succeeded.
 	_, err := os.Stat(filepath.Join(dir, agentscan.PendingFileName))
 	assert.True(t, os.IsNotExist(err),
 		"pending file must be removed even when ScanOne fails, otherwise it overwrites dashboard edits")
@@ -243,13 +243,13 @@ func TestImportPending_UnknownAgentDoesNotErrorOut(t *testing.T) {
 	defer func() { agentscan.Scanners = savedScanners }()
 
 	require.NoError(t, agentscan.WritePending([]agentscan.PendingAgent{
-		{AgentID: "future-agent", Enabled: true, ConfigPath: "/x"},
+		{AppID: "future-agent", Enabled: true, ConfigPath: "/x"},
 	}))
 
 	agentscan.ImportPending(context.Background(), s, logging.New("error"))
 
 	// Setting row is still recorded so a future upgrade picks it up.
-	row, _ := s.GetAgentSetting(context.Background(), "future-agent")
+	row, _ := s.GetAppSetting(context.Background(), "future-agent")
 	require.NotNil(t, row)
 	assert.True(t, row.Enabled)
 }

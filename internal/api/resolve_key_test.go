@@ -14,8 +14,8 @@ func TestResolveProviderKey_InheritedFromEnabledAgent(t *testing.T) {
 	srv, store := newTestServer(t)
 	ctx := context.Background()
 
-	require.NoError(t, store.UpsertAgentSetting(ctx, storage.AgentSetting{
-		AgentID: "openclaw", Enabled: true, ConfigPath: "/x",
+	require.NoError(t, store.UpsertAppSetting(ctx, storage.AppSetting{
+		AppID: "openclaw", Enabled: true, ConfigPath: "/x",
 	}))
 	require.NoError(t, store.ReplaceInheritedEndpoints(ctx, "openclaw", []storage.InheritedEndpoint{
 		{Provider: "deepseek", EndpointURL: "u", APIKey: "sk-inherited", CapturedAt: 1},
@@ -33,8 +33,8 @@ func TestResolveProviderKey_SkipsDisabledAgents(t *testing.T) {
 	srv, store := newTestServer(t)
 	ctx := context.Background()
 
-	require.NoError(t, store.UpsertAgentSetting(ctx, storage.AgentSetting{
-		AgentID: "cursor", Enabled: false, ConfigPath: "/y",
+	require.NoError(t, store.UpsertAppSetting(ctx, storage.AppSetting{
+		AppID: "cursor", Enabled: false, ConfigPath: "/y",
 	}))
 	require.NoError(t, store.ReplaceInheritedEndpoints(ctx, "cursor", []storage.InheritedEndpoint{
 		{Provider: "deepseek", EndpointURL: "u", APIKey: "sk-disabled-loses", CapturedAt: 1},
@@ -48,8 +48,8 @@ func TestProvidersWithCredentials_InheritedOnly(t *testing.T) {
 	srv, store := newTestServer(t)
 	ctx := context.Background()
 
-	require.NoError(t, store.UpsertAgentSetting(ctx, storage.AgentSetting{
-		AgentID: "openclaw", Enabled: true, ConfigPath: "/x",
+	require.NoError(t, store.UpsertAppSetting(ctx, storage.AppSetting{
+		AppID: "openclaw", Enabled: true, ConfigPath: "/x",
 	}))
 	require.NoError(t, store.ReplaceInheritedEndpoints(ctx, "openclaw", []storage.InheritedEndpoint{
 		{Provider: "anthropic", EndpointURL: "u", APIKey: "sk-anthropic", CapturedAt: 1},

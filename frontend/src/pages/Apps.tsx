@@ -5,29 +5,29 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Link2, Link2Off, RefreshCw, ChevronDown, ChevronUp,
   TerminalSquare, RotateCcw, History, Check, Power, Edit2,
-  KeyRound, ShieldCheck, ExternalLink,
+  ExternalLink,
 } from 'lucide-react'
 import {
   api,
-  type BackupInfo, type AgentDiff,
-  type SupportedAgent, type ConfiguredAgent,
-  type AgentSubAgent,
+  type BackupInfo, type AppDiff,
+  type SupportedApp, type ConfiguredApp, type KeyHintChannel,
 } from '../api/client'
 import { PageHeader } from '../components/ui'
 
-interface AgentStats {
+interface AppStats {
   requests_today: number
   cost_today_usd: number
   savings_today_usd: number
 }
 
-interface AgentStatus {
+interface AppStatus {
   name: string
   config_path?: string
   cli_path?: string
   connected: boolean
   providers?: string[]
-  stats: AgentStats
+  stats: AppStats
+  key_hints?: KeyHintChannel[]
 }
 
 interface LogRow {
@@ -46,15 +46,15 @@ interface LogRow {
   status_code: number
 }
 
-interface UnifiedAgent {
+interface UnifiedApp {
   id: string
   displayName: string
-  supported?: SupportedAgent
-  config?: ConfiguredAgent
-  status?: AgentStatus
+  supported?: SupportedApp
+  config?: ConfiguredApp
+  status?: AppStatus
 }
 
-const AGENT_LABELS: Record<string, string> = {
+const APP_LABELS: Record<string, string> = {
   'openclaw': 'OpenClaw',
   'claude-code': 'Claude Code',
   'cursor': 'Cursor',
@@ -64,7 +64,7 @@ const AGENT_LABELS: Record<string, string> = {
 // ─── DiffModal ─────────────────────────────────────────────────────────────
 
 function DiffModal({ diff, onConfirm, onCancel, loading }: {
-  diff: AgentDiff
+  diff: AppDiff
   onConfirm: () => void
   onCancel: () => void
   loading: boolean
@@ -74,16 +74,16 @@ function DiffModal({ diff, onConfirm, onCancel, loading }: {
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
         <div className="p-5 border-b border-gray-100">
-          <h2 className="font-semibold text-sm">{t('agents.preview_changes')}</h2>
-          <p className="text-xs text-gray-500 mt-0.5">{t('agents.preview_detail')}</p>
+          <h2 className="font-semibold text-sm">{t('apps.preview_changes')}</h2>
+          <p className="text-xs text-gray-500 mt-0.5">{t('apps.preview_detail')}</p>
         </div>
         <div className="flex-1 overflow-auto p-5 grid grid-cols-2 gap-4 min-h-0">
           <div>
-            <p className="text-xs text-gray-400 mb-1 font-medium">{t('agents.before')}</p>
+            <p className="text-xs text-gray-400 mb-1 font-medium">{t('apps.before')}</p>
             <pre className="text-xs bg-red-50 border border-red-100 rounded-lg p-3 overflow-auto max-h-64 whitespace-pre-wrap">{diff.before}</pre>
           </div>
           <div>
-            <p className="text-xs text-gray-400 mb-1 font-medium">{t('agents.after')}</p>
+            <p className="text-xs text-gray-400 mb-1 font-medium">{t('apps.after')}</p>
             <pre className="text-xs bg-green-50 border border-green-100 rounded-lg p-3 overflow-auto max-h-64 whitespace-pre-wrap">{diff.after}</pre>
           </div>
         </div>
@@ -96,7 +96,7 @@ function DiffModal({ diff, onConfirm, onCancel, loading }: {
             disabled={loading}
             className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
-            {loading ? t('agents.connecting') : t('agents.confirm_connect')}
+            {loading ? t('apps.connecting') : t('apps.confirm_connect')}
           </button>
         </div>
       </div>
@@ -110,20 +110,20 @@ function BackupsPanel({ agentName }: { agentName: string }) {
   const { t } = useTranslation()
   const qc = useQueryClient()
   const { data: backups = [], isLoading } = useQuery<BackupInfo[]>({
-    queryKey: ['agent-backups', agentName],
-    queryFn: () => api.agentBackups(agentName),
+    queryKey: ['app-backups', agentName],
+    queryFn: () => api.appBackups(agentName),
   })
 
   const restore = useMutation({
-    mutationFn: (filename: string) => api.agentRestore(agentName, filename),
+    mutationFn: (filename: string) => api.appRestore(agentName, filename),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['agents'] })
-      qc.invalidateQueries({ queryKey: ['agent-backups', agentName] })
+      qc.invalidateQueries({ queryKey: ['apps'] })
+      qc.invalidateQueries({ queryKey: ['app-backups', agentName] })
     },
   })
 
-  if (isLoading) return <p className="text-xs text-gray-500 py-2">{t('agents.backups_loading')}</p>
-  if (backups.length === 0) return <p className="text-xs text-gray-500 py-2">{t('agents.backups_empty')}</p>
+  if (isLoading) return <p className="text-xs text-gray-500 py-2">{t('apps.backups_loading')}</p>
+  if (backups.length === 0) return <p className="text-xs text-gray-500 py-2">{t('apps.backups_empty')}</p>
 
   return (
     <div className="space-y-1">
@@ -135,73 +135,73 @@ function BackupsPanel({ agentName }: { agentName: string }) {
           <span className="text-gray-500">{b.size_kb > 0 ? `${b.size_kb} KB` : '< 1 KB'}</span>
           <button
             onClick={() => {
-              if (window.confirm(t('agents.restore_confirm', { date: new Date(b.created_at).toLocaleString() }))) {
+              if (window.confirm(t('apps.restore_confirm', { date: new Date(b.created_at).toLocaleString() }))) {
                 restore.mutate(b.filename)
               }
             }}
             disabled={restore.isPending}
             className="text-blue-600 hover:text-blue-800 disabled:opacity-40 font-medium"
           >
-            {t('agents.restore')}
+            {t('apps.restore')}
           </button>
         </div>
       ))}
-      {restore.isError && <p className="text-xs text-red-500">{t('agents.restore_failed')}</p>}
+      {restore.isError && <p className="text-xs text-red-500">{t('apps.restore_failed')}</p>}
     </div>
   )
 }
 
 // ─── Page ──────────────────────────────────────────────────────────────────
 
-export default function Agents() {
+export default function Apps() {
   const { t } = useTranslation()
   const qc = useQueryClient()
   const [expandedLogs, setExpandedLogs] = useState<string | null>(null)
 
-  const { data: supported = [], isLoading: loadingSupported } = useQuery<SupportedAgent[]>({
-    queryKey: ['agents-supported'],
-    queryFn: api.agentsSupported,
+  const { data: supported = [], isLoading: loadingSupported } = useQuery<SupportedApp[]>({
+    queryKey: ['apps-supported'],
+    queryFn: api.appsSupported,
     staleTime: 60_000,
   })
-  const { data: configured = [] } = useQuery<ConfiguredAgent[]>({
-    queryKey: ['agents-configured'],
-    queryFn: api.agentsConfigured,
+  const { data: configured = [] } = useQuery<ConfiguredApp[]>({
+    queryKey: ['apps-configured'],
+    queryFn: api.appsConfigured,
     refetchInterval: 15_000,
   })
-  const { data: statuses = [], isLoading: loadingStatuses, refetch } = useQuery<AgentStatus[]>({
-    queryKey: ['agents'],
+  const { data: statuses = [], isLoading: loadingStatuses, refetch } = useQuery<AppStatus[]>({
+    queryKey: ['apps'],
     queryFn: () =>
-      fetch('/internal/agents', { credentials: 'include' }).then((r) => {
+      fetch('/internal/apps', { credentials: 'include' }).then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
-        return r.json() as Promise<AgentStatus[]>
+        return r.json() as Promise<AppStatus[]>
       }),
     refetchInterval: 30_000,
   })
 
-  const cfgByID = new Map(configured.map((c) => [c.agent_id, c]))
+  const cfgByID = new Map(configured.map((c) => [c.app_id, c]))
   const statusByName = new Map(statuses.map((a) => [a.name, a]))
 
   // Build unified list starting from the scanner registry (canonical order).
-  // Any legacy agent that appears in /internal/agents but not in supported
+  // Any legacy agent that appears in /internal/apps but not in supported
   // (e.g. older daemon build) is appended at the end.
   const seenIDs = new Set<string>()
-  const agents: UnifiedAgent[] = []
+  const agents: UnifiedApp[] = []
 
   for (const s of supported) {
-    seenIDs.add(s.agent_id)
+    seenIDs.add(s.app_id)
     agents.push({
-      id: s.agent_id,
+      id: s.app_id,
       displayName: s.display_name,
       supported: s,
-      config: cfgByID.get(s.agent_id),
-      status: statusByName.get(s.agent_id),
+      config: cfgByID.get(s.app_id),
+      status: statusByName.get(s.app_id),
     })
   }
   for (const st of statuses) {
     if (!seenIDs.has(st.name)) {
       agents.push({
         id: st.name,
-        displayName: AGENT_LABELS[st.name] ?? st.name,
+        displayName: APP_LABELS[st.name] ?? st.name,
         status: st,
       })
     }
@@ -211,45 +211,45 @@ export default function Agents() {
   // actually consuming tokens through krouter. The user's framing: each AI
   // agent is the first-class entity (it's what calls providers); the hosting
   // app — claude-code, openclaw, … — is configuration metadata.
-  const connectedAgents = agents.filter((a) => a.status?.connected)
-  const availableAgents = agents.filter((a) => !a.status?.connected)
+  const connectedApps = agents.filter((a) => a.status?.connected)
+  const availableApps = agents.filter((a) => !a.status?.connected)
 
   const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ['agents'] })
-    qc.invalidateQueries({ queryKey: ['agents-configured'] })
+    qc.invalidateQueries({ queryKey: ['apps'] })
+    qc.invalidateQueries({ queryKey: ['apps-configured'] })
   }
 
   return (
     <div className="p-6 space-y-4 max-w-6xl mx-auto">
       <PageHeader
-        title={t('agents.title')}
+        title={t('apps.title')}
         right={
           <button
             onClick={() => { refetch(); invalidate() }}
             className="flex items-center gap-1.5 text-sm font-medium text-muted hover:text-ink border border-line-strong bg-card px-3 py-1.5 rounded-lg transition-colors"
           >
             <RefreshCw size={14} />
-            {t('agents.re_detect')}
+            {t('apps.re_detect')}
           </button>
         }
       />
 
       {(loadingSupported || loadingStatuses) ? (
-        <p className="text-sm text-gray-500">{t('agents.detecting')}</p>
+        <p className="text-sm text-gray-500">{t('apps.detecting')}</p>
       ) : agents.length === 0 ? (
         <div className="bg-gray-50 rounded-xl border border-dashed border-gray-200 p-8 text-center space-y-1">
-          <p className="text-sm text-gray-500">{t('agents.none_detected')}</p>
-          <p className="text-xs text-gray-500">{t('agents.none_detail')}</p>
+          <p className="text-sm text-gray-500">{t('apps.none_detected')}</p>
+          <p className="text-xs text-gray-500">{t('apps.none_detail')}</p>
         </div>
       ) : (
         <div className="space-y-6">
-          {connectedAgents.length > 0 && (
+          {connectedApps.length > 0 && (
             <section className="space-y-3">
               <SectionHeader
-                label={t('agents.section_connected')}
-                count={connectedAgents.length}
+                label={t('apps.section_connected')}
+                count={connectedApps.length}
               />
-              {connectedAgents.map((a) => (
+              {connectedApps.map((a) => (
                 <UnifiedAgentCard
                   key={a.id}
                   agent={a}
@@ -261,15 +261,15 @@ export default function Agents() {
             </section>
           )}
 
-          {availableAgents.length > 0 && (
+          {availableApps.length > 0 && (
             <section className="space-y-2">
               <SectionHeader
-                label={t('agents.section_available')}
-                count={availableAgents.length}
+                label={t('apps.section_available')}
+                count={availableApps.length}
               />
-              <p className="text-xs text-gray-500">{t('agents.section_available_hint')}</p>
+              <p className="text-xs text-gray-500">{t('apps.section_available_hint')}</p>
               <div className="space-y-1.5">
-                {availableAgents.map((a) => (
+                {availableApps.map((a) => (
                   <AvailableAgentRow
                     key={a.id}
                     agent={a}
@@ -322,7 +322,7 @@ function UnifiedAgentCard({
   onToggleLogs,
   onMutationSuccess,
 }: {
-  agent: UnifiedAgent
+  agent: UnifiedApp
   logsExpanded: boolean
   onToggleLogs: () => void
   onMutationSuccess: () => void
@@ -342,29 +342,29 @@ function UnifiedAgentCard({
   )
   const [showBackups, setShowBackups] = useState(false)
   const [showDiff, setShowDiff] = useState(false)
-  const [pendingDiff, setPendingDiff] = useState<AgentDiff | null>(null)
+  const [pendingDiff, setPendingDiff] = useState<AppDiff | null>(null)
   // Post-connect restart hint, driven by the backend's restart_kind so every
   // agent (incl. Hermes) is covered and we never guess from the agent id.
   const [restartKind, setRestartKind] = useState<string | null>(null)
 
   // Inheritance mutations
   const enable = useMutation({
-    mutationFn: () => api.agentEnable(a.id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['agents-configured'] }) },
+    mutationFn: () => api.appEnable(a.id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['apps-configured'] }) },
   })
   const disable = useMutation({
-    mutationFn: () => api.agentDisable(a.id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['agents-configured'] }) },
+    mutationFn: () => api.appDisable(a.id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['apps-configured'] }) },
   })
   const rescan = useMutation({
-    mutationFn: (path?: string) => api.agentRescan(a.id, path),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['agents-configured'] }) },
+    mutationFn: (path?: string) => api.appRescan(a.id, path),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['apps-configured'] }) },
   })
 
   // Proxy connect/disconnect mutations
   const connectMutation = useMutation({
     mutationFn: () =>
-      fetch(`/internal/agents/${a.id}/connect`, { method: 'POST', credentials: 'include' })
+      fetch(`/internal/apps/${a.id}/connect`, { method: 'POST', credentials: 'include' })
         .then((r) => {
           if (!r.ok) return r.json().then((e: { error: string }) => { throw new Error(e.error) })
           return r.json() as Promise<{ restart_kind?: string }>
@@ -376,7 +376,7 @@ function UnifiedAgentCard({
   })
   const disconnectMutation = useMutation({
     mutationFn: () =>
-      fetch(`/internal/agents/${a.id}/disconnect`, { method: 'POST', credentials: 'include' })
+      fetch(`/internal/apps/${a.id}/disconnect`, { method: 'POST', credentials: 'include' })
         .then((r) => {
           if (!r.ok) return r.json().then((e: { error: string }) => { throw new Error(e.error) })
           return r.json()
@@ -387,7 +387,7 @@ function UnifiedAgentCard({
     },
   })
   const getDiff = useMutation({
-    mutationFn: () => api.agentDiff(a.id),
+    mutationFn: () => api.appDiff(a.id),
     onSuccess: (diff) => { setPendingDiff(diff); setShowDiff(true) },
   })
 
@@ -396,22 +396,12 @@ function UnifiedAgentCard({
     connectMutation.isPending || disconnectMutation.isPending || getDiff.isPending
 
   const { data: logs = [], isLoading: logsLoading } = useQuery<LogRow[]>({
-    queryKey: ['agent-logs', a.id],
+    queryKey: ['app-logs', a.id],
     queryFn: () =>
       fetch(`/internal/logs?agent=${encodeURIComponent(a.id)}&n=50`, { credentials: 'include' })
         .then((r) => r.json() as Promise<LogRow[]>),
     enabled: logsExpanded,
     staleTime: 10_000,
-  })
-
-  // OpenClaw is the only agent today that hosts multiple sub-agent profiles
-  // (`main` / `claude` / `deepseek` / …). The endpoint returns [] for any
-  // other agent, so we can fire the query for every card uniformly — the
-  // SubAgentSection below renders nothing when the list is empty.
-  const { data: subAgents = [] } = useQuery<AgentSubAgent[]>({
-    queryKey: ['agent-sub-agents', a.id],
-    queryFn: () => api.agentSubAgents(a.id),
-    staleTime: 60_000,
   })
 
   const configPath = a.config?.config_path ?? a.supported?.default_path ?? a.status?.config_path
@@ -450,11 +440,11 @@ function UnifiedAgentCard({
               {/* Proxy: connected / not connected */}
               {connected ? (
                 <span className="inline-flex items-center gap-1 text-[11px] font-medium text-brand bg-brand-light rounded-full px-2 py-0.5">
-                  <Link2 className="w-3 h-3" /> {t('agents.connected')}
+                  <Link2 className="w-3 h-3" /> {t('apps.connected')}
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-400 bg-gray-50 rounded-full px-2 py-0.5">
-                  <Link2Off className="w-3 h-3" /> {t('agents.not_connected')}
+                  <Link2Off className="w-3 h-3" /> {t('apps.not_connected')}
                 </span>
               )}
             </div>
@@ -559,7 +549,7 @@ function UnifiedAgentCard({
                 disabled={isBusy}
                 className="text-xs px-2.5 py-1 rounded-md bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50 font-medium"
               >
-                {disconnectMutation.isPending ? t('agents.disconnecting') : t('agents.disconnect')}
+                {disconnectMutation.isPending ? t('apps.disconnecting') : t('apps.disconnect')}
               </button>
             ) : (
               <button
@@ -570,9 +560,9 @@ function UnifiedAgentCard({
                 disabled={isBusy}
                 className="text-xs px-2.5 py-1 rounded-md bg-brand-light text-brand hover:bg-green-100 disabled:opacity-50 font-medium"
               >
-                {getDiff.isPending ? t('agents.loading')
-                  : connectMutation.isPending ? t('agents.connecting')
-                  : t('agents.connect')}
+                {getDiff.isPending ? t('apps.loading')
+                  : connectMutation.isPending ? t('apps.connecting')
+                  : t('apps.connect')}
               </button>
             )}
           </div>
@@ -585,13 +575,13 @@ function UnifiedAgentCard({
         {restartKind === 'shell' && (
           <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
             <TerminalSquare size={12} className="shrink-0" />
-            {t('agents.new_terminal_hint')}
+            {t('apps.new_terminal_hint')}
           </div>
         )}
         {restartKind && restartKind !== 'shell' && (
           <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
             <RotateCcw size={12} className="shrink-0" />
-            {t('agents.restart_hint', { label: a.displayName })}
+            {t('apps.restart_hint', { label: a.displayName })}
           </div>
         )}
 
@@ -602,13 +592,11 @@ function UnifiedAgentCard({
           </p>
         )}
 
-        {/* Inherited provider chips — for single-profile agents where the
-            app == the agent (claude-code, cursor, hermes). For multi-profile
-            hosts the chips live inside each SubAgentRow instead. */}
-        {a.status && subAgents.length === 0 && (a.status.providers ?? []).length > 0 && (
+        {/* Inherited provider chips */}
+        {a.status && (a.status.providers ?? []).length > 0 && (
           <div className="flex items-center gap-1.5 flex-wrap border-t border-gray-100 pt-3">
             <span className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold mr-1">
-              {t('agents.providers_label')}
+              {t('apps.providers_label')}
             </span>
             {(a.status.providers ?? []).map((name) => (
               <ProviderChip key={name} name={name} />
@@ -623,20 +611,20 @@ function UnifiedAgentCard({
               <span className="font-medium text-gray-900 tabular-nums">
                 {a.status.stats.requests_today}
               </span>{' '}
-              {t('agents.requests_today')}
+              {t('apps.requests_today')}
             </div>
             <div>
               <span className="font-medium text-gray-900 tabular-nums">
                 ${a.status.stats.cost_today_usd.toFixed(4)}
               </span>{' '}
-              {t('agents.cost')}
+              {t('apps.cost')}
             </div>
             {a.status.stats.savings_today_usd > 0.000001 && (
               <div>
                 <span className="font-medium text-brand tabular-nums">
                   ${a.status.stats.savings_today_usd.toFixed(4)}
                 </span>{' '}
-                {t('agents.saved')}
+                {t('apps.saved')}
               </div>
             )}
             <button
@@ -644,39 +632,35 @@ function UnifiedAgentCard({
               className="ml-auto flex items-center gap-1 hover:text-gray-900 transition-colors"
             >
               {logsExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-              {logsExpanded ? t('agents.hide_logs') : t('agents.show_logs')}
+              {logsExpanded ? t('apps.hide_logs') : t('apps.show_logs')}
             </button>
           </div>
         )}
-      </div>
 
-      {/* Sub-agents — surfaced for hosts that support multiple profiles
-          (OpenClaw today). The host's display name is passed so the
-          section header can frame it as "{host}'s configured agents",
-          reinforcing that each sub-agent is the actual entity calling
-          providers. Renders nothing when the list is empty. */}
-      {subAgents.length > 0 && (
-        <SubAgentSection hostName={a.displayName} subs={subAgents} t={t} />
-      )}
+        {/* Key-hint channels */}
+        {a.status?.key_hints && a.status.key_hints.length > 1 && (
+          <KeyHintChannels hints={a.status.key_hints} />
+        )}
+      </div>
 
       {/* Logs panel */}
       {logsExpanded && (
         <div className="border-t border-gray-100 bg-gray-50 px-4 py-3">
           {logsLoading ? (
-            <p className="text-xs text-gray-500">{t('agents.logs_loading')}</p>
+            <p className="text-xs text-gray-500">{t('apps.logs_loading')}</p>
           ) : logs.length === 0 ? (
-            <p className="text-xs text-gray-500">{t('agents.logs_empty')}</p>
+            <p className="text-xs text-gray-500">{t('apps.logs_empty')}</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="text-gray-500 font-medium text-left">
-                    <th className="pb-2 w-24">{t('agents.col_time')}</th>
-                    <th className="pb-2">{t('agents.col_model')}</th>
-                    <th className="pb-2">{t('agents.col_provider')}</th>
-                    <th className="pb-2 text-right">{t('agents.col_tokens')}</th>
-                    <th className="pb-2 text-right">{t('agents.col_cost')}</th>
-                    <th className="pb-2 text-right">{t('agents.col_latency')}</th>
+                    <th className="pb-2 w-24">{t('apps.col_time')}</th>
+                    <th className="pb-2">{t('apps.col_model')}</th>
+                    <th className="pb-2">{t('apps.col_provider')}</th>
+                    <th className="pb-2 text-right">{t('apps.col_tokens')}</th>
+                    <th className="pb-2 text-right">{t('apps.col_cost')}</th>
+                    <th className="pb-2 text-right">{t('apps.col_latency')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -715,7 +699,7 @@ function UnifiedAgentCard({
             className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 pt-3"
           >
             <History size={13} />
-            {t('agents.backups')}
+            {t('apps.backups')}
             {showBackups ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
           </button>
           {showBackups && (
@@ -739,134 +723,6 @@ function UnifiedAgentCard({
   )
 }
 
-// ─── SubAgentSection ───────────────────────────────────────────────────────
-//
-// Lists every sub-agent profile inside a multi-agent host (currently only
-// OpenClaw). Each sub-agent has its own primary model and per-provider
-// configuration (different baseURL / key / model list).
-//
-// The user's framing: the sub-agent IS the AI agent — it's what calls
-// providers and burns tokens. The host app (OpenClaw) is just configuration.
-// So we render each profile as a prominent stacked card rather than a
-// collapsed list. Per-profile provider details still expand on click,
-// because a 4-sub-agent install with full model lists would be too long.
-
-function SubAgentSection({
-  hostName,
-  subs,
-  t,
-}: {
-  hostName: string
-  subs: AgentSubAgent[]
-  t: ReturnType<typeof useTranslation>['t']
-}) {
-  return (
-    <div className="border-t border-gray-100 bg-gray-50/60 px-4 py-3 space-y-2">
-      <p className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold">
-        {t('agents.profiles_label', { host: hostName })}
-      </p>
-      <ul className="space-y-2">
-        {subs.map((s) => (
-          <SubAgentRow key={s.id} sub={s} t={t} />
-        ))}
-      </ul>
-    </div>
-  )
-}
-
-function SubAgentRow({
-  sub,
-  t,
-}: {
-  sub: AgentSubAgent
-  t: ReturnType<typeof useTranslation>['t']
-}) {
-  const [open, setOpen] = useState(false)
-  const providers = sub.providers ?? []
-  return (
-    <li className="rounded-lg border border-gray-200 bg-white">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-gray-50 rounded-lg"
-      >
-        {open ? <ChevronUp size={12} className="text-gray-400" /> : <ChevronDown size={12} className="text-gray-400" />}
-        <span className="font-semibold text-sm text-gray-900">{sub.display_name || sub.id}</span>
-        {sub.id !== (sub.display_name || sub.id) && (
-          <span className="text-[10px] text-gray-400 font-mono">{sub.id}</span>
-        )}
-        {sub.primary_model && (
-          <span className="text-[10px] font-mono text-gray-600 bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5">
-            {sub.primary_model}
-          </span>
-        )}
-        {sub.has_oauth && (
-          <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-700 bg-emerald-50 rounded-full px-1.5 py-0.5">
-            <ShieldCheck className="w-3 h-3" /> OAuth
-          </span>
-        )}
-        {providers.length > 0 && (
-          <div className="ml-auto flex items-center gap-1 flex-wrap justify-end">
-            {providers.slice(0, 4).map((p) => (
-              <ProviderChip key={p.provider} name={p.provider} />
-            ))}
-            {providers.length > 4 && (
-              <span className="text-[10px] text-gray-400">+{providers.length - 4}</span>
-            )}
-          </div>
-        )}
-      </button>
-      {open && (
-        <div className="px-3 pb-3 pt-1 border-t border-gray-100">
-          {providers.length === 0 ? (
-            <p className="text-[11px] text-gray-400 italic">
-              {t('agents.sub_agent_no_providers')}
-            </p>
-          ) : (
-            <ul className="space-y-1.5">
-              {providers.map((p) => (
-                <li key={p.provider} className="rounded-md border border-gray-100 bg-gray-50 p-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <ProviderChip name={p.provider} />
-                    {p.protocol && (
-                      <span className="text-[10px] text-gray-500 bg-white border border-gray-200 rounded px-1.5 py-0.5">
-                        {p.protocol}
-                      </span>
-                    )}
-                    {p.primary_model && (
-                      <span className="text-[10px] font-mono font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
-                        {p.primary_model}
-                      </span>
-                    )}
-                    {p.has_api_key && (
-                      <span
-                        className="inline-flex items-center gap-0.5 text-[10px] font-medium text-gray-500"
-                        title={t('agents.sub_agent_key_configured')}
-                      >
-                        <KeyRound className="w-3 h-3" />
-                      </span>
-                    )}
-                  </div>
-                  {p.base_url && (
-                    <p className="text-[10px] font-mono text-gray-400 mt-0.5 truncate" title={p.base_url}>
-                      {p.base_url}
-                    </p>
-                  )}
-                  {p.models && p.models.length > 0 && (
-                    <p className="text-[10px] text-gray-500 mt-1 font-mono break-all">
-                      {p.models.join(' · ')}
-                    </p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-    </li>
-  )
-}
-
 // ─── AvailableAgentRow ─────────────────────────────────────────────────────
 //
 // Compact row for agents detected on disk but not currently using krouter.
@@ -878,16 +734,16 @@ function AvailableAgentRow({
   agent: a,
   onMutationSuccess,
 }: {
-  agent: UnifiedAgent
+  agent: UnifiedApp
   onMutationSuccess: () => void
 }) {
   const { t } = useTranslation()
-  const [pendingDiff, setPendingDiff] = useState<AgentDiff | null>(null)
+  const [pendingDiff, setPendingDiff] = useState<AppDiff | null>(null)
   const [showDiff, setShowDiff] = useState(false)
 
   const connectMutation = useMutation({
     mutationFn: () =>
-      fetch(`/internal/agents/${a.id}/connect`, { method: 'POST', credentials: 'include' })
+      fetch(`/internal/apps/${a.id}/connect`, { method: 'POST', credentials: 'include' })
         .then((r) => {
           if (!r.ok) return r.json().then((e: { error: string }) => { throw new Error(e.error) })
           return r.json()
@@ -895,12 +751,12 @@ function AvailableAgentRow({
     onSuccess: onMutationSuccess,
   })
   const getDiff = useMutation({
-    mutationFn: () => api.agentDiff(a.id),
+    mutationFn: () => api.appDiff(a.id),
     onSuccess: (diff) => { setPendingDiff(diff); setShowDiff(true) },
   })
 
   const configPath = a.config?.config_path ?? a.supported?.default_path ?? a.status?.config_path
-  const detected = !!a.status   // appears in /internal/agents — binary on PATH
+  const detected = !!a.status   // appears in /internal/apps — binary on PATH
   const isBusy = connectMutation.isPending || getDiff.isPending
 
   return (
@@ -913,7 +769,7 @@ function AvailableAgentRow({
           <span className="font-medium text-sm text-gray-900">{a.displayName}</span>
           {!detected && (
             <span className="text-[10px] uppercase tracking-wider text-gray-400 border border-gray-200 rounded px-1.5 py-0.5">
-              {t('agents.not_installed')}
+              {t('apps.not_installed')}
             </span>
           )}
         </div>
@@ -932,9 +788,9 @@ function AvailableAgentRow({
           disabled={isBusy}
           className="shrink-0 text-xs px-2.5 py-1 rounded-md bg-brand-light text-brand hover:bg-green-100 disabled:opacity-50 font-medium"
         >
-          {getDiff.isPending ? t('agents.loading')
-            : connectMutation.isPending ? t('agents.connecting')
-            : t('agents.connect')}
+          {getDiff.isPending ? t('apps.loading')
+            : connectMutation.isPending ? t('apps.connecting')
+            : t('apps.connect')}
         </button>
       )}
       {connectMutation.error && (
@@ -950,6 +806,32 @@ function AvailableAgentRow({
           onCancel={() => { setShowDiff(false); setPendingDiff(null) }}
         />
       )}
+    </div>
+  )
+}
+
+// ─── Key-hint channel list ─────────────────────────────────────────────────
+
+function KeyHintChannels({ hints }: { hints: KeyHintChannel[] }) {
+  const { t } = useTranslation()
+  return (
+    <div className="border-t border-gray-100 pt-3 mt-1">
+      <p className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1.5">
+        {t('apps.key_hint_channels')}
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {hints.map((h) => (
+          <span
+            key={h.hint || '__nokey__'}
+            className="inline-flex items-center gap-1.5 text-[11px] font-mono px-2 py-0.5 bg-gray-100 rounded text-gray-600"
+          >
+            <span className="text-gray-400">···</span>
+            {h.hint || t('apps.key_hint_unknown')}
+            <span className="text-gray-400 font-sans">·</span>
+            <span className="tabular-nums">{h.requests}</span>
+          </span>
+        ))}
+      </div>
     </div>
   )
 }

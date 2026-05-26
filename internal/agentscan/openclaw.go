@@ -19,7 +19,7 @@ import (
 //     InheritedEndpoint via ExtrasJSON.
 type OpenClawScanner struct{}
 
-func (OpenClawScanner) AgentID() string     { return "openclaw" }
+func (OpenClawScanner) AppID() string     { return "openclaw" }
 func (OpenClawScanner) DisplayName() string { return "OpenClaw" }
 
 func (OpenClawScanner) DefaultConfigPath() string {

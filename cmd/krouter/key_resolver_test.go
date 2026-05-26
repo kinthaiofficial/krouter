@@ -21,8 +21,8 @@ func newKeyStore(t *testing.T) *storage.Store {
 func TestResolveProviderKeyForRouting_InheritedFromEnabledAgent(t *testing.T) {
 	store := newKeyStore(t)
 
-	require.NoError(t, store.UpsertAgentSetting(context.Background(), storage.AgentSetting{
-		AgentID: "openclaw", Enabled: true, ConfigPath: "/x",
+	require.NoError(t, store.UpsertAppSetting(context.Background(), storage.AppSetting{
+		AppID: "openclaw", Enabled: true, ConfigPath: "/x",
 	}))
 	require.NoError(t, store.ReplaceInheritedEndpoints(context.Background(), "openclaw", []storage.InheritedEndpoint{
 		{Provider: "deepseek", EndpointURL: "u", APIKey: "sk-from-inherited", CapturedAt: 1},
@@ -44,8 +44,8 @@ func TestResolveProviderKeyForRouting_NilSafe(t *testing.T) {
 func TestResolveProviderKeyForRouting_SkipsDisabledAgents(t *testing.T) {
 	store := newKeyStore(t)
 
-	require.NoError(t, store.UpsertAgentSetting(context.Background(), storage.AgentSetting{
-		AgentID: "cursor", Enabled: false, ConfigPath: "/y",
+	require.NoError(t, store.UpsertAppSetting(context.Background(), storage.AppSetting{
+		AppID: "cursor", Enabled: false, ConfigPath: "/y",
 	}))
 	require.NoError(t, store.ReplaceInheritedEndpoints(context.Background(), "cursor", []storage.InheritedEndpoint{
 		{Provider: "deepseek", EndpointURL: "u", APIKey: "sk-disabled", CapturedAt: 1},

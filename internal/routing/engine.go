@@ -167,10 +167,10 @@ type SubscriptionSource interface {
 	GetSubscriptionInfo(ctx context.Context, provider string) SubscriptionInfo
 }
 
-// OverrideSource provides per-agent routing overrides configured by the user.
+// OverrideSource provides per-app routing overrides configured by the user.
 // An empty alwaysUse and preset mean "no override for this agent".
 type OverrideSource interface {
-	GetRoutingOverride(agentName string) (alwaysUse, preset string)
+	GetRoutingOverride(appName string) (alwaysUse, preset string)
 }
 
 // Engine makes routing decisions.
@@ -180,7 +180,7 @@ type Engine struct {
 	pricing      PricingSource      // optional; nil falls back to hardcoded model names
 	subscription SubscriptionSource // optional; nil means no subscription-aware routing
 	quota        QuotaSource        // optional; nil means no quota-based downgrade
-	overrides    OverrideSource     // optional; nil means no per-agent overrides
+	overrides    OverrideSource     // optional; nil means no per-app overrides
 	session      SessionSource      // optional; Phase 2 shadow-mode session tracking
 }
 
@@ -212,7 +212,7 @@ func (e *Engine) WithQuota(q QuotaSource) {
 	e.quota = q
 }
 
-// WithOverrides attaches a per-agent routing override source.
+// WithOverrides attaches a per-app routing override source.
 func (e *Engine) WithOverrides(o OverrideSource) {
 	e.overrides = o
 }
@@ -321,7 +321,7 @@ func (e *Engine) Decide(req Request, preset string) Decision {
 				dec := Decision{
 					Provider: provider.Name(),
 					Model:    alwaysUse,
-					Reason:   fmt.Sprintf("per-agent override for %s: always_use %s", req.AppID, alwaysUse),
+					Reason:   fmt.Sprintf("per-app override for %s: always_use %s", req.AppID, alwaysUse),
 				}
 				e.enrichDecision(&dec, req)
 				return dec

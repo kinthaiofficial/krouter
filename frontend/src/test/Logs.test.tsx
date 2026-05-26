@@ -18,7 +18,7 @@ function makeRec(over: Partial<LogRecord> = {}): LogRecord {
   return {
     id: 'req_default',
     ts: '2026-05-23T10:00:00Z',
-    agent: 'openclaw',
+    app: 'openclaw',
     protocol: 'anthropic',
     requested_model: 'claude-sonnet-4',
     model: 'glm-4.6',
@@ -41,7 +41,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn((url: string) => {
     const path = url.split('?')[0]
     let body: unknown = []
-    if (path === '/internal/agents') {
+    if (path === '/internal/apps') {
       body = [{ name: 'openclaw' }, { name: 'cursor' }]
     } else if (path === '/internal/logs' || path === '/internal/logs/range') {
       body = lastRecords
@@ -57,7 +57,7 @@ describe('Logs page', () => {
   it('renders one expandable row per record after data loads', async () => {
     lastRecords = [
       makeRec({ id: 'r1', requested_model: 'claude-sonnet-4', model: 'glm-4.6' }),
-      makeRec({ id: 'r2', requested_model: 'claude-haiku-4-5', model: 'claude-haiku-4-5', agent: 'cursor', provider: 'anthropic' }),
+      makeRec({ id: 'r2', requested_model: 'claude-haiku-4-5', model: 'claude-haiku-4-5', app: 'cursor', provider: 'anthropic' }),
     ]
     renderWithProviders(<Logs />)
     await waitFor(() => {

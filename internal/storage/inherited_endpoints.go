@@ -5,15 +5,15 @@ import (
 	"database/sql"
 )
 
-// InheritedEndpoint is one vendor endpoint extracted from an AI agent's
-// config, persisted in the inherited_endpoints table. The agent_id column is a
-// foreign key into agent_settings; cascade-deletes propagate from there.
+// InheritedEndpoint is one vendor endpoint extracted from an AI app's
+// config, persisted in the inherited_endpoints table. The app_id column is a
+// foreign key into app_settings; cascade-deletes propagate from there.
 //
 // This struct is the storage-layer counterpart of
 // agentscan.InheritedEndpoint. We keep them as separate types to avoid an
 // import cycle (storage cannot depend on agentscan and vice versa).
 type InheritedEndpoint struct {
-	AgentID      string `json:"agent_id"`
+	AppID        string `json:"app_id"`
 	Provider     string `json:"provider"`
 	EndpointURL  string `json:"endpoint_url"`
 	ProtocolHint string `json:"protocol_hint,omitempty"`
@@ -23,11 +23,11 @@ type InheritedEndpoint struct {
 }
 
 // ReplaceInheritedEndpoints atomically swaps all inherited_endpoints rows for
-// agentID with the supplied set. Empty endpoints slice removes all rows for
-// agentID (e.g. when a Scan returns no providers). Atomicity matters because
+// appID with the supplied set. Empty endpoints slice removes all rows for
+// appID (e.g. when a Scan returns no providers). Atomicity matters because
 // the routing engine reads this table concurrently; partial writes could send
 // requests to a half-replaced state.
-func (s *Store) ReplaceInheritedEndpoints(ctx context.Context, agentID string, endpoints []InheritedEndpoint) error {
+func (s *Store) ReplaceInheritedEndpoints(ctx context.Context, appID string, endpoints []InheritedEndpoint) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -35,12 +35,12 @@ func (s *Store) ReplaceInheritedEndpoints(ctx context.Context, agentID string, e
 	defer func() { _ = tx.Rollback() }() // safe no-op after Commit
 
 	if _, err := tx.ExecContext(ctx,
-		`DELETE FROM inherited_endpoints WHERE agent_id = ?`, agentID); err != nil {
+		`DELETE FROM inherited_endpoints WHERE app_id = ?`, appID); err != nil {
 		return err
 	}
 
 	const ins = `INSERT INTO inherited_endpoints
-	             (agent_id, provider, endpoint_url, protocol_hint, api_key, extras_json, captured_at)
+	             (app_id, provider, endpoint_url, protocol_hint, api_key, extras_json, captured_at)
 	             VALUES (?, ?, ?, ?, ?, ?, ?)`
 	stmt, err := tx.PrepareContext(ctx, ins)
 	if err != nil {
@@ -65,7 +65,7 @@ func (s *Store) ReplaceInheritedEndpoints(ctx context.Context, agentID string, e
 			extras = ep.ExtrasJSON
 		}
 		if _, err := stmt.ExecContext(ctx,
-			agentID, ep.Provider, ep.EndpointURL, protocol, apiKey, extras, ep.CapturedAt,
+			appID, ep.Provider, ep.EndpointURL, protocol, apiKey, extras, ep.CapturedAt,
 		); err != nil {
 			return err
 		}
@@ -73,11 +73,11 @@ func (s *Store) ReplaceInheritedEndpoints(ctx context.Context, agentID string, e
 	return tx.Commit()
 }
 
-// ListInheritedEndpoints returns every row across all agents, ordered by
-// (agent_id, provider). Useful for the dashboard / SSE event payload.
+// ListInheritedEndpoints returns every row across all apps, ordered by
+// (app_id, provider). Useful for the dashboard / SSE event payload.
 func (s *Store) ListInheritedEndpoints(ctx context.Context) ([]InheritedEndpoint, error) {
-	const q = `SELECT agent_id, provider, endpoint_url, protocol_hint, api_key, extras_json, captured_at
-	           FROM inherited_endpoints ORDER BY agent_id, provider`
+	const q = `SELECT app_id, provider, endpoint_url, protocol_hint, api_key, extras_json, captured_at
+	           FROM inherited_endpoints ORDER BY app_id, provider`
 	rows, err := s.db.QueryContext(ctx, q)
 	if err != nil {
 		return nil, err
@@ -86,11 +86,11 @@ func (s *Store) ListInheritedEndpoints(ctx context.Context) ([]InheritedEndpoint
 	return scanInheritedEndpoints(rows)
 }
 
-// ListInheritedEndpointsByAgent returns inherited_endpoints scoped to one agent.
-func (s *Store) ListInheritedEndpointsByAgent(ctx context.Context, agentID string) ([]InheritedEndpoint, error) {
-	const q = `SELECT agent_id, provider, endpoint_url, protocol_hint, api_key, extras_json, captured_at
-	           FROM inherited_endpoints WHERE agent_id = ? ORDER BY provider`
-	rows, err := s.db.QueryContext(ctx, q, agentID)
+// ListInheritedEndpointsByApp returns inherited_endpoints scoped to one app.
+func (s *Store) ListInheritedEndpointsByApp(ctx context.Context, appID string) ([]InheritedEndpoint, error) {
+	const q = `SELECT app_id, provider, endpoint_url, protocol_hint, api_key, extras_json, captured_at
+	           FROM inherited_endpoints WHERE app_id = ? ORDER BY provider`
+	rows, err := s.db.QueryContext(ctx, q, appID)
 	if err != nil {
 		return nil, err
 	}
@@ -99,15 +99,15 @@ func (s *Store) ListInheritedEndpointsByAgent(ctx context.Context, agentID strin
 }
 
 // FindInheritedEndpointsByProvider returns endpoints for a given provider name
-// across any enabled agent. Routing engine uses this to discover candidate
+// across any enabled app. Routing engine uses this to discover candidate
 // upstream URLs for routing decisions.
 func (s *Store) FindInheritedEndpointsByProvider(ctx context.Context, provider string) ([]InheritedEndpoint, error) {
-	const q = `SELECT i.agent_id, i.provider, i.endpoint_url, i.protocol_hint,
+	const q = `SELECT i.app_id, i.provider, i.endpoint_url, i.protocol_hint,
 	                  i.api_key, i.extras_json, i.captured_at
 	           FROM inherited_endpoints AS i
-	           JOIN agent_settings AS a ON a.agent_id = i.agent_id
+	           JOIN app_settings AS a ON a.app_id = i.app_id
 	           WHERE i.provider = ? AND a.enabled = 1
-	           ORDER BY i.agent_id`
+	           ORDER BY i.app_id`
 	rows, err := s.db.QueryContext(ctx, q, provider)
 	if err != nil {
 		return nil, err
@@ -126,7 +126,7 @@ func scanInheritedEndpoints(rows *sql.Rows) ([]InheritedEndpoint, error) {
 			extras   sql.NullString
 		)
 		if err := rows.Scan(
-			&ep.AgentID, &ep.Provider, &ep.EndpointURL,
+			&ep.AppID, &ep.Provider, &ep.EndpointURL,
 			&protocol, &apiKey, &extras, &ep.CapturedAt,
 		); err != nil {
 			return nil, err

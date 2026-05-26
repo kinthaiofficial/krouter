@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { renderWithProviders } from './helpers'
-import AgentInheritanceSection from '../components/AgentInheritanceSection'
+import AppInheritanceSection from '../components/AppInheritanceSection'
 
 // fetchMock dispatches by URL path so a single global fetch can serve multiple
 // endpoints in one test. Each call is recorded for later assertion.
@@ -25,21 +25,21 @@ beforeEach(() => {
   }))
 })
 
-describe('<AgentInheritanceSection>', () => {
+describe('<AppInheritanceSection>', () => {
   it('renders supported agents joined with configured state', async () => {
-    handlers.set('/internal/agents/supported', () => [
-      { agent_id: 'openclaw', display_name: 'OpenClaw', default_path: '/usr/local/openclaw.json' },
-      { agent_id: 'claude-code', display_name: 'Claude Code', default_path: '/Users/u/.zshrc' },
+    handlers.set('/internal/apps/supported', () => [
+      { app_id: 'openclaw', display_name: 'OpenClaw', default_path: '/usr/local/openclaw.json' },
+      { app_id: 'claude-code', display_name: 'Claude Code', default_path: '/Users/u/.zshrc' },
     ])
-    handlers.set('/internal/agents/configured', () => [
+    handlers.set('/internal/apps/configured', () => [
       {
-        agent_id: 'openclaw', enabled: true, config_path: '/usr/local/openclaw.json',
+        app_id: 'openclaw', enabled: true, config_path: '/usr/local/openclaw.json',
         inherited_count: 3, last_scanned_at: Date.now() - 60_000,
       },
       // claude-code intentionally absent → "Not configured"
     ])
 
-    renderWithProviders(<AgentInheritanceSection />)
+    renderWithProviders(<AppInheritanceSection />)
 
     await waitFor(() => {
       expect(screen.getByText('OpenClaw')).toBeInTheDocument()
@@ -55,26 +55,25 @@ describe('<AgentInheritanceSection>', () => {
   })
 
   it('renders nothing when the daemon binary has no scanners compiled in', async () => {
-    handlers.set('/internal/agents/supported', () => [])
-    handlers.set('/internal/agents/configured', () => [])
+    handlers.set('/internal/apps/supported', () => [])
+    handlers.set('/internal/apps/configured', () => [])
 
-    const { container } = renderWithProviders(<AgentInheritanceSection />)
+    const { container } = renderWithProviders(<AppInheritanceSection />)
 
-    // Wait for the loading state to resolve, then assert nothing rendered.
+    // Wait for the section to disappear after loading resolves to empty list.
     await waitFor(() => {
-      expect(screen.queryByText('Loading…')).not.toBeInTheDocument()
+      expect(container.querySelector('[data-testid="app-inheritance-section"]')).toBeNull()
     })
-    expect(container.querySelector('[data-testid="agent-inheritance-section"]')).toBeNull()
   })
 
   it('calls /enable when user clicks Enable on an unconfigured agent', async () => {
-    handlers.set('/internal/agents/supported', () => [
-      { agent_id: 'openclaw', display_name: 'OpenClaw', default_path: '/p' },
+    handlers.set('/internal/apps/supported', () => [
+      { app_id: 'openclaw', display_name: 'OpenClaw', default_path: '/p' },
     ])
-    handlers.set('/internal/agents/configured', () => [])
-    handlers.set('/internal/agents/openclaw/enable', () => ({ ok: true }))
+    handlers.set('/internal/apps/configured', () => [])
+    handlers.set('/internal/apps/openclaw/enable', () => ({ ok: true }))
 
-    renderWithProviders(<AgentInheritanceSection />)
+    renderWithProviders(<AppInheritanceSection />)
     await waitFor(() => screen.getByText('OpenClaw'))
 
     const row = screen.getByText('OpenClaw').closest('li')!
@@ -82,19 +81,19 @@ describe('<AgentInheritanceSection>', () => {
 
     await waitFor(() => {
       const enableCall = calls.find(
-        (c) => c.method === 'POST' && c.path === '/internal/agents/openclaw/enable',
+        (c) => c.method === 'POST' && c.path === '/internal/apps/openclaw/enable',
       )
       expect(enableCall).toBeTruthy()
     })
   })
 
   it('shows error badge when last_error is set', async () => {
-    handlers.set('/internal/agents/supported', () => [
-      { agent_id: 'openclaw', display_name: 'OpenClaw', default_path: '/p' },
+    handlers.set('/internal/apps/supported', () => [
+      { app_id: 'openclaw', display_name: 'OpenClaw', default_path: '/p' },
     ])
-    handlers.set('/internal/agents/configured', () => [
+    handlers.set('/internal/apps/configured', () => [
       {
-        agent_id: 'openclaw',
+        app_id: 'openclaw',
         enabled: true,
         config_path: '/wrong/path.json',
         inherited_count: 0,
@@ -103,7 +102,7 @@ describe('<AgentInheritanceSection>', () => {
       },
     ])
 
-    renderWithProviders(<AgentInheritanceSection />)
+    renderWithProviders(<AppInheritanceSection />)
     await waitFor(() => {
       expect(screen.getByText(/parse openclaw config/)).toBeInTheDocument()
     })

@@ -13,8 +13,8 @@ import (
 )
 
 // PendingFileName is the file the installer writes when the user chooses
-// which agents to enable in the wizard's "Agent Paths" step. The daemon
-// reads it on startup and merges the selections into agent_settings before
+// which apps to enable in the wizard's "App Paths" step. The daemon
+// reads it on startup and merges the selections into app_settings before
 // running the regular inheritance flow. See spec/04 §4.
 //
 // The file is removed after a successful import; partial failures leave it in
@@ -55,13 +55,13 @@ func PendingFileDir() string {
 }
 
 // PendingAgent is one entry in pending-agents.json. The installer writes one
-// element per agent the user explicitly toggled; agents not in the file are
+// element per app the user explicitly toggled; apps not in the file are
 // not modified by the daemon.
 //
 // Exported because the installer package constructs values of this type when
 // handing wizard input off to the daemon.
 type PendingAgent struct {
-	AgentID    string `json:"agent_id"`
+	AppID      string `json:"app_id"`
 	Enabled    bool   `json:"enabled"`
 	ConfigPath string `json:"config_path"`
 }
@@ -71,8 +71,8 @@ type pendingFile struct {
 }
 
 // ImportPending reads pending-agents.json from PendingFileDir, applies each
-// row to agent_settings (and runs ScanOne when enabled), then removes the
-// file. Missing file is a no-op without error. Any individual agent's
+// row to app_settings (and runs ScanOne when enabled), then removes the
+// file. Missing file is a no-op without error. Any individual app's
 // failure is logged but does not abort the import; the file is removed only
 // when the entire batch processed cleanly so a future daemon start can
 // retry on partial failure.
@@ -106,12 +106,12 @@ func ImportPending(ctx context.Context, store *storage.Store, logger logging.Log
 
 	allOK := true
 	for _, p := range pf.Agents {
-		if p.AgentID == "" {
+		if p.AppID == "" {
 			continue
 		}
 		if err := applyPending(ctx, store, p); err != nil {
 			allOK = false
-			logger.Warn("pending-agents: apply failed", "agent", p.AgentID, "err", err)
+			logger.Warn("pending-agents: apply failed", "app", p.AppID, "err", err)
 		}
 	}
 
@@ -121,39 +121,39 @@ func ImportPending(ctx context.Context, store *storage.Store, logger logging.Log
 }
 
 func applyPending(ctx context.Context, store *storage.Store, p PendingAgent) error {
-	// Persisting the user's intent (agent_settings row) must succeed for the
+	// Persisting the user's intent (app_settings row) must succeed for the
 	// pending file to be considered cleanly imported. Scan failure on a
-	// missing or malformed agent config is *expected*: ScanOne records the
+	// missing or malformed app config is *expected*: ScanOne records the
 	// error on the same row and the user can fix it from the dashboard
 	// later. We deliberately do NOT bubble that up as a hard failure here,
 	// because doing so would keep pending-agents.json around and let a
 	// stale wizard answer overwrite any later dashboard edits on the next
 	// daemon start.
-	if err := store.UpsertAgentSetting(ctx, storage.AgentSetting{
-		AgentID:    p.AgentID,
+	if err := store.UpsertAppSetting(ctx, storage.AppSetting{
+		AppID:      p.AppID,
 		Enabled:    p.Enabled,
 		ConfigPath: p.ConfigPath,
 	}); err != nil {
 		return fmt.Errorf("upsert: %w", err)
 	}
 	if !p.Enabled {
-		// User disabled the agent — clear any stale inherited rows so routing
+		// User disabled the app — clear any stale inherited rows so routing
 		// stops considering them immediately.
-		if err := store.ReplaceInheritedEndpoints(ctx, p.AgentID, nil); err != nil {
+		if err := store.ReplaceInheritedEndpoints(ctx, p.AppID, nil); err != nil {
 			return fmt.Errorf("clear inherited: %w", err)
 		}
 		return nil
 	}
-	scanner := Get(p.AgentID)
+	scanner := Get(p.AppID)
 	if scanner == nil {
-		// Pending file references an agent this binary doesn't know about
+		// Pending file references an app this binary doesn't know about
 		// (downgrade scenario). The row is preserved so a future upgrade can
 		// pick it up, but we don't ScanOne now.
 		return nil
 	}
-	// ScanOne writes any error into agent_settings.last_error via
-	// RecordAgentScan. We swallow the return value here because the user's
-	// intent ("enable this agent at this path") is already persisted; a
+	// ScanOne writes any error into app_settings.last_error via
+	// RecordAppScan. We swallow the return value here because the user's
+	// intent ("enable this app at this path") is already persisted; a
 	// failed scan is a recoverable runtime condition, not an import error.
 	_ = ScanOne(ctx, store, scanner, p.ConfigPath)
 	return nil
@@ -161,7 +161,7 @@ func applyPending(ctx context.Context, store *storage.Store, p PendingAgent) err
 
 // WritePending serializes the given selections into pending-agents.json,
 // creating the directory if needed. Used by the installer's
-// /api/install/agents/select endpoint to hand state off to the daemon
+// /api/install/apps/select endpoint to hand state off to the daemon
 // without an in-process channel.
 func WritePending(agents []PendingAgent) error {
 	dir := PendingFileDir()
@@ -181,4 +181,3 @@ func WritePending(agents []PendingAgent) error {
 	}
 	return os.Rename(tmp, filepath.Join(dir, PendingFileName))
 }
-

@@ -56,7 +56,7 @@ export default function Dashboard() {
       <div className="flex items-baseline justify-between gap-4 mb-4 flex-wrap">
         <h1 className="text-lg font-bold tracking-tight">{t('dashboard.title')}</h1>
         <span className="text-xs text-faint font-mono tabular-nums">
-          {dashStats ? `${dashStats.agents_connected} agents` : ''}
+          {dashStats ? `${dashStats.apps_connected} apps` : ''}
           {status ? ` · :${status.proxy_port}` : ''}
         </span>
       </div>
@@ -88,7 +88,7 @@ export default function Dashboard() {
         {dashStats && dashStats.providers.length > 0 ? (
           <Panel
             title={t('dashboard.provider_distribution')}
-            right={<Badge>{t('dashboard.agents_connected', { count: dashStats.agents_connected })}</Badge>}
+            right={<Badge>{t('dashboard.apps_connected', { count: dashStats.apps_connected })}</Badge>}
           >
             <ProviderDist providers={dashStats.providers} />
           </Panel>

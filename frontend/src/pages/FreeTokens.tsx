@@ -173,8 +173,8 @@ function ProviderRow({ p }: { p: FreeProvider }) {
             {p.user_configured && (
               <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-700 bg-emerald-50 rounded-full px-1.5 py-0.5">
                 <Check className="w-3 h-3" />
-                {p.source_agent
-                  ? t('freeTokens.configured_via', { agent: p.source_agent })
+                {p.source_app
+                  ? t('freeTokens.configured_via', { app: p.source_app })
                   : t('freeTokens.configured_badge')}
               </span>
             )}
@@ -221,8 +221,8 @@ function ProviderRow({ p }: { p: FreeProvider }) {
                       {a.user_configured ? (
                         <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-700 bg-emerald-50 rounded-full px-1.5 py-0.5">
                           <Check className="w-3 h-3" />
-                          {a.source_agent
-                            ? t('freeTokens.configured_via', { agent: a.source_agent })
+                          {a.source_app
+                            ? t('freeTokens.configured_via', { app: a.source_app })
                             : t('freeTokens.configured_badge')}
                         </span>
                       ) : (

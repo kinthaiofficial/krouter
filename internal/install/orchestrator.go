@@ -41,7 +41,7 @@ type Orchestrator struct {
 	writeServiceFn      func(binaryPath string) (string, error)
 	enableServiceFn     func() error
 	writeShellRCFn      func(rcPath string) error
-	detectAgentsFn      func() []config.AgentInfo
+	detectAgentsFn      func() []config.AppInfo
 	connectOpenClawFn   func(configPath string) error
 	connectClaudeCodeFn func(rcPath string) error
 	detectShellRCFn     func() string
@@ -57,7 +57,7 @@ func New(ui UI, opt Options) *Orchestrator {
 		writeServiceFn:      platformWriteService,
 		enableServiceFn:     platformEnableService,
 		writeShellRCFn:      config.ConnectClaudeCode,
-		detectAgentsFn:      config.DetectInstalledAgents,
+		detectAgentsFn:      config.DetectInstalledApps,
 		connectOpenClawFn:   config.ConnectOpenClaw,
 		connectClaudeCodeFn: config.ConnectClaudeCode,
 		detectShellRCFn:     config.DetectShellRC,
@@ -165,7 +165,7 @@ func (o *Orchestrator) ConnectAgents() error {
 	return nil
 }
 
-func (o *Orchestrator) connectAgent(a config.AgentInfo) error {
+func (o *Orchestrator) connectAgent(a config.AppInfo) error {
 	switch a.Name {
 	case "openclaw":
 		return o.connectOpenClawFn(a.ConfigPath)

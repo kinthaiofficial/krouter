@@ -25,7 +25,7 @@ func TestInsertRequest_Basic(t *testing.T) {
 	r := storage.RequestRecord{
 		ID:             s.NewULID(),
 		Timestamp:      time.Now().UTC(),
-		Agent:          "openclaw",
+		App:          "openclaw",
 		Protocol:       "anthropic",
 		RequestedModel: "claude-sonnet-4-5",
 		Provider:       "anthropic",
@@ -45,7 +45,7 @@ func TestInsertRequest_Basic(t *testing.T) {
 
 	got := rows[0]
 	assert.Equal(t, r.ID, got.ID)
-	assert.Equal(t, "openclaw", got.Agent)
+	assert.Equal(t, "openclaw", got.App)
 	assert.Equal(t, "anthropic", got.Protocol)
 	assert.Equal(t, "claude-sonnet-4-5", got.Model)
 	assert.Equal(t, 100, got.InputTokens)

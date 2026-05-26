@@ -10,7 +10,7 @@ import (
 )
 
 // PathWatcher is an optional Scanner extension. A scanner that reads more than
-// its primary config file (e.g. OpenClaw, which also reads per-sub-agent
+// its primary config file (e.g. OpenClaw, which also reads per-agent
 // models.json / auth-profiles.json) implements this so the periodic rescan can
 // detect changes across all of them. Scanners that don't implement it are
 // assumed to read only configPath.
@@ -46,31 +46,31 @@ func configUnchangedSince(scanner Scanner, configPath string, lastScannedAt *int
 	return true
 }
 
-// RunAll walks every enabled row in agent_settings, invokes the corresponding
+// RunAll walks every enabled row in app_settings, invokes the corresponding
 // Scanner against the user-saved config_path, and writes the resulting
-// endpoints into inherited_endpoints. Errors per agent are recorded in
-// agent_settings.last_error and never propagated; one bad agent must not
+// endpoints into inherited_endpoints. Errors per app are recorded in
+// app_settings.last_error and never propagated; one bad app must not
 // prevent the rest from running, and must never crash the daemon.
 //
-// Called by serve.go on daemon start. The single-agent variant ScanOne is
-// used when the user clicks "rescan" on one agent in the dashboard.
+// Called by serve.go on daemon start. The single-app variant ScanOne is
+// used when the user clicks "rescan" on one app in the dashboard.
 func RunAll(ctx context.Context, store *storage.Store, logger logging.Logger) {
 	if store == nil {
 		return
 	}
-	settings, err := store.ListAgentSettings(ctx)
+	settings, err := store.ListAppSettings(ctx)
 	if err != nil {
-		logger.Warn("agent_inheritance: list settings failed", "err", err)
+		logger.Warn("app_inheritance: list settings failed", "err", err)
 		return
 	}
 	for _, setting := range settings {
 		if !setting.Enabled {
 			continue
 		}
-		scanner := Get(setting.AgentID)
+		scanner := Get(setting.AppID)
 		if scanner == nil {
-			// agent_settings has a row for an agent this build doesn't know
-			// about (downgrade, future agent, …). Skip silently; the row
+			// app_settings has a row for an app this build doesn't know
+			// about (downgrade, future app, …). Skip silently; the row
 			// stays so a future upgrade picks it up.
 			continue
 		}
@@ -80,20 +80,20 @@ func RunAll(ctx context.Context, store *storage.Store, logger logging.Logger) {
 			continue
 		}
 		if err := ScanOne(ctx, store, scanner, setting.ConfigPath); err != nil {
-			logger.Warn("agent_inheritance: scan failed",
-				"agent", setting.AgentID, "err", err)
-			// ScanOne already recorded the error in agent_settings.last_error.
+			logger.Warn("app_inheritance: scan failed",
+				"app", setting.AppID, "err", err)
+			// ScanOne already recorded the error in app_settings.last_error.
 		}
 	}
 }
 
 // StartPeriodicRescan runs RunAll on a fixed interval until ctx is cancelled.
 // After each tick the optional onTick callback fires (typically wired to an
-// SSE broadcast so the dashboard refetches /internal/agents/configured
+// SSE broadcast so the dashboard refetches /internal/apps/configured
 // without waiting for the next react-query refetchInterval).
 //
 // Spec/04 §14 — "Hot reload via SSE broadcast on config change." We poll
-// rather than depend on fsnotify; RunAll stats each agent's config files and
+// rather than depend on fsnotify; RunAll stats each app's config files and
 // skips the parse/DB-write/broadcast when nothing changed (configUnchangedSince),
 // so a tight 1-minute cadence stays near-free when idle while keeping the
 // edit→pickup latency bounded by the interval.
@@ -132,7 +132,7 @@ func ScanOne(ctx context.Context, store *storage.Store, scanner Scanner, configP
 
 	results, scanErr := scanner.Scan(ctx, configPath)
 	if scanErr != nil {
-		_ = store.RecordAgentScan(ctx, scanner.AgentID(), now, scanErr.Error())
+		_ = store.RecordAppScan(ctx, scanner.AppID(), now, scanErr.Error())
 		return scanErr
 	}
 
@@ -142,7 +142,7 @@ func ScanOne(ctx context.Context, store *storage.Store, scanner Scanner, configP
 			continue
 		}
 		rows = append(rows, storage.InheritedEndpoint{
-			AgentID:      scanner.AgentID(),
+			AppID:        scanner.AppID(),
 			Provider:     r.Provider,
 			EndpointURL:  r.EndpointURL,
 			ProtocolHint: r.ProtocolHint,
@@ -152,9 +152,9 @@ func ScanOne(ctx context.Context, store *storage.Store, scanner Scanner, configP
 		})
 	}
 
-	if err := store.ReplaceInheritedEndpoints(ctx, scanner.AgentID(), rows); err != nil {
-		_ = store.RecordAgentScan(ctx, scanner.AgentID(), now, err.Error())
+	if err := store.ReplaceInheritedEndpoints(ctx, scanner.AppID(), rows); err != nil {
+		_ = store.RecordAppScan(ctx, scanner.AppID(), now, err.Error())
 		return err
 	}
-	return store.RecordAgentScan(ctx, scanner.AgentID(), now, "")
+	return store.RecordAppScan(ctx, scanner.AppID(), now, "")
 }

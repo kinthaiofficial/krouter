@@ -99,9 +99,9 @@ func writeJSONFile(path string, v any) error {
 	return os.WriteFile(path, b, 0o644)
 }
 
-func TestListOpenClawSubAgents_EnumeratesEverySubAgent(t *testing.T) {
+func TestListOpenClawAgents_EnumeratesEveryAgent(t *testing.T) {
 	root := makeOpenClawTree(t)
-	subs, err := ListOpenClawSubAgents(root)
+	subs, err := ListOpenClawAgents(root)
 	require.NoError(t, err)
 	require.Len(t, subs, 2, "global agents.list has 2 entries — both must be returned")
 
@@ -110,9 +110,9 @@ func TestListOpenClawSubAgents_EnumeratesEverySubAgent(t *testing.T) {
 	assert.Equal(t, "main", subs[1].ID)
 }
 
-func TestListOpenClawSubAgents_PrimaryModelFallsBackToDefault(t *testing.T) {
+func TestListOpenClawAgents_PrimaryModelFallsBackToDefault(t *testing.T) {
 	root := makeOpenClawTree(t)
-	subs, _ := ListOpenClawSubAgents(root)
+	subs, _ := ListOpenClawAgents(root)
 	byID := indexByID(subs)
 
 	// `main` has no explicit `model` field → falls back to defaults.model.primary.
@@ -121,14 +121,14 @@ func TestListOpenClawSubAgents_PrimaryModelFallsBackToDefault(t *testing.T) {
 	assert.Equal(t, "anthropic/claude-haiku-4-5", byID["claude"].PrimaryModel)
 }
 
-func TestListOpenClawSubAgents_ProvidersFromPerSubModelsJson(t *testing.T) {
+func TestListOpenClawAgents_ProvidersFromPerSubModelsJson(t *testing.T) {
 	root := makeOpenClawTree(t)
-	subs, _ := ListOpenClawSubAgents(root)
+	subs, _ := ListOpenClawAgents(root)
 	byID := indexByID(subs)
 
 	// main has TWO providers (minimax-portal + anthropic).
 	require.Len(t, byID["main"].Providers, 2)
-	provByName := map[string]OpenClawSubAgentProvider{}
+	provByName := map[string]OpenClawAgentProvider{}
 	for _, p := range byID["main"].Providers {
 		provByName[p.Provider] = p
 	}
@@ -146,9 +146,9 @@ func TestListOpenClawSubAgents_ProvidersFromPerSubModelsJson(t *testing.T) {
 	assert.Equal(t, []string{"claude-haiku-4-5", "claude-sonnet-4-5"}, byID["claude"].Providers[0].Models)
 }
 
-func TestListOpenClawSubAgents_PrimaryModelEchoedOnMatchingProvider(t *testing.T) {
+func TestListOpenClawAgents_PrimaryModelEchoedOnMatchingProvider(t *testing.T) {
 	root := makeOpenClawTree(t)
-	subs, _ := ListOpenClawSubAgents(root)
+	subs, _ := ListOpenClawAgents(root)
 	byID := indexByID(subs)
 
 	// claude's primary is anthropic/claude-haiku-4-5 → primary_model field on
@@ -168,24 +168,24 @@ func TestListOpenClawSubAgents_PrimaryModelEchoedOnMatchingProvider(t *testing.T
 	}
 }
 
-func TestListOpenClawSubAgents_HasOAuthReflectsAuthProfilesPresence(t *testing.T) {
+func TestListOpenClawAgents_HasOAuthReflectsAuthProfilesPresence(t *testing.T) {
 	root := makeOpenClawTree(t)
-	subs, _ := ListOpenClawSubAgents(root)
+	subs, _ := ListOpenClawAgents(root)
 	byID := indexByID(subs)
 
 	assert.True(t, byID["main"].HasOAuth, "main has an OAuth profile in the fixture")
 	assert.False(t, byID["claude"].HasOAuth, "claude has no auth-profiles.json")
 }
 
-func TestListOpenClawSubAgents_MissingOpenClaw(t *testing.T) {
+func TestListOpenClawAgents_MissingOpenClaw(t *testing.T) {
 	// Path that doesn't exist → empty result, no error (OpenClaw simply
 	// isn't installed, not an error condition).
-	subs, err := ListOpenClawSubAgents(filepath.Join(t.TempDir(), "definitely-not-installed"))
+	subs, err := ListOpenClawAgents(filepath.Join(t.TempDir(), "definitely-not-installed"))
 	require.NoError(t, err)
 	assert.Empty(t, subs)
 }
 
-func TestListOpenClawSubAgents_MissingModelsJson(t *testing.T) {
+func TestListOpenClawAgents_MissingModelsJson(t *testing.T) {
 	// Sub-agent exists in agents.list but has no models.json — sub-agent
 	// still surfaces with metadata; Providers is nil.
 	root := t.TempDir()
@@ -196,15 +196,15 @@ func TestListOpenClawSubAgents_MissingModelsJson(t *testing.T) {
 			},
 		},
 	}))
-	subs, err := ListOpenClawSubAgents(root)
+	subs, err := ListOpenClawAgents(root)
 	require.NoError(t, err)
 	require.Len(t, subs, 1)
 	assert.Equal(t, "bare", subs[0].ID)
 	assert.Empty(t, subs[0].Providers)
 }
 
-func indexByID(subs []OpenClawSubAgent) map[string]OpenClawSubAgent {
-	out := map[string]OpenClawSubAgent{}
+func indexByID(subs []OpenClawAgent) map[string]OpenClawAgent {
+	out := map[string]OpenClawAgent{}
 	for _, s := range subs {
 		out[s.ID] = s
 	}

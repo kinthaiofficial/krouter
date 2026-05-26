@@ -36,7 +36,7 @@ type Uninstaller struct {
 	// Injectable for testing.
 	stopServiceFn          func() error
 	removeServiceFileFn    func() error
-	detectAgentsFn         func() []config.AgentInfo
+	detectAgentsFn         func() []config.AppInfo
 	disconnectOpenClawFn   func(configPath string) error
 	disconnectClaudeCodeFn func(rcPath string) error
 	detectShellRCFn        func() string
@@ -51,7 +51,7 @@ func New(ui UI, opt Options) *Uninstaller {
 		opt:                    opt,
 		stopServiceFn:          platformStopService,
 		removeServiceFileFn:    platformRemoveServiceFile,
-		detectAgentsFn:         config.DetectInstalledAgents,
+		detectAgentsFn:         config.DetectInstalledApps,
 		disconnectOpenClawFn:   config.DisconnectOpenClaw,
 		disconnectClaudeCodeFn: config.DisconnectClaudeCode,
 		detectShellRCFn:        config.DetectShellRC,
@@ -123,7 +123,7 @@ func (u *Uninstaller) DisconnectAgents() error {
 	return nil
 }
 
-func (u *Uninstaller) disconnectAgent(a config.AgentInfo) error {
+func (u *Uninstaller) disconnectAgent(a config.AppInfo) error {
 	switch a.Name {
 	case "openclaw":
 		return u.disconnectOpenClawFn(a.ConfigPath)

@@ -59,21 +59,21 @@ func (s *Server) Handler() http.Handler {
 	}
 
 	// Install API endpoints (all require ?token= or Authorization: Bearer).
-	mux.HandleFunc("/api/install/detect-agents", s.withAuth(s.handleDetectAgents))
+	mux.HandleFunc("/api/install/detect-apps", s.withAuth(s.handleDetectApps))
 	mux.HandleFunc("/api/install/copy-binary", s.withAuth(s.handleCopyBinary))
 	mux.HandleFunc("/api/install/register-service", s.withAuth(s.handleRegisterService))
 	mux.HandleFunc("/api/install/shell-integration", s.withAuth(s.handleShellIntegration))
-	mux.HandleFunc("/api/install/connect-agent", s.withAuth(s.handleConnectAgent))
+	mux.HandleFunc("/api/install/connect-app", s.withAuth(s.handleConnectApp))
 	mux.HandleFunc("/api/install/set-budget", s.withAuth(s.handleSetBudget))
 	mux.HandleFunc("/api/install/finalize", s.withAuth(s.handleFinalize))
 	mux.HandleFunc("/api/install/daemon-ready", s.withAuth(s.handleDaemonReady))
 
-	// Agent inheritance endpoints — feed the wizard's "Agent Paths" step
+	// App inheritance endpoints — feed the wizard's "App Paths" step
 	// (spec/04 §4). Selections land in pending-agents.json; the daemon
 	// imports them at startup.
-	mux.HandleFunc("/api/install/agents/supported", s.withAuth(s.handleAgentsSupported))
-	mux.HandleFunc("/api/install/agents/preview", s.withAuth(s.handleAgentsPreview))
-	mux.HandleFunc("/api/install/agents/select", s.withAuth(s.handleAgentsSelect))
+	mux.HandleFunc("/api/install/apps/supported", s.withAuth(s.handleAppsSupported))
+	mux.HandleFunc("/api/install/apps/preview", s.withAuth(s.handleAppsPreview))
+	mux.HandleFunc("/api/install/apps/select", s.withAuth(s.handleAppsSelect))
 
 	// Health — no auth needed.
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
@@ -128,21 +128,21 @@ func writeError(w http.ResponseWriter, code int, msg string) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
-// handleDetectAgents returns detected AI agents.
-func (s *Server) handleDetectAgents(w http.ResponseWriter, r *http.Request) {
+// handleDetectApps returns detected AI apps.
+func (s *Server) handleDetectApps(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	agents := s.orch.detectAgentsFn()
-	type agentResp struct {
+	apps := s.orch.detectAgentsFn()
+	type appResp struct {
 		Name       string `json:"name"`
 		ConfigPath string `json:"config_path,omitempty"`
 		CLIPath    string `json:"cli_path,omitempty"`
 	}
-	out := make([]agentResp, len(agents))
-	for i, a := range agents {
-		out[i] = agentResp{Name: a.Name, ConfigPath: a.ConfigPath, CLIPath: a.CLIPath}
+	out := make([]appResp, len(apps))
+	for i, a := range apps {
+		out[i] = appResp{Name: a.Name, ConfigPath: a.ConfigPath, CLIPath: a.CLIPath}
 	}
 	writeJSON(w, out)
 }
@@ -186,25 +186,25 @@ func (s *Server) handleShellIntegration(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, map[string]bool{"ok": true})
 }
 
-// handleConnectAgent connects a single agent by name.
-func (s *Server) handleConnectAgent(w http.ResponseWriter, r *http.Request) {
+// handleConnectApp connects a single app by name.
+func (s *Server) handleConnectApp(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 	var body struct {
-		Agent      string `json:"agent"`
+		App        string `json:"app"`
 		ConfigPath string `json:"config_path"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	if body.Agent == "" {
-		writeError(w, http.StatusBadRequest, "agent name required")
+	if body.App == "" {
+		writeError(w, http.StatusBadRequest, "app name required")
 		return
 	}
-	info := config.AgentInfo{Name: body.Agent, ConfigPath: body.ConfigPath}
+	info := config.AppInfo{Name: body.App, ConfigPath: body.ConfigPath}
 	if err := s.orch.connectAgent(info); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

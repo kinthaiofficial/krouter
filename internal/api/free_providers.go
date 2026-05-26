@@ -32,7 +32,7 @@ type freeProviderJSON struct {
 
 	// Runtime-joined fields:
 	UserConfigured  bool   `json:"user_configured"`            // matches an inherited_endpoints row
-	SourceAgent     string `json:"source_agent,omitempty"`     // which agent supplied the key
+	SourceApp     string `json:"source_app,omitempty"`     // which agent supplied the key
 	Exhausted       bool   `json:"exhausted,omitempty"`        // 4xx mark currently active
 	ExhaustedUntil  string `json:"exhausted_until,omitempty"`  // RFC3339 of expiry
 	ExhaustedReason string `json:"exhausted_reason,omitempty"` // e.g. "HTTP 402 quota_exceeded"
@@ -44,7 +44,7 @@ type freeProviderProtocolJSON struct {
 	KeySetupHint        string                       `json:"key_setup_hint,omitempty"`
 	I18n                map[string]map[string]string `json:"i18n,omitempty"`
 	UserConfigured      bool                         `json:"user_configured"`        // join: did the user inherit this alt-protocol provider?
-	SourceAgent         string                       `json:"source_agent,omitempty"` // which agent supplied it
+	SourceApp         string                       `json:"source_app,omitempty"` // which agent supplied it
 }
 
 // handleFreeProviders returns the free-provider catalog joined with the
@@ -75,11 +75,11 @@ func (s *Server) handleFreeProviders(w http.ResponseWriter, r *http.Request) {
 
 	// Build a one-shot map of provider-name → first-inheriting-agent for
 	// the join. We hit ListInheritedEndpoints once instead of per-row.
-	inheritedByName := map[string]string{} // provider → agent_id
+	inheritedByName := map[string]string{} // provider → app_id
 	if eps, err := s.store.ListInheritedEndpoints(ctx); err == nil {
 		for _, ep := range eps {
 			if _, seen := inheritedByName[ep.Provider]; !seen {
-				inheritedByName[ep.Provider] = ep.AgentID
+				inheritedByName[ep.Provider] = ep.AppID
 			}
 		}
 	}
@@ -105,7 +105,7 @@ func (s *Server) handleFreeProviders(w http.ResponseWriter, r *http.Request) {
 		}
 		if agentID, ok := inheritedByName[p.KrouterProviderName]; ok {
 			row.UserConfigured = true
-			row.SourceAgent = agentID
+			row.SourceApp = agentID
 		}
 		if s.store.IsProviderExhausted(ctx, p.KrouterProviderName) {
 			row.Exhausted = true
@@ -122,7 +122,7 @@ func (s *Server) handleFreeProviders(w http.ResponseWriter, r *http.Request) {
 			}
 			if agentID, ok := inheritedByName[ap.KrouterProviderName]; ok {
 				apRow.UserConfigured = true
-				apRow.SourceAgent = agentID
+				apRow.SourceApp = agentID
 			}
 			row.AdditionalProtocols = append(row.AdditionalProtocols, apRow)
 		}

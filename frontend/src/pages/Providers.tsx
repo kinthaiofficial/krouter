@@ -316,9 +316,9 @@ function CardDetails({
             <h3 className="text-xs uppercase tracking-wider text-gray-500 font-semibold flex items-center gap-1.5">
               <Zap size={12} className="text-purple-500" />
               {t('providers.subscription_title')}
-              {subscription.source_agent && (
+              {subscription.source_app && (
                 <span className="text-[10px] text-gray-400 normal-case tracking-normal font-normal">
-                  · via {subscription.source_agent}
+                  · via {subscription.source_app}
                 </span>
               )}
             </h3>

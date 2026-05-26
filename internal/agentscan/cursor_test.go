@@ -10,8 +10,8 @@ import (
 
 func TestCursorScanner_Meta(t *testing.T) {
 	s := CursorScanner{}
-	if s.AgentID() != "cursor" {
-		t.Errorf("AgentID = %q, want cursor", s.AgentID())
+	if s.AppID() != "cursor" {
+		t.Errorf("AppID = %q, want cursor", s.AppID())
 	}
 	if s.DisplayName() == "" {
 		t.Errorf("DisplayName empty")

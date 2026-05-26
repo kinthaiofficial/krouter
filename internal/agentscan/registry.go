@@ -1,9 +1,9 @@
 package agentscan
 
-// Scanners is the static list of agent scanners compiled into this build of
+// Scanners is the static list of app scanners compiled into this build of
 // krouter. Order is the order shown in the wizard / dashboard UI.
 //
-// To add a new agent: implement Scanner in a new file in this package, then
+// To add a new app: implement Scanner in a new file in this package, then
 // append the new value here. No other change is required; krouter discovers
 // the new entry via this slice alone.
 //
@@ -18,24 +18,24 @@ var Scanners = []Scanner{
 	CodexScanner{},
 }
 
-// Get returns the Scanner with the given AgentID, or nil if none is
+// Get returns the Scanner with the given AppID, or nil if none is
 // registered. Used by API handlers when the user requests a rescan or
-// supported-agents listing.
-func Get(agentID string) Scanner {
+// supported-apps listing.
+func Get(appID string) Scanner {
 	for _, s := range Scanners {
-		if s.AgentID() == agentID {
+		if s.AppID() == appID {
 			return s
 		}
 	}
 	return nil
 }
 
-// IDs returns the AgentID of every registered Scanner. Convenience for the
-// /internal/agents/supported endpoint.
+// IDs returns the AppID of every registered Scanner. Convenience for the
+// /internal/apps/supported endpoint.
 func IDs() []string {
 	out := make([]string, 0, len(Scanners))
 	for _, s := range Scanners {
-		out = append(out, s.AgentID())
+		out = append(out, s.AppID())
 	}
 	return out
 }

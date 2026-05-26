@@ -8,45 +8,45 @@ import (
 	"sort"
 )
 
-// OpenClawSubAgent is a per-sub-agent profile inside an OpenClaw install.
+// OpenClawAgent is a per-agent profile inside an OpenClaw install.
 // OpenClaw supports running multiple named agents (`main`, `claude`,
 // `deepseek`, …) each with their own provider configuration and
 // primary model. Different from the existing `InheritedEndpoint` flow:
 // that one captures a single flat (provider → endpoint+key) map for
-// the whole OpenClaw install; this exposes the per-sub-agent breakdown
+// the whole OpenClaw install; this exposes the per-agent breakdown
 // the dashboard's Agents page surfaces.
 //
 // This is a read-only descriptor — does not write to the inheritance
 // table and does not influence routing. Routing still operates on
 // `requested_model` from the proxied request.
-type OpenClawSubAgent struct {
+type OpenClawAgent struct {
 	ID           string                       `json:"id"`
 	DisplayName  string                       `json:"display_name,omitempty"`
 	PrimaryModel string                       `json:"primary_model,omitempty"`
 	Workspace    string                       `json:"workspace,omitempty"`
 	AgentDir     string                       `json:"agent_dir,omitempty"`
-	Providers    []OpenClawSubAgentProvider   `json:"providers,omitempty"`
-	// HasOAuth is true when this sub-agent has a non-empty
-	// auth-profiles.json — useful UI hint for "this sub-agent is
+	Providers    []OpenClawAgentProvider   `json:"providers,omitempty"`
+	// HasOAuth is true when this agent has a non-empty
+	// auth-profiles.json — useful UI hint for "this agent is
 	// authenticated via OAuth (e.g. MiniMax portal)".
 	HasOAuth bool `json:"has_oauth,omitempty"`
 }
 
-// OpenClawSubAgentProvider is the per-sub-agent view of one provider
+// OpenClawAgentProvider is the per-agent view of one provider
 // row. APIKey is intentionally NOT included — the dashboard never needs
 // the raw key; we emit a `has_api_key` boolean instead so the UI can
 // show "✓ configured" without exposing secrets.
-type OpenClawSubAgentProvider struct {
+type OpenClawAgentProvider struct {
 	Provider     string   `json:"provider"`
 	BaseURL      string   `json:"base_url,omitempty"`
 	Protocol     string   `json:"protocol,omitempty"`     // "anthropic-messages" / "openai-chat"
-	Models       []string `json:"models,omitempty"`       // model ids surfaced by this sub-agent
+	Models       []string `json:"models,omitempty"`       // model ids surfaced by this agent
 	PrimaryModel string   `json:"primary_model,omitempty"`
 	HasAPIKey    bool     `json:"has_api_key,omitempty"`
 }
 
 // openClawGlobalConfig is the subset of ~/.openclaw/openclaw.json we
-// read for the sub-agent list. Unknown fields are silently ignored.
+// read for the agent list. Unknown fields are silently ignored.
 type openClawGlobalConfig struct {
 	Agents struct {
 		Defaults struct {
@@ -64,8 +64,8 @@ type openClawGlobalConfig struct {
 	} `json:"agents"`
 }
 
-// perSubAgentModels mirrors ~/.openclaw/agents/<id>/agent/models.json.
-type perSubAgentModels struct {
+// perAgentModels mirrors ~/.openclaw/agents/<id>/agent/models.json.
+type perAgentModels struct {
 	Providers map[string]struct {
 		API       string `json:"api"`
 		APIKey    string `json:"apiKey"`
@@ -77,18 +77,18 @@ type perSubAgentModels struct {
 	} `json:"providers"`
 }
 
-// ListOpenClawSubAgents enumerates the sub-agents inside an OpenClaw
+// ListOpenClawAgents enumerates the agents inside an OpenClaw
 // install at `openclawDir` (the directory containing `openclaw.json`,
 // typically `~/.openclaw`). Returns an empty slice when OpenClaw is
-// not installed or has no sub-agent list.
+// not installed or has no agent list.
 //
-// Each returned sub-agent is sorted by ID for stable rendering.
-func ListOpenClawSubAgents(openclawDir string) ([]OpenClawSubAgent, error) {
+// Each returned agent is sorted by ID for stable rendering.
+func ListOpenClawAgents(openclawDir string) ([]OpenClawAgent, error) {
 	globalPath := filepath.Join(openclawDir, "openclaw.json")
 	globalRaw, err := os.ReadFile(globalPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return []OpenClawSubAgent{}, nil // OpenClaw not installed
+			return []OpenClawAgent{}, nil // OpenClaw not installed
 		}
 		return nil, err
 	}
@@ -100,13 +100,13 @@ func ListOpenClawSubAgents(openclawDir string) ([]OpenClawSubAgent, error) {
 
 	defaultPrimary := extractPrimaryModel(global.Agents.Defaults.Model)
 
-	out := make([]OpenClawSubAgent, 0, len(global.Agents.List))
+	out := make([]OpenClawAgent, 0, len(global.Agents.List))
 	for _, entry := range global.Agents.List {
 		if entry.ID == "" {
 			continue
 		}
 
-		sub := OpenClawSubAgent{
+		sub := OpenClawAgent{
 			ID:           entry.ID,
 			DisplayName:  firstNonEmpty(entry.Name, entry.ID),
 			PrimaryModel: firstNonEmpty(entry.Model, defaultPrimary),
@@ -120,11 +120,11 @@ func ListOpenClawSubAgents(openclawDir string) ([]OpenClawSubAgent, error) {
 		}
 		sub.AgentDir = agentDir
 
-		// Per-sub-agent models.json (optional).
-		sub.Providers = readSubAgentProviders(agentDir, sub.PrimaryModel)
+		// Per-agent models.json (optional).
+		sub.Providers = readAgentProviders(agentDir, sub.PrimaryModel)
 
-		// Per-sub-agent auth-profiles.json — UI cares about presence only.
-		sub.HasOAuth = subAgentHasOAuth(agentDir)
+		// Per-agent auth-profiles.json — UI cares about presence only.
+		sub.HasOAuth = agentHasOAuth(agentDir)
 
 		out = append(out, sub)
 	}
@@ -133,26 +133,26 @@ func ListOpenClawSubAgents(openclawDir string) ([]OpenClawSubAgent, error) {
 	return out, nil
 }
 
-// readSubAgentProviders parses <agentDir>/models.json into the structured
+// readAgentProviders parses <agentDir>/models.json into the structured
 // per-provider summary. Returns nil when the file is absent or invalid —
-// the sub-agent then surfaces with only its `agents.list` metadata.
-func readSubAgentProviders(agentDir, primaryModel string) []OpenClawSubAgentProvider {
+// the agent then surfaces with only its `agents.list` metadata.
+func readAgentProviders(agentDir, primaryModel string) []OpenClawAgentProvider {
 	path := filepath.Join(agentDir, "models.json")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil
 	}
-	var doc perSubAgentModels
+	var doc perAgentModels
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return nil
 	}
 
-	out := make([]OpenClawSubAgentProvider, 0, len(doc.Providers))
+	out := make([]OpenClawAgentProvider, 0, len(doc.Providers))
 	for name, p := range doc.Providers {
 		if name == "" {
 			continue
 		}
-		row := OpenClawSubAgentProvider{
+		row := OpenClawAgentProvider{
 			Provider:  name,
 			BaseURL:   p.BaseURL,
 			Protocol:  p.API,
@@ -163,7 +163,7 @@ func readSubAgentProviders(agentDir, primaryModel string) []OpenClawSubAgentProv
 				row.Models = append(row.Models, m.ID)
 			}
 		}
-		// Echo the sub-agent's primary model on the matching provider row
+		// Echo the agent's primary model on the matching provider row
 		// so the UI can highlight which model in this provider's list is
 		// the default. The primary model id looks like `<provider>/<model>`
 		// in openclaw.json (e.g. `anthropic/claude-haiku-4-5`).
@@ -179,10 +179,10 @@ func readSubAgentProviders(agentDir, primaryModel string) []OpenClawSubAgentProv
 	return out
 }
 
-// subAgentHasOAuth reports whether <agentDir>/auth-profiles.json carries
+// agentHasOAuth reports whether <agentDir>/auth-profiles.json carries
 // at least one OAuth profile. The dashboard surfaces this as a small
-// chip on the sub-agent card.
-func subAgentHasOAuth(agentDir string) bool {
+// chip on the agent card.
+func agentHasOAuth(agentDir string) bool {
 	raw, err := os.ReadFile(filepath.Join(agentDir, "auth-profiles.json"))
 	if err != nil {
 		return false

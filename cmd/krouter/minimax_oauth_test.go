@@ -22,8 +22,8 @@ func TestReadMinimaxOAuth_FromOpenClawExtras(t *testing.T) {
 	s := openStore(t)
 	ctx := context.Background()
 
-	require.NoError(t, s.UpsertAgentSetting(ctx, storage.AgentSetting{
-		AgentID: "openclaw", Enabled: true, ConfigPath: "/x",
+	require.NoError(t, s.UpsertAppSetting(ctx, storage.AppSetting{
+		AppID: "openclaw", Enabled: true, ConfigPath: "/x",
 	}))
 	require.NoError(t, s.ReplaceInheritedEndpoints(ctx, "openclaw", []storage.InheritedEndpoint{
 		{
@@ -41,8 +41,8 @@ func TestReadMinimaxOAuth_FallbacksToAlternateProviderName(t *testing.T) {
 	s := openStore(t)
 	ctx := context.Background()
 
-	require.NoError(t, s.UpsertAgentSetting(ctx, storage.AgentSetting{
-		AgentID: "openclaw", Enabled: true, ConfigPath: "/x",
+	require.NoError(t, s.UpsertAppSetting(ctx, storage.AppSetting{
+		AppID: "openclaw", Enabled: true, ConfigPath: "/x",
 	}))
 	// Some agents may name the provider just "minimax" (no -portal).
 	require.NoError(t, s.ReplaceInheritedEndpoints(ctx, "openclaw", []storage.InheritedEndpoint{
@@ -61,8 +61,8 @@ func TestReadMinimaxOAuth_EmptyWhenNoExtras(t *testing.T) {
 	s := openStore(t)
 	ctx := context.Background()
 
-	require.NoError(t, s.UpsertAgentSetting(ctx, storage.AgentSetting{
-		AgentID: "openclaw", Enabled: true, ConfigPath: "/x",
+	require.NoError(t, s.UpsertAppSetting(ctx, storage.AppSetting{
+		AppID: "openclaw", Enabled: true, ConfigPath: "/x",
 	}))
 	require.NoError(t, s.ReplaceInheritedEndpoints(ctx, "openclaw", []storage.InheritedEndpoint{
 		{Provider: "minimax-portal", EndpointURL: "u", APIKey: "sk-static", CapturedAt: 1},
@@ -77,8 +77,8 @@ func TestReadMinimaxOAuth_RespectsEnabledFlag(t *testing.T) {
 	ctx := context.Background()
 
 	// Disabled agent → its OAuth token must not be returned.
-	require.NoError(t, s.UpsertAgentSetting(ctx, storage.AgentSetting{
-		AgentID: "openclaw", Enabled: false, ConfigPath: "/x",
+	require.NoError(t, s.UpsertAppSetting(ctx, storage.AppSetting{
+		AppID: "openclaw", Enabled: false, ConfigPath: "/x",
 	}))
 	require.NoError(t, s.ReplaceInheritedEndpoints(ctx, "openclaw", []storage.InheritedEndpoint{
 		{

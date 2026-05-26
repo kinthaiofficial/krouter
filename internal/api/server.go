@@ -304,11 +304,11 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/internal/devices/", auth(http.HandlerFunc(s.handleDeviceDelete)))
 	mux.Handle("/internal/providers", auth(http.HandlerFunc(s.handleProviders)))
 	mux.Handle("/internal/providers/", auth(http.HandlerFunc(s.handleProviderAction)))
-	mux.Handle("/internal/agents", auth(http.HandlerFunc(s.handleAgents)))
+	mux.Handle("/internal/apps", auth(http.HandlerFunc(s.handleApps)))
 	// Exact-path routes override the catch-all prefix below.
-	mux.Handle("/internal/agents/supported", auth(http.HandlerFunc(s.handleAgentsSupported)))
-	mux.Handle("/internal/agents/configured", auth(http.HandlerFunc(s.handleAgentsConfigured)))
-	mux.Handle("/internal/agents/", auth(http.HandlerFunc(s.handleAgentAction)))
+	mux.Handle("/internal/apps/supported", auth(http.HandlerFunc(s.handleAppsSupported)))
+	mux.Handle("/internal/apps/configured", auth(http.HandlerFunc(s.handleAppsConfigured)))
+	mux.Handle("/internal/apps/", auth(http.HandlerFunc(s.handleAppAction)))
 	mux.Handle("/internal/subscription/status", auth(http.HandlerFunc(s.handleSubscriptionStatus)))
 	mux.Handle("/internal/subscription/refresh", auth(http.HandlerFunc(s.handleSubscriptionRefresh)))
 	mux.Handle("/internal/quota", auth(http.HandlerFunc(s.handleQuota)))
@@ -592,7 +592,7 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 			n = parsed
 		}
 	}
-	agentFilter := r.URL.Query().Get("agent")
+	appFilter := r.URL.Query().Get("app")
 	fromStr := r.URL.Query().Get("from")
 	toStr := r.URL.Query().Get("to")
 
@@ -608,13 +608,13 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 		to, terr := time.Parse("2006-01-02", toStr)
 		if ferr == nil && terr == nil {
 			to = to.Add(24*time.Hour - time.Second) // include all of the 'to' day
-			records, err = s.store.ListRequestsInRange(r.Context(), from, to, agentFilter, n)
+			records, err = s.store.ListRequestsInRange(r.Context(), from, to, appFilter, n)
 		} else {
 			http.Error(w, `{"error":"invalid date format, use YYYY-MM-DD"}`, http.StatusBadRequest)
 			return
 		}
-	} else if agentFilter != "" {
-		records, err = s.store.ListRequestsByAgent(r.Context(), agentFilter, n)
+	} else if appFilter != "" {
+		records, err = s.store.ListRequestsByApp(r.Context(), appFilter, n)
 	} else {
 		records, err = s.store.ListRequests(r.Context(), n)
 	}
@@ -626,7 +626,7 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	type row struct {
 		ID             string  `json:"id"`
 		Timestamp      string  `json:"ts"`
-		Agent          string  `json:"agent,omitempty"`
+		App            string  `json:"app,omitempty"`
 		Protocol       string  `json:"protocol"`
 		RequestedModel string  `json:"requested_model,omitempty"`
 		Provider       string  `json:"provider"`
@@ -662,7 +662,7 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 		r := row{
 			ID:             rec.ID,
 			Timestamp:      rec.Timestamp.Format(time.RFC3339),
-			Agent:          rec.Agent,
+			App:          rec.App,
 			Protocol:       rec.Protocol,
 			RequestedModel: rec.RequestedModel,
 			Provider:       rec.Provider,
@@ -1280,15 +1280,21 @@ func (s *Server) doListProviders(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, out)
 }
 
-type agentStats struct {
+type appStats struct {
 	RequestsToday   int     `json:"requests_today"`
 	CostTodayUSD    float64 `json:"cost_today_usd"`
 	SavingsTodayUSD float64 `json:"savings_today_usd"`
 }
 
-type agentWithStats struct {
-	config.AgentStatus
-	Stats agentStats `json:"stats"`
+type keyHintJSON struct {
+	Hint         string `json:"hint"`
+	Requests     int    `json:"requests"`
+	CostMicroUSD int64  `json:"cost_micro_usd"`
+}
+
+type appWithStats struct {
+	config.AppStatus
+	Stats appStats `json:"stats"`
 
 	// Inheritance fields (spec/04 §8.6). Optional — empty for legacy agents
 	// that have no Scanner registered (Cursor / Hermes etc. still go
@@ -1299,13 +1305,17 @@ type agentWithStats struct {
 	InheritedCount int    `json:"inherited_count,omitempty"` // count of inherited_endpoints rows
 	LastScannedAt  *int64 `json:"last_scanned_at,omitempty"` // ms UTC of most recent scan
 	LastError      string `json:"last_error,omitempty"`      // last scanner error, if any
+
+	// Key-hint channels: distinct api_key suffixes seen for this app, sorted
+	// by request count. Empty until migration 019 data arrives.
+	KeyHints []keyHintJSON `json:"key_hints,omitempty"`
 }
 
-// handleAgents handles GET /internal/agents.
+// handleApps handles GET /internal/apps.
 //
 // Returns a unified view spanning two sources, keyed by agent name:
 //
-//  1. v2.0.47 filesystem detection (config.DetectAgentStatuses) — finds AI
+//  1. v2.0.47 filesystem detection (config.DetectAppStatuses) — finds AI
 //     agents installed on disk, reports whether their baseUrl already
 //     points at krouter, and which provider names appear in their config.
 //     This list also drives the per-agent today's-stats numbers.
@@ -1317,28 +1327,28 @@ type agentWithStats struct {
 // Agents that appear in either source show up in the output. The Scanner
 // registry is the authoritative list of "known agents"; v2.0.47 detection
 // adds runtime presence information when the agent files exist on disk.
-func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleApps(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
 	ctx := r.Context()
-	statuses := config.DetectAgentStatuses()
+	statuses := config.DetectAppStatuses()
 	todayStart := time.Now().UTC().Truncate(24 * time.Hour)
 
 	// Index v2.0.47 detection by name so we can join Scanner-derived data.
-	detected := make(map[string]config.AgentStatus, len(statuses))
+	detected := make(map[string]config.AppStatus, len(statuses))
 	for _, st := range statuses {
 		detected[st.Name] = st
 	}
 
 	// Index agent_settings rows (inheritance state) by agent_id.
-	settingsByID := make(map[string]storage.AgentSetting)
+	settingsByID := make(map[string]storage.AppSetting)
 	if s.store != nil {
-		if rows, err := s.store.ListAgentSettings(ctx); err == nil {
+		if rows, err := s.store.ListAppSettings(ctx); err == nil {
 			for _, row := range rows {
-				settingsByID[row.AgentID] = row
+				settingsByID[row.AppID] = row
 			}
 		}
 	}
@@ -1348,9 +1358,9 @@ func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 	seen := make(map[string]struct{})
 	order := make([]string, 0)
 	for _, sc := range agentscan.Scanners {
-		if _, ok := seen[sc.AgentID()]; !ok {
-			seen[sc.AgentID()] = struct{}{}
-			order = append(order, sc.AgentID())
+		if _, ok := seen[sc.AppID()]; !ok {
+			seen[sc.AppID()] = struct{}{}
+			order = append(order, sc.AppID())
 		}
 	}
 	for _, st := range statuses {
@@ -1360,22 +1370,22 @@ func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	out := make([]agentWithStats, 0, len(order))
+	out := make([]appWithStats, 0, len(order))
 	for _, name := range order {
-		row := agentWithStats{}
+		row := appWithStats{}
 		if st, ok := detected[name]; ok {
-			row.AgentStatus = st
+			row.AppStatus = st
 		} else {
 			// Scanner-registered agent not detected on disk: emit a stub
-			// AgentStatus so the JSON still has Name + default empty fields.
-			row.AgentStatus = config.AgentStatus{
-				AgentInfo: config.AgentInfo{Name: name},
+			// AppStatus so the JSON still has Name + default empty fields.
+			row.AppStatus = config.AppStatus{
+				AppInfo: config.AppInfo{Name: name},
 			}
 		}
 
 		// Today's stats (v2.0.47 behaviour, only for names that have request rows).
 		if s.store != nil {
-			recs, err := s.store.ListRequestsByAgent(ctx, name, 10000)
+			recs, err := s.store.ListRequestsByApp(ctx, name, 10000)
 			if err == nil {
 				for _, rec := range recs {
 					if rec.Timestamp.UTC().Before(todayStart) {
@@ -1402,8 +1412,21 @@ func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 			row.LastScannedAt = cfg.LastScannedAt
 			row.LastError = cfg.LastError
 			if s.store != nil {
-				if eps, err := s.store.ListInheritedEndpointsByAgent(ctx, name); err == nil {
+				if eps, err := s.store.ListInheritedEndpointsByApp(ctx, name); err == nil {
 					row.InheritedCount = len(eps)
+				}
+			}
+		}
+
+		if s.store != nil {
+			if hints, err := s.store.ListKeyHintsByApp(ctx, name); err == nil && len(hints) > 0 {
+				row.KeyHints = make([]keyHintJSON, len(hints))
+				for i, h := range hints {
+					row.KeyHints[i] = keyHintJSON{
+						Hint:         h.KeyHint,
+						Requests:     h.RequestCount,
+						CostMicroUSD: h.CostMicroUSD,
+					}
 				}
 			}
 		}
@@ -1414,16 +1437,16 @@ func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, out)
 }
 
-// handleAgentAction handles requests to /internal/agents/{name}/{action} and
+// handleAppAction handles requests to /internal/apps/{name}/{action} and
 // /internal/agents/{name} (no trailing action, currently only DELETE).
-func (s *Server) handleAgentAction(w http.ResponseWriter, r *http.Request) {
-	// Bare /internal/agents/{name} (e.g. DELETE) is handled by a helper that
+func (s *Server) handleAppAction(w http.ResponseWriter, r *http.Request) {
+	// Bare /internal/apps/{name} (e.g. DELETE) is handled by a helper that
 	// inspects the path shape itself.
-	if s.agentRootDispatch(w, r) {
+	if s.appRootDispatch(w, r) {
 		return
 	}
 
-	tail := strings.TrimPrefix(r.URL.Path, "/internal/agents/")
+	tail := strings.TrimPrefix(r.URL.Path, "/internal/apps/")
 	slash := strings.LastIndex(tail, "/")
 	if slash < 0 {
 		http.NotFound(w, r)
@@ -1437,13 +1460,13 @@ func (s *Server) handleAgentAction(w http.ResponseWriter, r *http.Request) {
 	case "disconnect":
 		s.doAgentDisconnect(w, r, name)
 	case "diff":
-		s.doAgentDiff(w, r, name)
+		s.doAppDiff(w, r, name)
 	case "backups":
-		s.doAgentBackups(w, r, name)
+		s.doAppBackups(w, r, name)
 	case "restore":
-		s.doAgentRestore(w, r, name)
-	case "sub-agents":
-		s.doAgentSubAgents(w, r, name)
+		s.doAppRestore(w, r, name)
+	case "agents":
+		s.doAppAgents(w, r, name)
 	default:
 		// Inheritance verbs (rescan / enable / disable) are dispatched from a
 		// neighbouring file so this switch stays focused on the v2.0.47 verbs.
@@ -1460,8 +1483,8 @@ func (s *Server) doAgentConnect(w http.ResponseWriter, r *http.Request, name str
 		return
 	}
 
-	agents := config.DetectInstalledAgents()
-	var found *config.AgentInfo
+	agents := config.DetectInstalledApps()
+	var found *config.AppInfo
 	for i := range agents {
 		if agents[i].Name == name {
 			found = &agents[i]
@@ -1509,7 +1532,7 @@ func (s *Server) doAgentConnect(w http.ResponseWriter, r *http.Request, name str
 		"ok":            true,
 		"needs_restart": true,
 		"restart_kind":  restartKind,
-		"agent":         name,
+		"app":         name,
 	})
 }
 
@@ -1519,8 +1542,8 @@ func (s *Server) doAgentDisconnect(w http.ResponseWriter, r *http.Request, name 
 		return
 	}
 
-	agents := config.DetectInstalledAgents()
-	var found *config.AgentInfo
+	agents := config.DetectInstalledApps()
+	var found *config.AppInfo
 	for i := range agents {
 		if agents[i].Name == name {
 			found = &agents[i]
@@ -1554,15 +1577,15 @@ func (s *Server) doAgentDisconnect(w http.ResponseWriter, r *http.Request, name 
 	writeJSON(w, map[string]bool{"ok": true})
 }
 
-// doAgentDiff handles POST /internal/agents/{name}/diff
+// doAppDiff handles POST /internal/apps/{name}/diff
 // Returns the proposed config changes without applying them.
-func (s *Server) doAgentDiff(w http.ResponseWriter, r *http.Request, name string) {
+func (s *Server) doAppDiff(w http.ResponseWriter, r *http.Request, name string) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	agents := config.DetectInstalledAgents()
-	var found *config.AgentInfo
+	agents := config.DetectInstalledApps()
+	var found *config.AppInfo
 	for i := range agents {
 		if agents[i].Name == name {
 			found = &agents[i]
@@ -1589,14 +1612,14 @@ func (s *Server) doAgentDiff(w http.ResponseWriter, r *http.Request, name string
 	}
 }
 
-// doAgentBackups handles GET /internal/agents/{name}/backups
-func (s *Server) doAgentBackups(w http.ResponseWriter, r *http.Request, name string) {
+// doAppBackups handles GET /internal/apps/{name}/backups
+func (s *Server) doAppBackups(w http.ResponseWriter, r *http.Request, name string) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	agents := config.DetectInstalledAgents()
-	var found *config.AgentInfo
+	agents := config.DetectInstalledApps()
+	var found *config.AppInfo
 	for i := range agents {
 		if agents[i].Name == name {
 			found = &agents[i]
@@ -1614,7 +1637,7 @@ func (s *Server) doAgentBackups(w http.ResponseWriter, r *http.Request, name str
 	writeJSON(w, config.ListBackups(found.ConfigPath))
 }
 
-// doAgentSubAgents handles GET /internal/agents/{name}/sub-agents.
+// doAppAgents handles GET /internal/apps/{name}/agents.
 // Returns the per-sub-agent profile breakdown for agents that support
 // it (currently only OpenClaw). For agents without a sub-agent concept
 // the endpoint returns an empty list — UI then renders the existing
@@ -1622,10 +1645,10 @@ func (s *Server) doAgentBackups(w http.ResponseWriter, r *http.Request, name str
 //
 // This endpoint deliberately does NOT touch `inherited_endpoints` or
 // the routing path; it's a read-only file-system scan that lets the
-// dashboard surface "this OpenClaw install has 4 sub-agents and here
+// dashboard surface "this OpenClaw install has 4 agents and here
 // are their per-sub provider configs". Secrets stay on the daemon —
 // the response includes `has_api_key` booleans, not the raw keys.
-func (s *Server) doAgentSubAgents(w http.ResponseWriter, r *http.Request, name string) {
+func (s *Server) doAppAgents(w http.ResponseWriter, r *http.Request, name string) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1637,7 +1660,7 @@ func (s *Server) doAgentSubAgents(w http.ResponseWriter, r *http.Request, name s
 			http.Error(w, `{"error":"home dir unavailable"}`, http.StatusInternalServerError)
 			return
 		}
-		subs, err := agentscan.ListOpenClawSubAgents(home + "/.openclaw")
+		subs, err := agentscan.ListOpenClawAgents(home + "/.openclaw")
 		if err != nil {
 			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 			return
@@ -1650,14 +1673,14 @@ func (s *Server) doAgentSubAgents(w http.ResponseWriter, r *http.Request, name s
 	}
 }
 
-// doAgentRestore handles POST /internal/agents/{name}/restore
-func (s *Server) doAgentRestore(w http.ResponseWriter, r *http.Request, name string) {
+// doAppRestore handles POST /internal/apps/{name}/restore
+func (s *Server) doAppRestore(w http.ResponseWriter, r *http.Request, name string) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	agents := config.DetectInstalledAgents()
-	var found *config.AgentInfo
+	agents := config.DetectInstalledApps()
+	var found *config.AppInfo
 	for i := range agents {
 		if agents[i].Name == name {
 			found = &agents[i]
@@ -1716,7 +1739,7 @@ func (s *Server) handleDashboardStats(w http.ResponseWriter, r *http.Request) {
 	type response struct {
 		Weekly          weeklyStats    `json:"weekly"`
 		Providers       []providerDist `json:"providers"`
-		AgentsConnected int            `json:"agents_connected"`
+		AppsConnected int            `json:"apps_connected"`
 		PresetBreakdown []presetStat   `json:"preset_breakdown"`
 	}
 
@@ -1801,9 +1824,9 @@ func (s *Server) handleDashboardStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Count connected agents.
-	for _, a := range config.DetectAgentStatuses() {
+	for _, a := range config.DetectAppStatuses() {
 		if a.Connected {
-			resp.AgentsConnected++
+			resp.AppsConnected++
 		}
 	}
 
@@ -1819,7 +1842,7 @@ func (s *Server) handleLogsExport(w http.ResponseWriter, r *http.Request) {
 	}
 	fromStr := r.URL.Query().Get("from")
 	toStr := r.URL.Query().Get("to")
-	agentFilter := r.URL.Query().Get("agent")
+	appFilter := r.URL.Query().Get("app")
 
 	if s.store == nil {
 		http.Error(w, `{"error":"storage unavailable"}`, http.StatusServiceUnavailable)
@@ -1836,7 +1859,7 @@ func (s *Server) handleLogsExport(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		to = to.Add(24*time.Hour - time.Second)
-		records, err = s.store.ListRequestsInRange(r.Context(), from, to, agentFilter, 100000)
+		records, err = s.store.ListRequestsInRange(r.Context(), from, to, appFilter, 100000)
 	} else {
 		records, err = s.store.ListRequestsSince(r.Context(), time.Now().UTC().Add(-30*24*time.Hour), 100000)
 	}
@@ -1850,13 +1873,13 @@ func (s *Server) handleLogsExport(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", `attachment; filename="`+fname+`"`)
 
 	cw := csv.NewWriter(w)
-	_ = cw.Write([]string{"id", "ts", "agent", "protocol", "requested_model", "provider", "model",
+	_ = cw.Write([]string{"id", "ts", "app", "protocol", "requested_model", "provider", "model",
 		"input_tokens", "output_tokens", "cost_usd", "latency_ms", "status_code"})
 	for _, rec := range records {
 		_ = cw.Write([]string{
 			rec.ID,
 			rec.Timestamp.UTC().Format(time.RFC3339),
-			rec.Agent,
+			rec.App,
 			rec.Protocol,
 			rec.RequestedModel,
 			rec.Provider,
@@ -1895,7 +1918,7 @@ func (s *Server) handleUninstall(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	agents := config.DetectInstalledAgents()
+	agents := config.DetectInstalledApps()
 	rcPath := config.DetectShellRC()
 	for _, a := range agents {
 		switch a.Name {
@@ -2107,7 +2130,7 @@ func (s *Server) handleModelsRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	go func() {
-		for _, a := range config.DetectInstalledAgents() {
+		for _, a := range config.DetectInstalledApps() {
 			if a.Name == "openclaw" {
 				s.discoverOpenClawModels(a.ConfigPath)
 				break
@@ -2527,7 +2550,7 @@ func (s *Server) RefreshModelsIfStale(ctx context.Context) {
 	// re-enabled OpenClaw in the wizard, anthropic will appear in
 	// inherited_endpoints and the loop above handles it.
 	if _, found := all["anthropic"]; !found {
-		for _, a := range config.DetectInstalledAgents() {
+		for _, a := range config.DetectInstalledApps() {
 			if a.Name != "openclaw" {
 				continue
 			}

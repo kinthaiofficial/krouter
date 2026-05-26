@@ -6,72 +6,72 @@ import (
 	"path/filepath"
 )
 
-// AgentInfo describes a detected local AI agent installation.
-type AgentInfo struct {
+// AppInfo describes a detected local AI app installation.
+type AppInfo struct {
 	Name       string `json:"name"`
 	ConfigPath string `json:"config_path,omitempty"`
 	CLIPath    string `json:"cli_path,omitempty"`
 }
 
-// AgentStatus enriches AgentInfo with live connection and provider data.
-type AgentStatus struct {
-	AgentInfo
-	// Connected is true when the agent is confirmed to be routing through the
+// AppStatus enriches AppInfo with live connection and provider data.
+type AppStatus struct {
+	AppInfo
+	// Connected is true when the app is confirmed to be routing through the
 	// krouter proxy (baseUrl / env var points to 127.0.0.1:8402).
 	Connected bool `json:"connected"`
-	// Providers lists LLM provider names found in the agent's own config
-	// (non-empty only for agents whose config we can read, e.g. openclaw).
+	// Providers lists LLM provider names found in the app's own config
+	// (non-empty only for apps whose config we can read, e.g. openclaw).
 	Providers []string `json:"providers,omitempty"`
 }
 
-// DetectInstalledAgents scans well-known paths for installed AI agents.
+// DetectInstalledApps scans well-known paths for installed AI apps.
 // See spec/07-auto-config.md §5.
-func DetectInstalledAgents() []AgentInfo {
+func DetectInstalledApps() []AppInfo {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil
 	}
 
-	var found []AgentInfo
+	var found []AppInfo
 
 	openclaw := filepath.Join(home, ".openclaw", "openclaw.json")
 	if fileExists(openclaw) {
-		found = append(found, AgentInfo{Name: "openclaw", ConfigPath: openclaw})
+		found = append(found, AppInfo{Name: "openclaw", ConfigPath: openclaw})
 	}
 
 	hermes := filepath.Join(home, ".hermes", "config.toml")
 	if fileExists(hermes) {
-		found = append(found, AgentInfo{Name: "hermes", ConfigPath: hermes})
+		found = append(found, AppInfo{Name: "hermes", ConfigPath: hermes})
 	}
 
 	cursor := filepath.Join(home, ".cursor", "settings.json")
 	if fileExists(cursor) {
-		found = append(found, AgentInfo{Name: "cursor", ConfigPath: cursor})
+		found = append(found, AppInfo{Name: "cursor", ConfigPath: cursor})
 	}
 
 	if path, err := exec.LookPath("claude"); err == nil {
-		found = append(found, AgentInfo{Name: "claude-code", CLIPath: path})
+		found = append(found, AppInfo{Name: "claude-code", CLIPath: path})
 	} else if path := findClaudeInKnownPaths(home); path != "" {
-		found = append(found, AgentInfo{Name: "claude-code", CLIPath: path})
+		found = append(found, AppInfo{Name: "claude-code", CLIPath: path})
 	}
 
 	return found
 }
 
-// DetectAgentStatuses returns all detected agents enriched with connection
-// status and (for supported agents) their configured LLM provider names.
+// DetectAppStatuses returns all detected apps enriched with connection
+// status and (for supported apps) their configured LLM provider names.
 // Safe to call at any time — reads config files but never writes.
-func DetectAgentStatuses() []AgentStatus {
-	agents := DetectInstalledAgents()
-	if len(agents) == 0 {
-		return []AgentStatus{}
+func DetectAppStatuses() []AppStatus {
+	apps := DetectInstalledApps()
+	if len(apps) == 0 {
+		return []AppStatus{}
 	}
 
-	out := make([]AgentStatus, 0, len(agents))
+	out := make([]AppStatus, 0, len(apps))
 	rcPath := DetectShellRC()
 
-	for _, a := range agents {
-		s := AgentStatus{AgentInfo: a}
+	for _, a := range apps {
+		s := AppStatus{AppInfo: a}
 		switch a.Name {
 		case "openclaw":
 			s.Connected = IsOpenClawConnected(a.ConfigPath)
@@ -79,7 +79,7 @@ func DetectAgentStatuses() []AgentStatus {
 		case "claude-code":
 			s.Connected = IsClaudeCodeConnected(rcPath)
 		case "hermes", "cursor":
-			// Connection detection not yet implemented for these agents.
+			// Connection detection not yet implemented for these apps.
 		}
 		out = append(out, s)
 	}

@@ -43,14 +43,14 @@ func TestInstallServer_Health_NoAuth(t *testing.T) {
 func TestInstallServer_TokenRequired(t *testing.T) {
 	srv, _ := newTestServer(t)
 	w := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/install/detect-agents", nil))
+	srv.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/install/detect-apps", nil))
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
 func TestInstallServer_BearerAuth(t *testing.T) {
 	srv, _ := newTestServer(t)
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/install/detect-agents", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/install/detect-apps", nil)
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	srv.Handler().ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -58,13 +58,13 @@ func TestInstallServer_BearerAuth(t *testing.T) {
 
 func TestInstallServer_DetectAgents(t *testing.T) {
 	srv, hooks := newTestServer(t)
-	hooks.detectAgentsResult = []config.AgentInfo{
+	hooks.detectAgentsResult = []config.AppInfo{
 		{Name: "openclaw", ConfigPath: "/home/user/.openclaw/openclaw.json"},
 		{Name: "claude-code", CLIPath: "/usr/bin/claude"},
 	}
 
 	w := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(w, authed(httptest.NewRequest(http.MethodGet, "/api/install/detect-agents", nil)))
+	srv.Handler().ServeHTTP(w, authed(httptest.NewRequest(http.MethodGet, "/api/install/detect-apps", nil)))
 
 	require.Equal(t, http.StatusOK, w.Code)
 	var agents []map[string]any
@@ -107,9 +107,9 @@ func TestInstallServer_ShellIntegration(t *testing.T) {
 func TestInstallServer_ConnectAgent_OpenClaw(t *testing.T) {
 	srv, hooks := newTestServer(t)
 
-	body := `{"agent":"openclaw","config_path":"/home/user/.openclaw/openclaw.json"}`
+	body := `{"app":"openclaw","config_path":"/home/user/.openclaw/openclaw.json"}`
 	w := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(w, authed(httptest.NewRequest(http.MethodPost, "/api/install/connect-agent", strings.NewReader(body))))
+	srv.Handler().ServeHTTP(w, authed(httptest.NewRequest(http.MethodPost, "/api/install/connect-app", strings.NewReader(body))))
 
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, []string{"/home/user/.openclaw/openclaw.json"}, hooks.connectOpenClawCalls)
@@ -118,9 +118,9 @@ func TestInstallServer_ConnectAgent_OpenClaw(t *testing.T) {
 func TestInstallServer_ConnectAgent_UnknownAgent(t *testing.T) {
 	srv, _ := newTestServer(t)
 
-	body := `{"agent":"unknown-agent","config_path":""}`
+	body := `{"app":"unknown-agent","config_path":""}`
 	w := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(w, authed(httptest.NewRequest(http.MethodPost, "/api/install/connect-agent", strings.NewReader(body))))
+	srv.Handler().ServeHTTP(w, authed(httptest.NewRequest(http.MethodPost, "/api/install/connect-app", strings.NewReader(body))))
 
 	// Unknown agents are silently skipped (no error), so expect 200.
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -131,7 +131,7 @@ func TestInstallServer_ConnectAgent_MissingName(t *testing.T) {
 
 	body := `{}`
 	w := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(w, authed(httptest.NewRequest(http.MethodPost, "/api/install/connect-agent", strings.NewReader(body))))
+	srv.Handler().ServeHTTP(w, authed(httptest.NewRequest(http.MethodPost, "/api/install/connect-app", strings.NewReader(body))))
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }

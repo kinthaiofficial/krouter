@@ -10,8 +10,8 @@ import (
 
 func TestClaudeCodeScanner_AgentMeta(t *testing.T) {
 	s := ClaudeCodeScanner{}
-	if s.AgentID() != "claude-code" {
-		t.Errorf("AgentID = %q", s.AgentID())
+	if s.AppID() != "claude-code" {
+		t.Errorf("AppID = %q", s.AppID())
 	}
 	if s.DisplayName() == "" {
 		t.Errorf("DisplayName empty")

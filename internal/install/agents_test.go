@@ -25,7 +25,7 @@ type installFakeScanner struct {
 	err     error
 }
 
-func (f installFakeScanner) AgentID() string                                                   { return f.id }
+func (f installFakeScanner) AppID() string                                                   { return f.id }
 func (f installFakeScanner) DisplayName() string                                               { return f.name }
 func (f installFakeScanner) DefaultConfigPath() string                                         { return f.path }
 func (f installFakeScanner) Scan(_ context.Context, _ string) ([]agentscan.InheritedEndpoint, error) {
@@ -58,13 +58,13 @@ func TestInstallServer_AgentsSupported(t *testing.T) {
 
 	srv, _ := newTestServer(t)
 	w := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(w, authed(httptest.NewRequest(http.MethodGet, "/api/install/agents/supported", nil)))
+	srv.Handler().ServeHTTP(w, authed(httptest.NewRequest(http.MethodGet, "/api/install/apps/supported", nil)))
 
 	require.Equal(t, http.StatusOK, w.Code)
 	var out []map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
 	require.Len(t, out, 1)
-	assert.Equal(t, "openclaw", out[0]["agent_id"])
+	assert.Equal(t, "openclaw", out[0]["app_id"])
 }
 
 func TestInstallServer_AgentsPreview_RedactsSecrets(t *testing.T) {
@@ -89,8 +89,8 @@ func TestInstallServer_AgentsPreview_RedactsSecrets(t *testing.T) {
 	srv, _ := newTestServer(t)
 	w := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(w, authed(httptest.NewRequest(
-		http.MethodPost, "/api/install/agents/preview",
-		strings.NewReader(`{"agent_id":"openclaw","path":"/d"}`),
+		http.MethodPost, "/api/install/apps/preview",
+		strings.NewReader(`{"app_id":"openclaw","path":"/d"}`),
 	)))
 
 	require.Equal(t, http.StatusOK, w.Code)
@@ -121,8 +121,8 @@ func TestInstallServer_AgentsPreview_ScannerErrorSurfaced(t *testing.T) {
 	srv, _ := newTestServer(t)
 	w := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(w, authed(httptest.NewRequest(
-		http.MethodPost, "/api/install/agents/preview",
-		strings.NewReader(`{"agent_id":"openclaw","path":"/d"}`),
+		http.MethodPost, "/api/install/apps/preview",
+		strings.NewReader(`{"app_id":"openclaw","path":"/d"}`),
 	)))
 
 	require.Equal(t, http.StatusOK, w.Code) // scan ran, just unsuccessful
@@ -136,8 +136,8 @@ func TestInstallServer_AgentsPreview_UnknownAgent(t *testing.T) {
 	srv, _ := newTestServer(t)
 	w := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(w, authed(httptest.NewRequest(
-		http.MethodPost, "/api/install/agents/preview",
-		strings.NewReader(`{"agent_id":"missing","path":"/d"}`),
+		http.MethodPost, "/api/install/apps/preview",
+		strings.NewReader(`{"app_id":"missing","path":"/d"}`),
 	)))
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
@@ -147,12 +147,12 @@ func TestInstallServer_AgentsSelect_WritesPendingFile(t *testing.T) {
 	srv, _ := newTestServer(t)
 
 	body := `{"agents":[
-		{"agent_id":"openclaw","enabled":true,"config_path":"/x/openclaw.json"},
-		{"agent_id":"claude-code","enabled":false,"config_path":"/x/.zshrc"}
+		{"app_id":"openclaw","enabled":true,"config_path":"/x/openclaw.json"},
+		{"app_id":"claude-code","enabled":false,"config_path":"/x/.zshrc"}
 	]}`
 	w := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(w, authed(httptest.NewRequest(
-		http.MethodPost, "/api/install/agents/select", strings.NewReader(body),
+		http.MethodPost, "/api/install/apps/select", strings.NewReader(body),
 	)))
 
 	require.Equal(t, http.StatusOK, w.Code)
@@ -165,7 +165,7 @@ func TestInstallServer_AgentsSelect_WritesPendingFile(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(raw, &got))
 	require.Len(t, got.Agents, 2)
-	assert.Equal(t, "openclaw", got.Agents[0].AgentID)
+	assert.Equal(t, "openclaw", got.Agents[0].AppID)
 	assert.True(t, got.Agents[0].Enabled)
 }
 

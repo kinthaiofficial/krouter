@@ -1,17 +1,17 @@
-// Package agentscan implements the per-AI-agent configuration scanners that
-// krouter uses to inherit endpoint, API key, and OAuth token data from agents
+// Package agentscan implements the per-AI-app configuration scanners that
+// krouter uses to inherit endpoint, API key, and OAuth token data from apps
 // the user already has configured on their machine (OpenClaw, Claude Code,
 // Cursor, Cline, etc.). See spec/04-agent-inheritance.md.
 //
-// Each agent is represented by a single value of type Scanner. The Scanner
+// Each app is represented by a single value of type Scanner. The Scanner
 // knows its display name, default config-file path, and how to parse that file
 // into a slice of InheritedEndpoint. Scan() is a pure function — it never
-// modifies the agent's config and never writes to the krouter database; the
+// modifies the app's config and never writes to the krouter database; the
 // caller (typically internal/api) persists the result.
 //
-// Adding support for a new agent is purely additive:
+// Adding support for a new app is purely additive:
 //
-//  1. Create internal/agentscan/<agent>.go with a Scanner implementation.
+//  1. Create internal/agentscan/<app>.go with a Scanner implementation.
 //  2. Append the new Scanner to Scanners in registry.go.
 //
 // No external manifest, no daemon restart logic, no config-file describing how
@@ -51,17 +51,17 @@ type InheritedEndpoint struct {
 	ExtrasJSON string
 }
 
-// Scanner is implemented once per supported AI agent.
+// Scanner is implemented once per supported AI app.
 //
 // All methods must be safe to call concurrently. Scan must not panic; any
 // error during parsing should be returned so the caller can surface it in the
 // UI. A returned nil slice with nil error is valid and means "config exists
 // but no vendors were configured in it".
 type Scanner interface {
-	// AgentID returns the stable identifier used in the agent_settings table
+	// AppID returns the stable identifier used in the app_settings table
 	// and the routing engine. Must be lowercase, ASCII, and not change between
 	// releases (changing it amounts to a DB migration).
-	AgentID() string
+	AppID() string
 
 	// DisplayName returns the human-readable name shown in the wizard and
 	// dashboard. Free-form; may be localized in the future.

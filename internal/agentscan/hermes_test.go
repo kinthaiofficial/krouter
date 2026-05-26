@@ -10,8 +10,8 @@ import (
 
 func TestHermesScanner_Meta(t *testing.T) {
 	s := HermesScanner{}
-	if s.AgentID() != "hermes" {
-		t.Errorf("AgentID = %q, want hermes", s.AgentID())
+	if s.AppID() != "hermes" {
+		t.Errorf("AppID = %q, want hermes", s.AppID())
 	}
 	if s.DisplayName() == "" {
 		t.Errorf("DisplayName empty")

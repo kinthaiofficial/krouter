@@ -8,7 +8,7 @@ import {
   type ConfiguredAgent,
 } from '../api/client'
 
-// AgentInheritanceSection renders the spec/04 agent-inheritance UI: it lists
+// AppInheritanceSection renders the spec/04 app-inheritance UI: it lists
 // every Scanner the daemon binary supports, joins with the user's
 // agent_settings rows, and surfaces the inherited_endpoints count, last scan
 // timestamp, and inline controls for Enable / Disable / Rescan / edit path.
@@ -16,35 +16,35 @@ import {
 // This component is the source of truth for which agents krouter is treating
 // as configured. The legacy v2.0.47 connect/disconnect UI in pages/Agents.tsx
 // stays for now as a fallback during transition.
-export default function AgentInheritanceSection() {
+export default function AppInheritanceSection() {
   const { t } = useTranslation()
   const qc = useQueryClient()
 
   const { data: supported, isLoading: loadingSupported } = useQuery({
-    queryKey: ['agents-supported'],
-    queryFn: api.agentsSupported,
+    queryKey: ['apps-supported'],
+    queryFn: api.appsSupported,
     staleTime: 60_000,
   })
   const { data: configured } = useQuery({
-    queryKey: ['agents-configured'],
-    queryFn: api.agentsConfigured,
+    queryKey: ['apps-configured'],
+    queryFn: api.appsConfigured,
     refetchInterval: 15_000,
   })
 
   const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ['agents-configured'] })
+    qc.invalidateQueries({ queryKey: ['apps-configured'] })
   }
 
   const enable = useMutation({
-    mutationFn: (id: string) => api.agentEnable(id),
+    mutationFn: (id: string) => api.appEnable(id),
     onSuccess: invalidate,
   })
   const disable = useMutation({
-    mutationFn: (id: string) => api.agentDisable(id),
+    mutationFn: (id: string) => api.appDisable(id),
     onSuccess: invalidate,
   })
   const rescan = useMutation({
-    mutationFn: ({ id, path }: { id: string; path?: string }) => api.agentRescan(id, path),
+    mutationFn: ({ id, path }: { id: string; path?: string }) => api.appRescan(id, path),
     onSuccess: invalidate,
   })
 
@@ -59,7 +59,7 @@ export default function AgentInheritanceSection() {
   // list (Scanner registry compiled into the daemon); configured fills in the
   // user-state. Missing config rows mean "user hasn't touched this agent
   // yet".
-  const cfgByID = new Map((configured ?? []).map((c) => [c.agent_id, c]))
+  const cfgByID = new Map((configured ?? []).map((c) => [c.app_id, c]))
 
   return (
     <SectionShell>
@@ -72,15 +72,15 @@ export default function AgentInheritanceSection() {
       <ul className="divide-y divide-gray-100">
         {supported.map((s) => (
           <AgentRow
-            key={s.agent_id}
+            key={s.app_id}
             supported={s}
-            config={cfgByID.get(s.agent_id)}
+            config={cfgByID.get(s.app_id)}
             busy={
               enable.isPending || disable.isPending || rescan.isPending
             }
-            onEnable={() => enable.mutate(s.agent_id)}
-            onDisable={() => disable.mutate(s.agent_id)}
-            onRescan={(path?: string) => rescan.mutate({ id: s.agent_id, path })}
+            onEnable={() => enable.mutate(s.app_id)}
+            onDisable={() => disable.mutate(s.app_id)}
+            onRescan={(path?: string) => rescan.mutate({ id: s.app_id, path })}
           />
         ))}
       </ul>
@@ -91,7 +91,7 @@ export default function AgentInheritanceSection() {
 function SectionShell({ children }: { children: React.ReactNode }) {
   return (
     <section
-      data-testid="agent-inheritance-section"
+      data-testid="app-inheritance-section"
       className="bg-white border border-border rounded-2xl p-5 shadow-sm"
     >
       {children}
@@ -130,7 +130,7 @@ function AgentRow({
           className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-white text-[10px] font-bold tracking-tight ${enabled ? 'bg-brand' : 'bg-gray-300'}`}
           aria-hidden
         >
-          {supported.agent_id.slice(0, 2).toUpperCase()}
+          {supported.app_id.slice(0, 2).toUpperCase()}
         </span>
 
         <div className="flex-1 min-w-0">

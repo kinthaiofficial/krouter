@@ -120,8 +120,8 @@ func TestSubscriptionStatus_ReportsAuthSourceFromInheritedEndpoints(t *testing.T
 	srv, store := newTestServer(t)
 	ctx := context.Background()
 
-	require.NoError(t, store.UpsertAgentSetting(ctx, storage.AgentSetting{
-		AgentID: "openclaw", Enabled: true, ConfigPath: "/x",
+	require.NoError(t, store.UpsertAppSetting(ctx, storage.AppSetting{
+		AppID: "openclaw", Enabled: true, ConfigPath: "/x",
 	}))
 	require.NoError(t, store.ReplaceInheritedEndpoints(ctx, "openclaw", []storage.InheritedEndpoint{
 		{
@@ -146,7 +146,7 @@ func TestSubscriptionStatus_ReportsAuthSourceFromInheritedEndpoints(t *testing.T
 	var got []subscriptionProviderJSON
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
 	require.Len(t, got, 1)
-	assert.Equal(t, "openclaw", got[0].SourceAgent)
+	assert.Equal(t, "openclaw", got[0].SourceApp)
 	assert.True(t, got[0].OAuthPresent)
 }
 

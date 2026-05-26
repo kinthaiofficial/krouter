@@ -156,7 +156,7 @@ func TestLogs_WithRecords(t *testing.T) {
 	err := store.InsertRequest(ctx, storage.RequestRecord{
 		ID:           store.NewULID(),
 		Timestamp:    time.Now().UTC(),
-		Agent:        "openclaw",
+		App:          "openclaw",
 		Protocol:     "anthropic",
 		Provider:     "anthropic",
 		Model:        "claude-haiku-4-5",

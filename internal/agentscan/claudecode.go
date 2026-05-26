@@ -25,7 +25,7 @@ import (
 // as "configured but not connected".
 type ClaudeCodeScanner struct{}
 
-func (ClaudeCodeScanner) AgentID() string     { return "claude-code" }
+func (ClaudeCodeScanner) AppID() string     { return "claude-code" }
 func (ClaudeCodeScanner) DisplayName() string { return "Claude Code" }
 
 func (ClaudeCodeScanner) DefaultConfigPath() string {

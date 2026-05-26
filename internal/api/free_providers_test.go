@@ -64,7 +64,7 @@ func TestFreeProviders_ListsCatalogWithoutInheritance(t *testing.T) {
 	assert.Equal(t, "DeepSeek", got[0].DisplayName)
 	assert.False(t, got[0].UserConfigured,
 		"no inherited row yet → user_configured false")
-	assert.Empty(t, got[0].SourceAgent)
+	assert.Empty(t, got[0].SourceApp)
 	assert.False(t, got[0].Exhausted)
 }
 
@@ -77,8 +77,8 @@ func TestFreeProviders_JoinsInheritedState(t *testing.T) {
 		Protocol: "openai", FreeType: "trial_credit",
 		SignupURL: "https://example.com/", Active: true, UpdatedAt: time.Now().UTC(),
 	}))
-	require.NoError(t, store.UpsertAgentSetting(ctx, storage.AgentSetting{
-		AgentID: "openclaw", Enabled: true, ConfigPath: "/x",
+	require.NoError(t, store.UpsertAppSetting(ctx, storage.AppSetting{
+		AppID: "openclaw", Enabled: true, ConfigPath: "/x",
 	}))
 	require.NoError(t, store.ReplaceInheritedEndpoints(ctx, "openclaw", []storage.InheritedEndpoint{
 		{Provider: "deepseek", EndpointURL: "u", APIKey: "sk-x", CapturedAt: 1},
@@ -91,7 +91,7 @@ func TestFreeProviders_JoinsInheritedState(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
 	require.Len(t, got, 1)
 	assert.True(t, got[0].UserConfigured)
-	assert.Equal(t, "openclaw", got[0].SourceAgent)
+	assert.Equal(t, "openclaw", got[0].SourceApp)
 }
 
 func TestFreeProviders_SurfacesExhaustionFlag(t *testing.T) {

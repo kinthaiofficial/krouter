@@ -28,7 +28,7 @@ func testUninstaller(ui UI, opt Options) (*Uninstaller, *uninstallHooks) {
 type uninstallHooks struct {
 	stopServiceCalled          bool
 	removeServiceFileCalled    bool
-	detectAgentsResult         []config.AgentInfo
+	detectAgentsResult         []config.AppInfo
 	disconnectOpenClawCalls    []string
 	disconnectClaudeCodeCalls  []string
 	removeBinaryCalled         bool
@@ -37,7 +37,7 @@ type uninstallHooks struct {
 
 func (h *uninstallHooks) stopService() error          { h.stopServiceCalled = true; return nil }
 func (h *uninstallHooks) removeServiceFile() error    { h.removeServiceFileCalled = true; return nil }
-func (h *uninstallHooks) detectAgents() []config.AgentInfo { return h.detectAgentsResult }
+func (h *uninstallHooks) detectAgents() []config.AppInfo { return h.detectAgentsResult }
 func (h *uninstallHooks) disconnectOpenClaw(p string) error {
 	h.disconnectOpenClawCalls = append(h.disconnectOpenClawCalls, p)
 	return nil
@@ -92,7 +92,7 @@ func TestUninstall_RemovesService_Linux(t *testing.T) {
 
 func TestUninstall_DisconnectAgent_OpenClaw(t *testing.T) {
 	u, h := testUninstaller(NullUI{}, Options{})
-	h.detectAgentsResult = []config.AgentInfo{
+	h.detectAgentsResult = []config.AppInfo{
 		{Name: "openclaw", ConfigPath: "/home/user/.openclaw/openclaw.json"},
 	}
 

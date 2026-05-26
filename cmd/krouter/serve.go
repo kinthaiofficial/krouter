@@ -365,7 +365,7 @@ The daemon listens on two ports:
 				payload := map[string]any{
 					"id":              rec.ID,
 					"ts":              rec.Timestamp.UTC().Format(time.RFC3339),
-					"agent":           rec.Agent,
+					"app":             rec.App,
 					"protocol":        rec.Protocol,
 					"requested_model": rec.RequestedModel,
 					"provider":        rec.Provider,

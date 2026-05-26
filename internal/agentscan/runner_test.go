@@ -25,7 +25,7 @@ type fakeScanner struct {
 	err     error
 }
 
-func (f fakeScanner) AgentID() string           { return f.id }
+func (f fakeScanner) AppID() string           { return f.id }
 func (f fakeScanner) DisplayName() string       { return f.name }
 func (f fakeScanner) DefaultConfigPath() string { return f.path }
 func (f fakeScanner) Scan(_ context.Context, _ string) ([]agentscan.InheritedEndpoint, error) {
@@ -52,8 +52,8 @@ func TestScanOne_Success(t *testing.T) {
 	s := newRunnerStore(t)
 	ctx := context.Background()
 
-	require.NoError(t, s.UpsertAgentSetting(ctx, storage.AgentSetting{
-		AgentID: "openclaw", Enabled: true, ConfigPath: "/tmp/x",
+	require.NoError(t, s.UpsertAppSetting(ctx, storage.AppSetting{
+		AppID: "openclaw", Enabled: true, ConfigPath: "/tmp/x",
 	}))
 
 	scanner := fakeScanner{
@@ -66,11 +66,11 @@ func TestScanOne_Success(t *testing.T) {
 	}
 	require.NoError(t, agentscan.ScanOne(ctx, s, scanner, "/tmp/x"))
 
-	endpoints, err := s.ListInheritedEndpointsByAgent(ctx, "openclaw")
+	endpoints, err := s.ListInheritedEndpointsByApp(ctx, "openclaw")
 	require.NoError(t, err)
 	require.Len(t, endpoints, 2)
 
-	got, _ := s.GetAgentSetting(ctx, "openclaw")
+	got, _ := s.GetAppSetting(ctx, "openclaw")
 	require.NotNil(t, got.LastScannedAt)
 	assert.Empty(t, got.LastError)
 }
@@ -78,27 +78,27 @@ func TestScanOne_Success(t *testing.T) {
 func TestScanOne_ScannerErrorPersistsLastError(t *testing.T) {
 	s := newRunnerStore(t)
 	ctx := context.Background()
-	require.NoError(t, s.UpsertAgentSetting(ctx, storage.AgentSetting{
-		AgentID: "openclaw", Enabled: true, ConfigPath: "/tmp/x",
+	require.NoError(t, s.UpsertAppSetting(ctx, storage.AppSetting{
+		AppID: "openclaw", Enabled: true, ConfigPath: "/tmp/x",
 	}))
 
 	scanner := fakeScanner{id: "openclaw", err: errors.New("simulated parse failure")}
 	err := agentscan.ScanOne(ctx, s, scanner, "/tmp/x")
 	require.Error(t, err)
 
-	got, _ := s.GetAgentSetting(ctx, "openclaw")
+	got, _ := s.GetAppSetting(ctx, "openclaw")
 	assert.Equal(t, "simulated parse failure", got.LastError)
 	require.NotNil(t, got.LastScannedAt)
 
-	eps, _ := s.ListInheritedEndpointsByAgent(ctx, "openclaw")
+	eps, _ := s.ListInheritedEndpointsByApp(ctx, "openclaw")
 	assert.Empty(t, eps)
 }
 
 func TestScanOne_OverwritesPreviousEndpoints(t *testing.T) {
 	s := newRunnerStore(t)
 	ctx := context.Background()
-	require.NoError(t, s.UpsertAgentSetting(ctx, storage.AgentSetting{
-		AgentID: "openclaw", Enabled: true, ConfigPath: "/x",
+	require.NoError(t, s.UpsertAppSetting(ctx, storage.AppSetting{
+		AppID: "openclaw", Enabled: true, ConfigPath: "/x",
 	}))
 
 	require.NoError(t, agentscan.ScanOne(ctx, s, fakeScanner{
@@ -116,7 +116,7 @@ func TestScanOne_OverwritesPreviousEndpoints(t *testing.T) {
 		},
 	}, "/x"))
 
-	eps, _ := s.ListInheritedEndpointsByAgent(ctx, "openclaw")
+	eps, _ := s.ListInheritedEndpointsByApp(ctx, "openclaw")
 	require.Len(t, eps, 1)
 	assert.Equal(t, "u1-new", eps[0].EndpointURL)
 }
@@ -134,25 +134,25 @@ func TestRunAll_SkipsDisabledAndUnknown(t *testing.T) {
 	disabledScanner := fakeScanner{id: "claude-code"}
 	setScannersFor(t, enabledScanner, disabledScanner)
 
-	require.NoError(t, s.UpsertAgentSetting(ctx, storage.AgentSetting{
-		AgentID: "openclaw", Enabled: true, ConfigPath: "/x",
+	require.NoError(t, s.UpsertAppSetting(ctx, storage.AppSetting{
+		AppID: "openclaw", Enabled: true, ConfigPath: "/x",
 	}))
-	require.NoError(t, s.UpsertAgentSetting(ctx, storage.AgentSetting{
-		AgentID: "claude-code", Enabled: false, ConfigPath: "/y",
+	require.NoError(t, s.UpsertAppSetting(ctx, storage.AppSetting{
+		AppID: "claude-code", Enabled: false, ConfigPath: "/y",
 	}))
-	require.NoError(t, s.UpsertAgentSetting(ctx, storage.AgentSetting{
-		AgentID: "future-agent-xyz", Enabled: true, ConfigPath: "/z",
+	require.NoError(t, s.UpsertAppSetting(ctx, storage.AppSetting{
+		AppID: "future-agent-xyz", Enabled: true, ConfigPath: "/z",
 	}))
 
 	agentscan.RunAll(ctx, s, logging.New("error"))
 
-	enabledEps, _ := s.ListInheritedEndpointsByAgent(ctx, "openclaw")
+	enabledEps, _ := s.ListInheritedEndpointsByApp(ctx, "openclaw")
 	assert.Len(t, enabledEps, 1)
 
-	disabledEps, _ := s.ListInheritedEndpointsByAgent(ctx, "claude-code")
+	disabledEps, _ := s.ListInheritedEndpointsByApp(ctx, "claude-code")
 	assert.Empty(t, disabledEps)
 
-	phantomEps, _ := s.ListInheritedEndpointsByAgent(ctx, "future-agent-xyz")
+	phantomEps, _ := s.ListInheritedEndpointsByApp(ctx, "future-agent-xyz")
 	assert.Empty(t, phantomEps)
 }
 
@@ -169,23 +169,23 @@ func TestRunAll_OneFailureDoesNotAbortOthers(t *testing.T) {
 	}
 	setScannersFor(t, failing, working)
 
-	require.NoError(t, s.UpsertAgentSetting(ctx, storage.AgentSetting{
-		AgentID: "openclaw", Enabled: true, ConfigPath: "/x",
+	require.NoError(t, s.UpsertAppSetting(ctx, storage.AppSetting{
+		AppID: "openclaw", Enabled: true, ConfigPath: "/x",
 	}))
-	require.NoError(t, s.UpsertAgentSetting(ctx, storage.AgentSetting{
-		AgentID: "claude-code", Enabled: true, ConfigPath: "/y",
+	require.NoError(t, s.UpsertAppSetting(ctx, storage.AppSetting{
+		AppID: "claude-code", Enabled: true, ConfigPath: "/y",
 	}))
 
 	agentscan.RunAll(ctx, s, logging.New("error"))
 
-	failed, _ := s.GetAgentSetting(ctx, "openclaw")
+	failed, _ := s.GetAppSetting(ctx, "openclaw")
 	assert.NotEmpty(t, failed.LastError)
-	failedEps, _ := s.ListInheritedEndpointsByAgent(ctx, "openclaw")
+	failedEps, _ := s.ListInheritedEndpointsByApp(ctx, "openclaw")
 	assert.Empty(t, failedEps)
 
-	ok, _ := s.GetAgentSetting(ctx, "claude-code")
+	ok, _ := s.GetAppSetting(ctx, "claude-code")
 	assert.Empty(t, ok.LastError)
-	okEps, _ := s.ListInheritedEndpointsByAgent(ctx, "claude-code")
+	okEps, _ := s.ListInheritedEndpointsByApp(ctx, "claude-code")
 	assert.Len(t, okEps, 1)
 }
 
@@ -202,8 +202,8 @@ func TestStartPeriodicRescan_TicksAndStopsOnCtxCancel(t *testing.T) {
 	calls := 0
 	scanner := callCountingScanner{id: "openclaw", incr: func() { calls++ }}
 	setScannersFor(t, scanner)
-	require.NoError(t, s.UpsertAgentSetting(context.Background(), storage.AgentSetting{
-		AgentID: "openclaw", Enabled: true, ConfigPath: "/x",
+	require.NoError(t, s.UpsertAppSetting(context.Background(), storage.AppSetting{
+		AppID: "openclaw", Enabled: true, ConfigPath: "/x",
 	}))
 
 	// Fast ticker so the test finishes quickly. onTick increments a separate
@@ -246,8 +246,8 @@ func TestRunAll_SkipsUnchangedConfigButRescansAfterChange(t *testing.T) {
 
 	calls := 0
 	setScannersFor(t, callCountingScanner{id: "openclaw", incr: func() { calls++ }})
-	require.NoError(t, s.UpsertAgentSetting(ctx, storage.AgentSetting{
-		AgentID: "openclaw", Enabled: true, ConfigPath: cfgPath,
+	require.NoError(t, s.UpsertAppSetting(ctx, storage.AppSetting{
+		AppID: "openclaw", Enabled: true, ConfigPath: cfgPath,
 	}))
 
 	agentscan.RunAll(ctx, s, logging.New("error"))
@@ -305,8 +305,8 @@ func TestStartPeriodicRescan_NilOnTickDoesNotPanic(t *testing.T) {
 	// onTick=nil is valid; the loop should just skip the callback.
 	s := newRunnerStore(t)
 	setScannersFor(t, callCountingScanner{id: "openclaw"})
-	require.NoError(t, s.UpsertAgentSetting(context.Background(), storage.AgentSetting{
-		AgentID: "openclaw", Enabled: true, ConfigPath: "/x",
+	require.NoError(t, s.UpsertAppSetting(context.Background(), storage.AppSetting{
+		AppID: "openclaw", Enabled: true, ConfigPath: "/x",
 	}))
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -328,7 +328,7 @@ type callCountingScanner struct {
 	incr func()
 }
 
-func (s callCountingScanner) AgentID() string           { return s.id }
+func (s callCountingScanner) AppID() string           { return s.id }
 func (s callCountingScanner) DisplayName() string       { return s.id }
 func (s callCountingScanner) DefaultConfigPath() string { return "/d" }
 func (s callCountingScanner) Scan(_ context.Context, _ string) ([]agentscan.InheritedEndpoint, error) {

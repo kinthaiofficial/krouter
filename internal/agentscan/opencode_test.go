@@ -10,8 +10,8 @@ import (
 
 func TestOpenCodeScanner_Meta(t *testing.T) {
 	s := OpenCodeScanner{}
-	if s.AgentID() != "opencode" {
-		t.Errorf("AgentID = %q, want opencode", s.AgentID())
+	if s.AppID() != "opencode" {
+		t.Errorf("AppID = %q, want opencode", s.AppID())
 	}
 	if s.DisplayName() == "" {
 		t.Errorf("DisplayName empty")

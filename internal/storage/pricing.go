@@ -170,7 +170,7 @@ func (s *Store) ListRequestsSince(ctx context.Context, since time.Time, limit in
 		var r RequestRecord
 		var tsStr string
 		if err := rows.Scan(
-			&r.ID, &tsStr, &r.Agent, &r.Protocol,
+			&r.ID, &tsStr, &r.App, &r.Protocol,
 			&r.RequestedModel, &r.Provider, &r.Model,
 			&r.InputTokens, &r.OutputTokens, &r.CachedTokens, &r.CacheWriteTokens,
 			&r.CostMicroUSD, &r.LatencyMS,

@@ -83,7 +83,7 @@ export interface QuotaItem {
 export interface LogRecord {
   id: string
   ts: string
-  agent?: string
+  app?: string
   protocol: string
   requested_model?: string
   provider: string
@@ -148,7 +148,7 @@ export interface PresetStat {
 export interface DashboardStats {
   weekly: { requests: number; cost_usd: number; savings_usd: number }
   providers: { name: string; requests: number; cost_usd: number }[]
-  agents_connected: number
+  apps_connected: number
   preset_breakdown: PresetStat[]
 }
 
@@ -209,7 +209,7 @@ export interface BackupInfo {
   size_kb: number
 }
 
-export interface AgentDiff {
+export interface AppDiff {
   before: string
   after: string
 }
@@ -217,17 +217,17 @@ export interface AgentDiff {
 // OpenClaw and other multi-agent tools may host multiple named profiles
 // under a single install. Each sub-agent gets its own provider config —
 // the dashboard surfaces them as a nested list under the main agent card.
-export interface AgentSubAgent {
+export interface AppAgent {
   id: string
   display_name?: string
   primary_model?: string
   workspace?: string
   agent_dir?: string
-  providers?: AgentSubAgentProvider[]
+  providers?: AppAgentProvider[]
   has_oauth?: boolean
 }
 
-export interface AgentSubAgentProvider {
+export interface AppAgentProvider {
   provider: string
   base_url?: string
   protocol?: string
@@ -236,16 +236,24 @@ export interface AgentSubAgentProvider {
   has_api_key?: boolean
 }
 
+// ─── Key-hint channels ─────────────────────────────────────────────────────
+
+export interface KeyHintChannel {
+  hint: string          // last 4 chars of the api_key, or "" for no-key requests
+  requests: number
+  cost_micro_usd: number
+}
+
 // ─── Agent inheritance (spec/04) ──────────────────────────────────────────
 
-export interface SupportedAgent {
-  agent_id: string
+export interface SupportedApp {
+  app_id: string
   display_name: string
   default_path: string
 }
 
-export interface ConfiguredAgent {
-  agent_id: string
+export interface ConfiguredApp {
+  app_id: string
   enabled: boolean
   config_path: string
   last_scanned_at?: number   // ms UTC
@@ -255,7 +263,7 @@ export interface ConfiguredAgent {
 
 export interface RescanResult {
   ok: boolean
-  agent_id: string
+  app_id: string
   config_path: string
   inherited_count: number
   error?: string
@@ -279,7 +287,7 @@ export interface SubscriptionTier {
 
 export interface SubscriptionProvider {
   provider: string
-  source_agent?: string
+  source_app?: string
   oauth_present: boolean
   last_polled_at?: string
   tiers: SubscriptionTier[]
@@ -294,7 +302,7 @@ export interface FreeProviderProtocolAlternate {
   // Per-language overrides of key_setup_hint, shaped lang → field → value.
   i18n?: Record<string, Record<string, string>>
   user_configured: boolean
-  source_agent?: string
+  source_app?: string
 }
 
 export interface FreeProvider {
@@ -318,7 +326,7 @@ export interface FreeProvider {
   // copy; the UI overlays the current language and falls back to English.
   i18n?: Record<string, Record<string, string>>
   user_configured: boolean
-  source_agent?: string
+  source_app?: string
   exhausted?: boolean
   exhausted_until?: string
   exhausted_reason?: string
@@ -336,7 +344,7 @@ export const api = {
   budget: () => get<Budget>('/internal/budget'),
   budgetEvents: (limit = 50) => get<BudgetEvent[]>(`/internal/budget/events?limit=${limit}`),
   quota: () => get<QuotaItem[]>('/internal/quota'),
-  logs: (n = 20, agent?: string) => get<LogRecord[]>(`/internal/logs?n=${n}${agent ? `&agent=${encodeURIComponent(agent)}` : ''}`),
+  logs: (n = 20, app?: string) => get<LogRecord[]>(`/internal/logs?n=${n}${app ? `&app=${encodeURIComponent(app)}` : ''}`),
   preset: () => get<{ preset: Preset }>('/internal/preset'),
   setPreset: (preset: Preset) => post<{ preset: Preset }>('/internal/preset', { preset }),
   pricingStatus: () => get<PricingStatus>('/internal/pricing/status'),
@@ -344,14 +352,14 @@ export const api = {
   providers: () => get<ProviderInfo[]>('/internal/providers'),
   testProvider: (name: string) => post<ProviderTestResult>(`/internal/providers/${encodeURIComponent(name)}/test`),
   providerModels: (name: string) => get<ProviderModelRow[]>(`/internal/providers/${encodeURIComponent(name)}/models`),
-  agentBackups: (name: string) => get<BackupInfo[]>(`/internal/agents/${encodeURIComponent(name)}/backups`),
-  agentSubAgents: (name: string) => get<AgentSubAgent[]>(`/internal/agents/${encodeURIComponent(name)}/sub-agents`),
-  agentDiff: (name: string) => post<AgentDiff>(`/internal/agents/${encodeURIComponent(name)}/diff`),
-  agentRestore: (name: string, filename: string) => post<{ ok: boolean }>(`/internal/agents/${encodeURIComponent(name)}/restore`, { filename }),
-  logsInRange: (from: string, to: string, agent?: string) =>
-    get<LogRecord[]>(`/internal/logs?from=${from}&to=${to}${agent ? `&agent=${encodeURIComponent(agent)}` : ''}`),
-  logsExportUrl: (from: string, to: string, agent?: string) =>
-    `/internal/logs/export?from=${from}&to=${to}${agent ? `&agent=${encodeURIComponent(agent)}` : ''}`,
+  appBackups: (name: string) => get<BackupInfo[]>(`/internal/apps/${encodeURIComponent(name)}/backups`),
+  appSubAgents: (name: string) => get<AppAgent[]>(`/internal/apps/${encodeURIComponent(name)}/sub-agents`),
+  appDiff: (name: string) => post<AppDiff>(`/internal/apps/${encodeURIComponent(name)}/diff`),
+  appRestore: (name: string, filename: string) => post<{ ok: boolean }>(`/internal/apps/${encodeURIComponent(name)}/restore`, { filename }),
+  logsInRange: (from: string, to: string, app?: string) =>
+    get<LogRecord[]>(`/internal/logs?from=${from}&to=${to}${app ? `&app=${encodeURIComponent(app)}` : ''}`),
+  logsExportUrl: (from: string, to: string, app?: string) =>
+    `/internal/logs/export?from=${from}&to=${to}${app ? `&app=${encodeURIComponent(app)}` : ''}`,
   resetData: () => post<{ ok: boolean }>('/internal/settings/reset-data'),
   uninstall: () => post<{ ok: boolean }>('/internal/settings/uninstall'),
   addProvider: (body: AddProviderBody) => post<ProviderInfo>('/internal/providers', body),
@@ -360,15 +368,15 @@ export const api = {
     patchReq<Settings>('/internal/settings', { provider_keys: { [name]: key } }),
 
   // ─── Agent inheritance (spec/04) ────────────────────────────────────────
-  agentsSupported: () => get<SupportedAgent[]>('/internal/agents/supported'),
-  agentsConfigured: () => get<ConfiguredAgent[]>('/internal/agents/configured'),
-  agentRescan: (id: string, path?: string) =>
-    post<RescanResult>(`/internal/agents/${encodeURIComponent(id)}/rescan`, path ? { path } : {}),
-  agentEnable: (id: string) =>
-    post<{ ok: boolean }>(`/internal/agents/${encodeURIComponent(id)}/enable`),
-  agentDisable: (id: string) =>
-    post<{ ok: boolean }>(`/internal/agents/${encodeURIComponent(id)}/disable`),
-  agentDelete: (id: string) => deleteReq(`/internal/agents/${encodeURIComponent(id)}`),
+  appsSupported: () => get<SupportedApp[]>('/internal/apps/supported'),
+  appsConfigured: () => get<ConfiguredApp[]>('/internal/apps/configured'),
+  appRescan: (id: string, path?: string) =>
+    post<RescanResult>(`/internal/apps/${encodeURIComponent(id)}/rescan`, path ? { path } : {}),
+  appEnable: (id: string) =>
+    post<{ ok: boolean }>(`/internal/apps/${encodeURIComponent(id)}/enable`),
+  appDisable: (id: string) =>
+    post<{ ok: boolean }>(`/internal/apps/${encodeURIComponent(id)}/disable`),
+  appDelete: (id: string) => deleteReq(`/internal/apps/${encodeURIComponent(id)}`),
 
   // ─── Subscription quota (spec/05) ───────────────────────────────────────
   subscriptionStatus: () => get<SubscriptionProvider[]>('/internal/subscription/status'),

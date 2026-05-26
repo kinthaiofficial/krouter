@@ -19,7 +19,7 @@ const navItems = [
   { to: '/', key: 'dashboard', end: true },
   { to: '/free-tokens', key: 'free_tokens' },
   { to: '/router', key: 'router' },
-  { to: '/agents', key: 'agents' },
+  { to: '/apps', key: 'apps' },
   { to: '/providers', key: 'providers' },
   { to: '/budget', key: 'budget' },
   { to: '/about', key: 'about' },

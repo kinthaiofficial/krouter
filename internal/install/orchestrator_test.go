@@ -43,7 +43,7 @@ type testHooks struct {
 	writeServiceCalls      []string
 	enableServiceCalled    bool
 	writeShellRCCalls      []string
-	detectAgentsResult     []config.AgentInfo
+	detectAgentsResult     []config.AppInfo
 	connectOpenClawCalls   []string
 	connectClaudeCodeCalls []string
 	markInstalledCalled    bool
@@ -82,7 +82,7 @@ func (h *testHooks) writeShellRC(rcPath string) error {
 	return h.writeShellRCErr
 }
 
-func (h *testHooks) detectAgents() []config.AgentInfo {
+func (h *testHooks) detectAgents() []config.AppInfo {
 	return h.detectAgentsResult
 }
 
@@ -247,7 +247,7 @@ func TestOrchestrator_ShellIntegration_Fish(t *testing.T) {
 
 func TestOrchestrator_ConnectAgent_OpenClaw(t *testing.T) {
 	o, h := testOrchestrator(NullUI{}, Options{})
-	h.detectAgentsResult = []config.AgentInfo{
+	h.detectAgentsResult = []config.AppInfo{
 		{Name: "openclaw", ConfigPath: "/home/user/.openclaw/openclaw.json"},
 	}
 
@@ -258,7 +258,7 @@ func TestOrchestrator_ConnectAgent_OpenClaw(t *testing.T) {
 
 func TestOrchestrator_ConnectAgent_ClaudeCode(t *testing.T) {
 	o, h := testOrchestrator(NullUI{}, Options{})
-	h.detectAgentsResult = []config.AgentInfo{
+	h.detectAgentsResult = []config.AppInfo{
 		{Name: "claude-code", CLIPath: "/usr/local/bin/claude"},
 	}
 
@@ -270,7 +270,7 @@ func TestOrchestrator_ConnectAgent_ClaudeCode(t *testing.T) {
 func TestOrchestrator_ConnectAgents_NonFatalOnError(t *testing.T) {
 	ui := &recordingUI{}
 	o, h := testOrchestrator(ui, Options{})
-	h.detectAgentsResult = []config.AgentInfo{
+	h.detectAgentsResult = []config.AppInfo{
 		{Name: "openclaw", ConfigPath: "/path/to/openclaw.json"},
 	}
 	h.connectOpenClawErr = errors.New("config not writable")
@@ -282,7 +282,7 @@ func TestOrchestrator_ConnectAgents_NonFatalOnError(t *testing.T) {
 
 func TestOrchestrator_ConnectAgents_SkipAgents(t *testing.T) {
 	o, h := testOrchestrator(NullUI{}, Options{SkipAgents: true})
-	h.detectAgentsResult = []config.AgentInfo{
+	h.detectAgentsResult = []config.AppInfo{
 		{Name: "openclaw", ConfigPath: "/path/to/openclaw.json"},
 	}
 

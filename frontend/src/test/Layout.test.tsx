@@ -59,7 +59,7 @@ describe('<Layout> (top nav)', () => {
 
     // Main nav: text-only items (no icons).
     const textItems = [
-      'Dashboard', 'Free', 'Router', 'Agents', 'Logs',
+      'Dashboard', 'Free', 'Router', 'Apps',
       'Providers', 'Budget', 'About',
     ]
     for (const label of textItems) {

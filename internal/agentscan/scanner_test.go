@@ -8,7 +8,7 @@ import (
 // stubScanner is a no-op Scanner used to exercise the registry helpers.
 type stubScanner struct{ id, name, path string }
 
-func (s stubScanner) AgentID() string           { return s.id }
+func (s stubScanner) AppID() string           { return s.id }
 func (s stubScanner) DisplayName() string       { return s.name }
 func (s stubScanner) DefaultConfigPath() string { return s.path }
 func (s stubScanner) Scan(_ context.Context, _ string) ([]InheritedEndpoint, error) {

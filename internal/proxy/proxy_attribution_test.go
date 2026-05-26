@@ -82,7 +82,7 @@ func TestAttribution_PathPrefixWinsOverSniff(t *testing.T) {
 
 	select {
 	case rec := <-recs:
-		assert.Equal(t, "openclaw", rec.Agent, "path prefix must win over the Cursor UA")
+		assert.Equal(t, "openclaw", rec.App, "path prefix must win over the Cursor UA")
 	case <-time.After(2 * time.Second):
 		t.Fatal("no request logged")
 	}
@@ -98,7 +98,7 @@ func TestAttribution_NoPrefixFallsBackToSniff(t *testing.T) {
 
 	select {
 	case rec := <-recs:
-		assert.Equal(t, "cursor", rec.Agent, "no prefix → fall back to UA sniff")
+		assert.Equal(t, "cursor", rec.App, "no prefix → fall back to UA sniff")
 	case <-time.After(2 * time.Second):
 		t.Fatal("no request logged")
 	}
@@ -132,7 +132,7 @@ func TestAttribution_PreservedProviderPathDispatches(t *testing.T) {
 
 	select {
 	case rec := <-recs:
-		assert.Equal(t, "openclaw", rec.Agent)
+		assert.Equal(t, "openclaw", rec.App)
 		assert.Equal(t, "anthropic", rec.Protocol)
 	case <-time.After(2 * time.Second):
 		t.Fatal("no request logged")

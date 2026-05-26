@@ -11,8 +11,8 @@ import (
 
 func TestOpenClawScanner_AgentMeta(t *testing.T) {
 	s := OpenClawScanner{}
-	if s.AgentID() != "openclaw" {
-		t.Errorf("AgentID = %q, want openclaw", s.AgentID())
+	if s.AppID() != "openclaw" {
+		t.Errorf("AppID = %q, want openclaw", s.AppID())
 	}
 	if s.DisplayName() == "" {
 		t.Errorf("DisplayName empty")

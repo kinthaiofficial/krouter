@@ -39,7 +39,7 @@ func TestHandleAgents_IncludesScannerAgentsEvenWhenNotDetectedOnDisk(t *testing.
 	srv, _ := newCombinedTestServer(t)
 
 	w := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(w, combinedAuthedReq(t, http.MethodGet, "/internal/agents"))
+	srv.Handler().ServeHTTP(w, combinedAuthedReq(t, http.MethodGet, "/internal/apps"))
 
 	require.Equal(t, http.StatusOK, w.Code)
 
@@ -67,8 +67,8 @@ func TestHandleAgents_OverlaysInheritanceState(t *testing.T) {
 	srv, store := newCombinedTestServer(t)
 	ctx := context.Background()
 
-	require.NoError(t, store.UpsertAgentSetting(ctx, storage.AgentSetting{
-		AgentID: "openclaw", Enabled: true, ConfigPath: "/x",
+	require.NoError(t, store.UpsertAppSetting(ctx, storage.AppSetting{
+		AppID: "openclaw", Enabled: true, ConfigPath: "/x",
 	}))
 	require.NoError(t, store.ReplaceInheritedEndpoints(ctx, "openclaw", []storage.InheritedEndpoint{
 		{Provider: "anthropic", EndpointURL: "u", CapturedAt: 1},
@@ -76,7 +76,7 @@ func TestHandleAgents_OverlaysInheritanceState(t *testing.T) {
 	}))
 
 	w := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(w, combinedAuthedReq(t, http.MethodGet, "/internal/agents"))
+	srv.Handler().ServeHTTP(w, combinedAuthedReq(t, http.MethodGet, "/internal/apps"))
 
 	require.Equal(t, http.StatusOK, w.Code)
 	var got []combinedAgentJSON
@@ -101,15 +101,15 @@ func TestHandleAgents_SurfaceLastError(t *testing.T) {
 	srv, store := newCombinedTestServer(t)
 	ctx := context.Background()
 
-	require.NoError(t, store.UpsertAgentSetting(ctx, storage.AgentSetting{
-		AgentID:    "openclaw",
+	require.NoError(t, store.UpsertAppSetting(ctx, storage.AppSetting{
+		AppID:    "openclaw",
 		Enabled:    true,
 		ConfigPath: "/wrong",
 		LastError:  "read openclaw config: file not found",
 	}))
 
 	w := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(w, combinedAuthedReq(t, http.MethodGet, "/internal/agents"))
+	srv.Handler().ServeHTTP(w, combinedAuthedReq(t, http.MethodGet, "/internal/apps"))
 
 	var got []combinedAgentJSON
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
@@ -130,7 +130,7 @@ func TestHandleAgents_DetectedButNotInScannerRegistry_StaysVisible(t *testing.T)
 
 	srv, _ := newCombinedTestServer(t)
 	w := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(w, combinedAuthedReq(t, http.MethodGet, "/internal/agents"))
+	srv.Handler().ServeHTTP(w, combinedAuthedReq(t, http.MethodGet, "/internal/apps"))
 
 	require.Equal(t, http.StatusOK, w.Code)
 	var got []combinedAgentJSON
@@ -161,7 +161,7 @@ type stubInheritScanner struct {
 	path string
 }
 
-func (s stubInheritScanner) AgentID() string           { return s.id }
+func (s stubInheritScanner) AppID() string           { return s.id }
 func (s stubInheritScanner) DisplayName() string       { return s.name }
 func (s stubInheritScanner) DefaultConfigPath() string { return s.path }
 func (s stubInheritScanner) Scan(_ context.Context, _ string) ([]agentscan.InheritedEndpoint, error) {

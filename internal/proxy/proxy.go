@@ -1,4 +1,4 @@
-// Package proxy implements the HTTP reverse proxy (port 8402, agent-facing).
+// Package proxy implements the HTTP reverse proxy (port 8402, app-facing).
 //
 // Accepts LLM requests from local AI agents and forwards them to upstream
 // providers. This is the hot path — every agent request goes through here.
@@ -82,7 +82,7 @@ var (
 	promptCacheHitTokensRE = regexp.MustCompile(`"prompt_cache_hit_tokens"\s*:\s*(\d+)`)
 )
 
-// Server is the agent-facing HTTP reverse proxy (always 127.0.0.1:8402).
+// Server is the app-facing HTTP reverse proxy (always 127.0.0.1:8402).
 type Server struct {
 	logger       logging.Logger
 	httpClient   *http.Client
@@ -285,6 +285,16 @@ func (s *Server) handlePrefixed(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// keyHint returns the last 4 characters of the api_key from the request headers.
+// Returns "" when the key is absent or shorter than 4 chars.
+func keyHint(h http.Header) string {
+	k := apiKeyFromHeaders(h)
+	if len(k) < 4 {
+		return ""
+	}
+	return k[len(k)-4:]
+}
+
 // apiKeyFromHeaders extracts the caller's API key, trying the Anthropic
 // x-api-key header first, then a Bearer Authorization header.
 func apiKeyFromHeaders(h http.Header) string {
@@ -370,13 +380,14 @@ func (s *Server) handleAnthropicWithRouting(
 			s.logRequest(r.Context(), storage.RequestRecord{
 				ID:             s.storeNewULID(),
 				Timestamp:      start,
-				Agent:          requestAppID(r),
+				App:          requestAppID(r),
 				Protocol:       "anthropic",
 				RequestedModel: req.RequestedModel,
 				StatusCode:     http.StatusTooManyRequests,
 				LatencyMS:      time.Since(start).Milliseconds(),
 				ErrorMessage:   err.Error(),
 				RoutingPreset:  preset,
+				KeyHint:        keyHint(r.Header),
 			})
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusTooManyRequests)
@@ -395,7 +406,7 @@ func (s *Server) handleAnthropicWithRouting(
 		s.logRequest(r.Context(), storage.RequestRecord{
 			ID:             s.storeNewULID(),
 			Timestamp:      start,
-			Agent:          requestAppID(r),
+			App:          requestAppID(r),
 			Protocol:       "anthropic",
 			RequestedModel: req.RequestedModel,
 			Provider:       dec.Provider,
@@ -404,6 +415,7 @@ func (s *Server) handleAnthropicWithRouting(
 			LatencyMS:      time.Since(start).Milliseconds(),
 			ErrorMessage:   err.Error(),
 			RoutingPreset:  preset,
+			KeyHint:        keyHint(r.Header),
 		})
 		http.Error(w, "bad gateway", http.StatusBadGateway)
 		return
@@ -455,7 +467,7 @@ func (s *Server) handleAnthropicWithRouting(
 			s.logRequest(r.Context(), storage.RequestRecord{
 				ID:               s.storeNewULID(),
 				Timestamp:        start,
-				Agent:            requestAppID(r),
+				App:            requestAppID(r),
 				Protocol:         "anthropic",
 				RequestedModel:   requestedModel,
 				Provider:         dec.Provider,
@@ -468,6 +480,7 @@ func (s *Server) handleAnthropicWithRouting(
 				LatencyMS:        time.Since(start).Milliseconds(),
 				StatusCode:       statusCode,
 				RoutingPreset:    preset,
+				KeyHint:        keyHint(r.Header),
 			})
 			s.updateSessionFromResponse(sessionKey, dec.Provider, dec.Model, in, out, cached, cacheWrite)
 		})
@@ -487,7 +500,7 @@ func (s *Server) handleAnthropicWithRouting(
 		s.logRequest(r.Context(), storage.RequestRecord{
 			ID:               s.storeNewULID(),
 			Timestamp:        start,
-			Agent:            requestAppID(r),
+			App:            requestAppID(r),
 			Protocol:         "anthropic",
 			RequestedModel:   requestedModel,
 			Provider:         dec.Provider,
@@ -500,6 +513,7 @@ func (s *Server) handleAnthropicWithRouting(
 			LatencyMS:        latencyMS,
 			StatusCode:       statusCode,
 			RoutingPreset:    preset,
+			KeyHint:        keyHint(r.Header),
 		})
 		s.updateSessionFromResponse(sessionKey, dec.Provider, dec.Model, in, out, cached, cacheWrite)
 	}
@@ -882,13 +896,14 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 			s.logRequest(r.Context(), storage.RequestRecord{
 				ID:             s.storeNewULID(),
 				Timestamp:      start,
-				Agent:          requestAppID(r),
+				App:          requestAppID(r),
 				Protocol:       "openai",
 				RequestedModel: req.RequestedModel,
 				StatusCode:     http.StatusTooManyRequests,
 				LatencyMS:      time.Since(start).Milliseconds(),
 				ErrorMessage:   err.Error(),
 				RoutingPreset:  preset,
+				KeyHint:        keyHint(r.Header),
 			})
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusTooManyRequests)
@@ -903,7 +918,7 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 		s.logRequest(r.Context(), storage.RequestRecord{
 			ID:             s.storeNewULID(),
 			Timestamp:      start,
-			Agent:          requestAppID(r),
+			App:          requestAppID(r),
 			Protocol:       "openai",
 			RequestedModel: req.RequestedModel,
 			Provider:       dec.Provider,
@@ -912,6 +927,7 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 			LatencyMS:      time.Since(start).Milliseconds(),
 			ErrorMessage:   err.Error(),
 			RoutingPreset:  preset,
+			KeyHint:        keyHint(r.Header),
 		})
 		http.Error(w, "bad gateway", http.StatusBadGateway)
 		return
@@ -941,7 +957,7 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 			s.logRequest(r.Context(), storage.RequestRecord{
 				ID:               s.storeNewULID(),
 				Timestamp:        start,
-				Agent:            requestAppID(r),
+				App:            requestAppID(r),
 				Protocol:         "openai",
 				RequestedModel:   parsed.Model,
 				Provider:         dec.Provider,
@@ -954,6 +970,7 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 				LatencyMS:        time.Since(start).Milliseconds(),
 				StatusCode:       statusCode,
 				RoutingPreset:    preset,
+				KeyHint:        keyHint(r.Header),
 			})
 			s.updateSessionFromResponse(sessionKey, dec.Provider, dec.Model, in, out, cached, cacheWrite)
 		})
@@ -971,7 +988,7 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 		s.logRequest(r.Context(), storage.RequestRecord{
 			ID:               s.storeNewULID(),
 			Timestamp:        start,
-			Agent:            requestAppID(r),
+			App:            requestAppID(r),
 			Protocol:         "openai",
 			RequestedModel:   parsed.Model,
 			Provider:         dec.Provider,
@@ -984,6 +1001,7 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 			LatencyMS:        latencyMS,
 			StatusCode:       statusCode,
 			RoutingPreset:    preset,
+			KeyHint:        keyHint(r.Header),
 		})
 		s.updateSessionFromResponse(sessionKey, dec.Provider, dec.Model, in, out, cached, cacheWrite)
 	}

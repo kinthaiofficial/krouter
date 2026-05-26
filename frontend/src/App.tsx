@@ -4,7 +4,7 @@ import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import FreeTokens from './pages/FreeTokens'
 import Router from './pages/Router'
-import Agents from './pages/Agents'
+import Apps from './pages/Apps'
 import Logs from './pages/Logs'
 import Providers from './pages/Providers'
 import BudgetPage from './pages/Budget'
@@ -27,7 +27,7 @@ export default function App() {
             <Route index element={<Dashboard />} />
             <Route path="free-tokens" element={<FreeTokens />} />
             <Route path="router" element={<Router />} />
-            <Route path="agents" element={<Agents />} />
+            <Route path="agents" element={<Apps />} />
             <Route path="logs" element={<Logs />} />
             <Route path="providers" element={<Providers />} />
             <Route path="budget" element={<BudgetPage />} />

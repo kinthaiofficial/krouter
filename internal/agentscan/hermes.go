@@ -13,7 +13,7 @@ import (
 // file (typically ~/.hermes/config.toml).
 type HermesScanner struct{}
 
-func (HermesScanner) AgentID() string     { return "hermes" }
+func (HermesScanner) AppID() string     { return "hermes" }
 func (HermesScanner) DisplayName() string { return "Hermes" }
 
 func (HermesScanner) DefaultConfigPath() string {

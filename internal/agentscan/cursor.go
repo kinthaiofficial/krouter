@@ -16,7 +16,7 @@ import (
 // header instead.
 type CursorScanner struct{}
 
-func (CursorScanner) AgentID() string     { return "cursor" }
+func (CursorScanner) AppID() string     { return "cursor" }
 func (CursorScanner) DisplayName() string { return "Cursor" }
 
 func (CursorScanner) DefaultConfigPath() string {

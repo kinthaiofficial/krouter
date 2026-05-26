@@ -10,8 +10,8 @@ import (
 
 func TestCodexScanner_Meta(t *testing.T) {
 	s := CodexScanner{}
-	if s.AgentID() != "codex" {
-		t.Errorf("AgentID = %q, want codex", s.AgentID())
+	if s.AppID() != "codex" {
+		t.Errorf("AppID = %q, want codex", s.AppID())
 	}
 	if s.DisplayName() == "" {
 		t.Errorf("DisplayName empty")

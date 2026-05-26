@@ -13,7 +13,7 @@ import (
 // file (typically ~/.config/opencode/opencode.json on Linux/macOS).
 type OpenCodeScanner struct{}
 
-func (OpenCodeScanner) AgentID() string     { return "opencode" }
+func (OpenCodeScanner) AppID() string     { return "opencode" }
 func (OpenCodeScanner) DisplayName() string { return "OpenCode" }
 
 func (OpenCodeScanner) DefaultConfigPath() string {

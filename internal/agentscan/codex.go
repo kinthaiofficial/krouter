@@ -19,7 +19,7 @@ import (
 // to the key forwarded in the request header.
 type CodexScanner struct{}
 
-func (CodexScanner) AgentID() string     { return "codex" }
+func (CodexScanner) AppID() string     { return "codex" }
 func (CodexScanner) DisplayName() string { return "Codex" }
 
 func (CodexScanner) DefaultConfigPath() string {
