@@ -172,9 +172,6 @@ func (a *Adapter) Forward(ctx context.Context, req *http.Request) (*http.Respons
 		return nil, fmt.Errorf("anthropic adapter: build request: %w", err)
 	}
 	upstreamReq.Header = req.Header.Clone()
-	// Remove Accept-Encoding so Anthropic returns plain text, not gzip.
-	// krouter must parse the SSE stream for token counts; gzip bytes are unparseable.
-	upstreamReq.Header.Del("Accept-Encoding")
 
 	// Inject this provider's own auth when a resolver supplies a token. This
 	// covers re-routed requests that arrived carrying a different provider's
