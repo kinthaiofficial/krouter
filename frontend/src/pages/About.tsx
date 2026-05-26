@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useEffect, useRef } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { CheckCircle2, ExternalLink, Loader2, RefreshCw } from 'lucide-react'
 import { api } from '../api/client'
@@ -25,6 +25,7 @@ interface UpdateStatus {
 
 export default function About() {
   const { t } = useTranslation()
+  const qc = useQueryClient()
   const { data: status } = useQuery({ queryKey: ['status'], queryFn: api.status })
 
   const check = useMutation<UpdateStatus>({
@@ -44,6 +45,36 @@ export default function About() {
     check.mutate()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // After apply succeeds, poll /internal/status every 1.5s until the version
+  // changes (daemon restarted) or 2 min timeout. Resets the mutation state so
+  // the UI reflects the new version instead of staying on "Restarting…".
+  const originalVersionRef = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (!applyUpdate.isSuccess) return
+    originalVersionRef.current = status?.version
+    const deadline = Date.now() + 120_000
+    const id = setInterval(async () => {
+      if (Date.now() > deadline) {
+        clearInterval(id)
+        applyUpdate.reset()
+        return
+      }
+      try {
+        const s: { version: string } = await fetch('/internal/status', { credentials: 'include' }).then((r) => r.json())
+        if (s.version !== originalVersionRef.current) {
+          clearInterval(id)
+          qc.invalidateQueries({ queryKey: ['status'] })
+          applyUpdate.reset()
+          check.mutate()
+        }
+      } catch {
+        // daemon mid-restart; keep retrying
+      }
+    }, 1500)
+    return () => clearInterval(id)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applyUpdate.isSuccess])
 
   const data = check.data
   const hasUpdate = !!data?.latest && data.latest !== data.current
@@ -180,7 +211,7 @@ function UpdateCheckCard({ loading, error, retry, data, hasUpdate, applyUpdate, 
           disabled={applyUpdate.isPending || applyUpdate.isSuccess}
           className="flex items-center gap-1.5 bg-brand hover:bg-brand-dark text-white text-sm rounded-lg px-4 py-2 disabled:opacity-50"
         >
-          <RefreshCw size={14} className={applyUpdate.isPending ? 'animate-spin' : ''} />
+          <RefreshCw size={14} className={(applyUpdate.isPending || applyUpdate.isSuccess) ? 'animate-spin' : ''} />
           {applyUpdate.isSuccess ? t('about.restarting') : t('about.apply_update')}
         </button>
         {data!.release_notes_url && (
