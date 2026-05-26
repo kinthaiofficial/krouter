@@ -127,6 +127,7 @@ export function DecisionCard({ rec, pulse = false, showLatestBadge = false }: De
               inputTokens={rec.input_tokens}
               outputTokens={rec.output_tokens}
               cachedTokens={rec.cached_tokens ?? 0}
+              cacheWriteTokens={rec.cache_write_tokens ?? 0}
               cost={baseline}
               latencyMS={rec.latency_ms}
               t={t}
@@ -141,6 +142,7 @@ export function DecisionCard({ rec, pulse = false, showLatestBadge = false }: De
               inputTokens={rec.input_tokens}
               outputTokens={rec.output_tokens}
               cachedTokens={rec.cached_tokens ?? 0}
+              cacheWriteTokens={rec.cache_write_tokens ?? 0}
               cost={actual}
               highlightCost
               latencyMS={rec.latency_ms}
@@ -269,6 +271,7 @@ interface ResponseCardProps {
   inputTokens: number
   outputTokens: number
   cachedTokens: number
+  cacheWriteTokens?: number
   cost?: number
   highlightCost?: boolean
   latencyMS: number
@@ -277,7 +280,7 @@ interface ResponseCardProps {
 }
 
 function ResponseCard({
-  label, tone, inputTokens, outputTokens, cachedTokens,
+  label, tone, inputTokens, outputTokens, cachedTokens, cacheWriteTokens = 0,
   cost, highlightCost = false, latencyMS, isBaseline = false, t,
 }: ResponseCardProps) {
   const toneCls = {
@@ -285,6 +288,16 @@ function ResponseCard({
     blue: 'bg-blue-50 border-blue-200',
     green: 'bg-green-50 border-green-200',
   }[tone]
+  const tokenStr = [
+    t('router.tokens_breakdown', {
+      in: inputTokens.toLocaleString(),
+      out: outputTokens.toLocaleString(),
+      cached: cachedTokens.toLocaleString(),
+    }),
+    ...(cacheWriteTokens > 0
+      ? [`${cacheWriteTokens.toLocaleString()} ${t('router.tokens_write')}`]
+      : []),
+  ].join(' · ')
   return (
     <div className={['rounded-lg border px-4 py-3', toneCls].join(' ')}>
       <p className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold mb-2">
@@ -293,11 +306,7 @@ function ResponseCard({
       <dl className="space-y-1.5 text-sm">
         <Field
           k={t('router.actual_tokens')}
-          v={t('router.tokens_breakdown', {
-            in: inputTokens.toLocaleString(),
-            out: outputTokens.toLocaleString(),
-            cached: cachedTokens.toLocaleString(),
-          })}
+          v={tokenStr}
           mono
         />
         <Field

@@ -91,6 +91,7 @@ export interface LogRecord {
   input_tokens: number
   output_tokens: number
   cached_tokens?: number
+  cache_write_tokens?: number
   cost_usd: number
   latency_ms: number
   status_code: number
@@ -162,6 +163,7 @@ export interface ProviderInfo {
   input_tokens_total: number
   output_tokens_total: number
   cached_tokens_total: number
+  cache_write_tokens_total: number
   cost_total_usd: number
   // Model catalog count for the provider (display chip).
   model_count: number

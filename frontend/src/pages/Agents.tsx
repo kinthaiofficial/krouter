@@ -39,6 +39,8 @@ interface LogRow {
   model: string
   input_tokens: number
   output_tokens: number
+  cached_tokens?: number
+  cache_write_tokens?: number
   cost_usd: number
   latency_ms: number
   status_code: number
@@ -688,7 +690,7 @@ function UnifiedAgentCard({
                       </td>
                       <td className="py-1.5 pr-2">{log.provider || '—'}</td>
                       <td className="py-1.5 pr-2 text-right tabular-nums">
-                        {(log.input_tokens + log.output_tokens).toLocaleString()}
+                        {(log.input_tokens + log.output_tokens + (log.cached_tokens ?? 0) + (log.cache_write_tokens ?? 0)).toLocaleString()}
                       </td>
                       <td className="py-1.5 pr-2 text-right tabular-nums">
                         ${log.cost_usd.toFixed(5)}

@@ -1179,8 +1179,9 @@ type providerInfoJSON struct {
 	RequestsTotal     int     `json:"requests_total"`
 	InputTokensTotal  int64   `json:"input_tokens_total"`
 	OutputTokensTotal int64   `json:"output_tokens_total"`
-	CachedTokensTotal int64   `json:"cached_tokens_total"`
-	CostTotalUSD      float64 `json:"cost_total_usd"`
+	CachedTokensTotal     int64   `json:"cached_tokens_total"`
+	CacheWriteTokensTotal int64   `json:"cache_write_tokens_total"`
+	CostTotalUSD          float64 `json:"cost_total_usd"`
 
 	// Catalog meta — model count from model_catalog, so the page can
 	// surface "12 models priced" without an extra request.
@@ -1246,6 +1247,7 @@ func (s *Server) doListProviders(w http.ResponseWriter, r *http.Request) {
 					info.InputTokensTotal = tot.InputTokens
 					info.OutputTokensTotal = tot.OutputTokens
 					info.CachedTokensTotal = tot.CachedTokens
+					info.CacheWriteTokensTotal = tot.CacheWriteTokens
 					info.CostTotalUSD = float64(tot.CostMicroUSD) / 1_000_000
 				}
 				info.ModelCount = modelCounts[p.Name()]

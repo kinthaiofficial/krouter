@@ -25,6 +25,7 @@ function makeProvider(over: Partial<ProviderInfo> = {}): ProviderInfo {
     input_tokens_total: 1_245_000,
     output_tokens_total: 387_000,
     cached_tokens_total: 100_000,
+    cache_write_tokens_total: 0,
     cost_total_usd: 4.27,
     model_count: 8,
     ...over,

@@ -284,6 +284,12 @@ function CardDetails({
           label={t('providers.lifetime_cached')}
           value={p.cached_tokens_total.toLocaleString()}
         />
+        {p.cache_write_tokens_total > 0 && (
+          <DetailRow
+            label={t('providers.lifetime_cache_write')}
+            value={p.cache_write_tokens_total.toLocaleString()}
+          />
+        )}
       </DetailGrid>
 
       {/* Recent error — failure streak with plain-language explanation of the last status code. */}

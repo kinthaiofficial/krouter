@@ -114,7 +114,7 @@ export default function Logs() {
 
   function exportCSV() {
     const header =
-      'id,time,agent,protocol,requested_model,routed_model,provider,input_tokens,output_tokens,cached_tokens,cost_usd,latency_ms,status_code\n'
+      'id,time,agent,protocol,requested_model,routed_model,provider,input_tokens,output_tokens,cached_tokens,cache_write_tokens,cost_usd,latency_ms,status_code\n'
     const body = filtered
       .map((r) =>
         [
@@ -128,6 +128,7 @@ export default function Logs() {
           r.input_tokens,
           r.output_tokens,
           r.cached_tokens ?? 0,
+          r.cache_write_tokens ?? 0,
           r.cost_usd,
           r.latency_ms,
           r.status_code,
