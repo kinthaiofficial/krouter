@@ -44,13 +44,15 @@ export function DecisionCard({ rec, pulse = false, showLatestBadge = false }: De
   const sameRoute = !modelChanged && !providerChanged
 
   // Savings: actual cost vs the baseline cost we'd have paid had we used
-  // the requested model. Backend computes baseline_cost_usd; for legacy
-  // daemons missing the field we just don't render the banner.
+  // the requested model. The backend only sends baseline_cost_usd when the
+  // requested model is priced; a missing or non-positive baseline means
+  // "unpriced" (not a loss), so we leave savings undefined and render no
+  // banner rather than a misleading negative number (#64).
   const baseline = rec.baseline_cost_usd
   const actual = rec.cost_usd
-  const savings = baseline !== undefined ? baseline - actual : undefined
-  const savingsPct =
-    baseline !== undefined && baseline > 0 ? (savings! / baseline) * 100 : undefined
+  const priced = baseline !== undefined && baseline > 0
+  const savings = priced ? baseline! - actual : undefined
+  const savingsPct = priced ? (savings! / baseline!) * 100 : undefined
 
   return (
     <div

@@ -380,7 +380,13 @@ The daemon listens on two ports:
 					inMT, outMT = pricingSvc.PriceFor(rec.Model)
 					payload["routed_input_per_mtok"] = inMT
 					payload["routed_output_per_mtok"] = outMT
-					payload["baseline_cost_usd"] = float64(pricingSvc.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens)) / 1_000_000
+					// Only emit a baseline when the requested model is priced.
+					// A 0 baseline (unknown model) would make the UI compute
+					// negative "savings"; omit it so the UI shows "unpriced"
+					// instead (matches /internal/logs omitempty). See #64.
+					if b := pricingSvc.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens); b > 0 {
+						payload["baseline_cost_usd"] = float64(b) / 1_000_000
+					}
 				}
 				apiSrv.Broadcast("request_completed", payload)
 			})
