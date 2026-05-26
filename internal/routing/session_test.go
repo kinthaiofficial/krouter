@@ -12,24 +12,56 @@ import (
 
 // ── SessionState methods ──────────────────────────────────────────────────────
 
-func TestCacheHitRate_ZeroWhenNoTokens(t *testing.T) {
+func TestObservedHitRate_ZeroWhenNoTokens(t *testing.T) {
 	var s routing.SessionState
-	assert.Equal(t, 0.0, s.CacheHitRate())
+	assert.Equal(t, 0.0, s.ObservedHitRate())
 }
 
-func TestCacheHitRate_AllFresh(t *testing.T) {
-	s := routing.SessionState{FreshInputTokens: 1000, CachedTokens: 0}
-	assert.Equal(t, 0.0, s.CacheHitRate())
+func TestObservedHitRate_AllFresh(t *testing.T) {
+	s := routing.SessionState{LastInputTokens: 1000}
+	assert.Equal(t, 0.0, s.ObservedHitRate())
 }
 
-func TestCacheHitRate_AllCached(t *testing.T) {
-	s := routing.SessionState{FreshInputTokens: 0, CachedTokens: 1000}
-	assert.Equal(t, 1.0, s.CacheHitRate())
+func TestObservedHitRate_AllCached(t *testing.T) {
+	s := routing.SessionState{LastCacheRead: 1000}
+	assert.Equal(t, 1.0, s.ObservedHitRate())
 }
 
-func TestCacheHitRate_Mixed(t *testing.T) {
-	s := routing.SessionState{FreshInputTokens: 500, CachedTokens: 500}
-	assert.InDelta(t, 0.5, s.CacheHitRate(), 1e-9)
+func TestObservedHitRate_Mixed(t *testing.T) {
+	// 300 fresh + 4500 write + 25000 read = 29800 total; observed = 25000/29800 ≈ 0.839
+	s := routing.SessionState{
+		LastInputTokens: 300,
+		LastCacheRead:   25000,
+		LastCacheWrite:  4500,
+	}
+	assert.InDelta(t, 25000.0/29800.0, s.ObservedHitRate(), 1e-9)
+}
+
+func TestPredictedHitRate_ZeroWhenNoTokens(t *testing.T) {
+	var s routing.SessionState
+	assert.Equal(t, 0.0, s.PredictedHitRate())
+}
+
+func TestPredictedHitRate_ColdSession(t *testing.T) {
+	// No cache at all → predicted = 0, switch freely.
+	s := routing.SessionState{LastInputTokens: 30000}
+	assert.Equal(t, 0.0, s.PredictedHitRate())
+}
+
+func TestPredictedHitRate_WithWrite(t *testing.T) {
+	// 300 fresh + 4500 write + 25000 read = 29800; predicted = 29500/29800 ≈ 0.990
+	s := routing.SessionState{
+		LastInputTokens: 300,
+		LastCacheRead:   25000,
+		LastCacheWrite:  4500,
+	}
+	assert.InDelta(t, 29500.0/29800.0, s.PredictedHitRate(), 1e-9)
+}
+
+func TestPredictedHitRate_NoWriteDegradestoObserved(t *testing.T) {
+	// OpenAI protocol: no cache_write → predicted == observed
+	s := routing.SessionState{LastInputTokens: 500, LastCacheRead: 500}
+	assert.InDelta(t, s.ObservedHitRate(), s.PredictedHitRate(), 1e-9)
 }
 
 func TestOutputShare_ZeroWhenNoTokens(t *testing.T) {
@@ -43,13 +75,14 @@ func TestOutputShare_OutputOnly(t *testing.T) {
 }
 
 func TestOutputShare_Mixed(t *testing.T) {
-	// 200 fresh + 200 cached + 100 output = 500 total; output share = 0.2
+	// 200 fresh + 200 cached + 50 write + 100 output = 550 total; output share ≈ 0.182
 	s := routing.SessionState{
 		FreshInputTokens: 200,
 		CachedTokens:     200,
+		CacheWriteTokens: 50,
 		OutputTokens:     100,
 	}
-	assert.InDelta(t, 0.2, s.OutputShare(), 1e-9)
+	assert.InDelta(t, 100.0/550.0, s.OutputShare(), 1e-9)
 }
 
 // ── MemSessionStore ───────────────────────────────────────────────────────────

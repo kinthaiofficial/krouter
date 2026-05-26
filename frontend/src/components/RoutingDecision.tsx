@@ -314,7 +314,7 @@ function ResponseCard({
     `${cachedTokens.toLocaleString()} ${t('router.tokens_read')}`,
     `${cacheWriteTokens.toLocaleString()} ${t('router.tokens_write')}`,
   ].join(' · ')
-  const totalInput = inputTokens + cachedTokens
+  const totalInput = inputTokens + cachedTokens + cacheWriteTokens
   const hitRateStr = totalInput > 0
     ? `${((cachedTokens / totalInput) * 100).toFixed(1)}%`
     : '—'

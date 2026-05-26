@@ -480,7 +480,7 @@ func (e *Engine) enrichDecision(dec *Decision, req Request) {
 	// Session-aware savings: account for cache hit rate on the requested model.
 	if e.session != nil && req.SessionKey != "" {
 		if sess, ok := e.session.Get(req.SessionKey); ok && sess.RequestCount > 0 {
-			hitRate := sess.CacheHitRate()
+			hitRate := sess.ObservedHitRate()
 			keptCost := requestedPrice * tokens * (hitRate*0.1 + (1-hitRate))
 			switchCost := routedPrice * tokens * 1.25
 			if switchCost < keptCost {
@@ -554,10 +554,12 @@ func (e *Engine) tryStickyRoute(req Request, sess SessionState) (Decision, bool)
 		return e.buildStickyDecision(sess), true
 	}
 
-	// Rule 7-8: compare actual hit rate against breakeven.
-	actual := sess.CacheHitRate()
-	if actual >= threshold {
-		return e.buildStickyDecisionWithThreshold(sess, actual, threshold, candModel), true
+	// Rule 7-8: compare predicted hit rate against breakeven.
+	// PredictedHitRate includes last cache_write in the numerator because those
+	// tokens become readable cache on the next request.
+	predicted := sess.PredictedHitRate()
+	if predicted >= threshold {
+		return e.buildStickyDecisionWithThreshold(sess, predicted, threshold, candModel), true
 	}
 	return Decision{}, false
 }
@@ -566,20 +568,24 @@ func (e *Engine) buildStickyDecision(sess SessionState) Decision {
 	return Decision{
 		Provider: sess.BoundProvider,
 		Model:    sess.BoundModel,
-		Reason: fmt.Sprintf("sticky: hit_rate=%.2f, output_share=%.2f, turn=%d",
-			sess.CacheHitRate(), sess.OutputShare(), sess.RequestCount),
+		Reason: fmt.Sprintf(
+			"sticky: predicted=%.2f (observed=%.2f), output_share=%.2f, turn=%d",
+			sess.PredictedHitRate(), sess.ObservedHitRate(),
+			sess.OutputShare(), sess.RequestCount,
+		),
 	}
 }
 
 func (e *Engine) buildStickyDecisionWithThreshold(
-	sess SessionState, actual, threshold float64, cmpModel string,
+	sess SessionState, predicted, threshold float64, cmpModel string,
 ) Decision {
 	return Decision{
 		Provider: sess.BoundProvider,
 		Model:    sess.BoundModel,
 		Reason: fmt.Sprintf(
-			"sticky: hit_rate=%.2f >= breakeven=%.2f (vs %s), output_share=%.2f, turn=%d",
-			actual, threshold, cmpModel, sess.OutputShare(), sess.RequestCount,
+			"sticky: predicted=%.2f (observed=%.2f) >= breakeven=%.2f (vs %s), output_share=%.2f, turn=%d",
+			predicted, sess.ObservedHitRate(), threshold, cmpModel,
+			sess.OutputShare(), sess.RequestCount,
 		),
 	}
 }

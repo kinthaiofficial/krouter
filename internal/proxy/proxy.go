@@ -1208,6 +1208,10 @@ func (s *Server) updateSessionFromResponse(key, provider, model string, in, out,
 		st.CachedTokens += cached
 		st.OutputTokens += out
 		st.CacheWriteTokens += cacheWrite
+		// Last-request snapshot for hit-rate prediction (see session.go).
+		st.LastInputTokens = in
+		st.LastCacheRead = cached
+		st.LastCacheWrite = cacheWrite
 	})
 }
 

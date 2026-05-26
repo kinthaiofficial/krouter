@@ -12,26 +12,56 @@ type SessionState struct {
 	BoundProvider    string // first request's resolved provider — sticky target
 	BoundModel       string // first request's resolved model — sticky target
 	RequestCount     int
-	FreshInputTokens int
-	CachedTokens     int
-	OutputTokens     int
-	CacheWriteTokens int
+	FreshInputTokens int // cumulative fresh (non-cached) input tokens
+	CachedTokens     int // cumulative cache-read tokens
+	OutputTokens     int // cumulative output tokens
+	CacheWriteTokens int // cumulative cache-write tokens
+
+	// Last-request token buckets — used for hit-rate prediction.
+	// Updated on every response; reflect the most recent request only.
+	LastInputTokens int // cache_input_tokens (fresh, non-cached)
+	LastCacheRead   int // cache_read_input_tokens
+	LastCacheWrite  int // cache_creation_input_tokens
 }
 
-// CacheHitRate returns the fraction of input tokens served from cache.
-// Returns 0 when no input tokens have been seen yet.
-func (s SessionState) CacheHitRate() float64 {
-	total := s.FreshInputTokens + s.CachedTokens
+// ObservedHitRate returns the cache hit rate observed on the last request:
+//
+//	cache_read / (fresh + cache_read + cache_write)
+//
+// Use this for dashboard display and cost accounting — it describes what
+// actually happened on the most recent turn.
+// Returns 0 when no last-request data is available.
+func (s SessionState) ObservedHitRate() float64 {
+	total := s.LastInputTokens + s.LastCacheRead + s.LastCacheWrite
 	if total == 0 {
 		return 0
 	}
-	return float64(s.CachedTokens) / float64(total)
+	return float64(s.LastCacheRead) / float64(total)
 }
 
-// OutputShare returns the fraction of total tokens that were output tokens.
+// PredictedHitRate estimates the cache hit rate for the *next* request:
+//
+//	(cache_read + cache_write) / (fresh + cache_read + cache_write)
+//
+// The cache_write tokens from the last request become readable cache on the
+// next request, so they belong in the numerator when predicting future savings.
+// Use this for sticky-routing decisions — it avoids underestimating cache
+// benefit and triggering unnecessary provider switches at the margin.
+//
+// For protocols that don't expose cache_write (OpenAI), cache_write is 0 and
+// PredictedHitRate degrades to ObservedHitRate.
+func (s SessionState) PredictedHitRate() float64 {
+	total := s.LastInputTokens + s.LastCacheRead + s.LastCacheWrite
+	if total == 0 {
+		return 0
+	}
+	return float64(s.LastCacheRead+s.LastCacheWrite) / float64(total)
+}
+
+// OutputShare returns the fraction of cumulative tokens that were output tokens.
 // Returns 0 when no tokens have been seen yet.
 func (s SessionState) OutputShare() float64 {
-	total := s.FreshInputTokens + s.CachedTokens + s.OutputTokens
+	total := s.FreshInputTokens + s.CachedTokens + s.CacheWriteTokens + s.OutputTokens
 	if total == 0 {
 		return 0
 	}

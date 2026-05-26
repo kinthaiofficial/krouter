@@ -69,14 +69,16 @@ func stickyAnthropicRegistry() (*routing.Engine, *fakeSessionStore) {
 func TestStickyRoute_HighHitRate_Sticks(t *testing.T) {
 	engine, sess := stickyAnthropicRegistry()
 
-	// Session: bound to sonnet, 80% cache hit rate, 10% output share.
+	// Session: bound to sonnet, 80% predicted hit rate, ~10% output share.
 	sess.seed("sess1", routing.SessionState{
 		BoundProvider:    "anthropic",
 		BoundModel:       "claude-sonnet-4-6",
 		RequestCount:     5,
-		FreshInputTokens: 1000,  // 20% fresh
-		CachedTokens:     4000,  // 80% cached
-		OutputTokens:     556,   // ~10% output share
+		FreshInputTokens: 1000, // cumulative (used for OutputShare)
+		CachedTokens:     4000,
+		OutputTokens:     556, // ~10% output share
+		LastInputTokens:  200, // last-request (used for PredictedHitRate)
+		LastCacheRead:    800, // 80% predicted
 	})
 
 	dec := engine.Decide(routing.Request{
@@ -89,21 +91,23 @@ func TestStickyRoute_HighHitRate_Sticks(t *testing.T) {
 	assert.Equal(t, "anthropic", dec.Provider)
 	assert.Equal(t, "claude-sonnet-4-6", dec.Model)
 	assert.Contains(t, dec.Reason, "sticky")
-	assert.Contains(t, dec.Reason, "hit_rate")
+	assert.Contains(t, dec.Reason, "predicted")
 }
 
 // A session with a low cache hit rate should fall through to Saver (Haiku).
 func TestStickyRoute_LowHitRate_FallsThrough(t *testing.T) {
 	engine, sess := stickyAnthropicRegistry()
 
-	// Session: bound to sonnet, only 10% cache hit rate — not worth sticking.
+	// Session: bound to sonnet, only 10% predicted hit rate — not worth sticking.
 	sess.seed("sess2", routing.SessionState{
 		BoundProvider:    "anthropic",
 		BoundModel:       "claude-sonnet-4-6",
 		RequestCount:     5,
 		FreshInputTokens: 4500,
-		CachedTokens:     500,  // 10% hit rate
-		OutputTokens:     277,  // ~5% output share
+		CachedTokens:     500,
+		OutputTokens:     277, // ~5% output share
+		LastInputTokens:  900,
+		LastCacheRead:    100, // 10% predicted
 	})
 
 	dec := engine.Decide(routing.Request{
@@ -122,14 +126,16 @@ func TestStickyRoute_LowHitRate_FallsThrough(t *testing.T) {
 func TestStickyRoute_HighOutputShare_FallsThrough(t *testing.T) {
 	engine, sess := stickyAnthropicRegistry()
 
-	// 80% cache hit rate but 40% output share.
+	// 80% predicted hit rate but 40% output share (output share check comes first).
 	sess.seed("sess3", routing.SessionState{
 		BoundProvider:    "anthropic",
 		BoundModel:       "claude-sonnet-4-6",
 		RequestCount:     5,
 		FreshInputTokens: 200,
-		CachedTokens:     800,  // 80% hit rate
-		OutputTokens:     667,  // ~40% output share
+		CachedTokens:     800,
+		OutputTokens:     667, // ~40% output share
+		LastInputTokens:  200,
+		LastCacheRead:    800, // 80% predicted
 	})
 
 	dec := engine.Decide(routing.Request{
@@ -152,8 +158,10 @@ func TestStickyRoute_QualityPreset_Bypassed(t *testing.T) {
 		BoundModel:       "claude-sonnet-4-6",
 		RequestCount:     5,
 		FreshInputTokens: 500,
-		CachedTokens:     4500, // 90% hit rate
+		CachedTokens:     4500,
 		OutputTokens:     277,
+		LastInputTokens:  100,
+		LastCacheRead:    900, // 90% predicted
 	})
 
 	dec := engine.Decide(routing.Request{
@@ -226,6 +234,8 @@ func TestStickyRoute_BoundProviderGone_FallsThrough(t *testing.T) {
 		RequestCount:     3,
 		FreshInputTokens: 200,
 		CachedTokens:     800,
+		LastInputTokens:  200,
+		LastCacheRead:    800,
 	})
 
 	dec := engine.Decide(routing.Request{
@@ -290,8 +300,10 @@ func TestStickyRoute_CandidateTooChep_FallsThrough(t *testing.T) {
 		BoundModel:       "deepseek-chat",
 		RequestCount:     5,
 		FreshInputTokens: 100,
-		CachedTokens:     900, // 90% hit rate
+		CachedTokens:     900,
 		OutputTokens:     100,
+		LastInputTokens:  100,
+		LastCacheRead:    900, // 90% predicted
 	})
 
 	dec := engine.Decide(routing.Request{
@@ -318,8 +330,10 @@ func TestEnrichDecision_SessionAwareSavings(t *testing.T) {
 		BoundModel:       "claude-haiku-4-5-20251001",
 		RequestCount:     3,
 		FreshInputTokens: 2000,
-		CachedTokens:     3000, // 60% hit rate
+		CachedTokens:     3000,
 		OutputTokens:     277,
+		LastInputTokens:  400,
+		LastCacheRead:    600, // 60% predicted
 	})
 
 	// Saver routes to haiku; requested was sonnet → enrichDecision appends savings.
