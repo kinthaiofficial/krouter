@@ -49,10 +49,12 @@ var hopByHopHeaders = map[string]bool{
 	"upgrade":             true,
 }
 
-// openAIUsageRE extracts prompt_tokens / completion_tokens from OpenAI SSE data.
+// openAIUsageRE extracts token counts from OpenAI SSE data.
 var (
-	promptTokensRE     = regexp.MustCompile(`"prompt_tokens"\s*:\s*(\d+)`)
-	completionTokensRE = regexp.MustCompile(`"completion_tokens"\s*:\s*(\d+)`)
+	promptTokensRE        = regexp.MustCompile(`"prompt_tokens"\s*:\s*(\d+)`)
+	completionTokensRE    = regexp.MustCompile(`"completion_tokens"\s*:\s*(\d+)`)
+	cachedTokensRE        = regexp.MustCompile(`"cached_tokens"\s*:\s*(\d+)`)
+	promptCacheHitTokensRE = regexp.MustCompile(`"prompt_cache_hit_tokens"\s*:\s*(\d+)`)
 )
 
 // Server is the agent-facing HTTP reverse proxy (always 127.0.0.1:8402).
@@ -401,8 +403,8 @@ func (s *Server) handleAnthropicWithRouting(
 			copy(s.lastSSECapture, captured)
 			s.lastSSECaptureMu.Unlock()
 
-			in, out, cached := parseAnthropicSSEUsage(captured)
-			if in == 0 && out == 0 {
+			in, out, cached, cacheWrite := parseAnthropicSSEUsage(captured)
+			if in == 0 && out == 0 && cached == 0 && cacheWrite == 0 {
 				// Log the first 512 bytes of the captured buffer at debug level
 				// so operators can diagnose SSE parsing failures.
 				preview := captured
@@ -414,20 +416,22 @@ func (s *Server) handleAnthropicWithRouting(
 					"preview", string(preview),
 				)
 			}
-			cost := s.computeCost(dec.Provider, dec.Model, in, out, cached)
+			cost := s.computeCost(dec.Provider, dec.Model, in, out, cached, cacheWrite)
 			s.logRequest(r.Context(), storage.RequestRecord{
-				ID:             s.storeNewULID(),
-				Timestamp:      start,
-				Agent:          requestAppID(r),
-				Protocol:       "anthropic",
-				RequestedModel: requestedModel,
-				Provider:       dec.Provider,
-				Model:          dec.Model,
-				InputTokens:    in,
-				OutputTokens:   out,
-				CostMicroUSD:   cost,
-				LatencyMS:      time.Since(start).Milliseconds(),
-				StatusCode:     statusCode,
+				ID:               s.storeNewULID(),
+				Timestamp:        start,
+				Agent:            requestAppID(r),
+				Protocol:         "anthropic",
+				RequestedModel:   requestedModel,
+				Provider:         dec.Provider,
+				Model:            dec.Model,
+				InputTokens:      in,
+				OutputTokens:     out,
+				CachedTokens:     cached,
+				CacheWriteTokens: cacheWrite,
+				CostMicroUSD:     cost,
+				LatencyMS:        time.Since(start).Milliseconds(),
+				StatusCode:       statusCode,
 			})
 		})
 	} else {
@@ -436,24 +440,26 @@ func (s *Server) handleAnthropicWithRouting(
 		w.WriteHeader(statusCode)
 		_, _ = w.Write(respData)
 		latencyMS := time.Since(start).Milliseconds()
-		var in, out, cached int
+		var in, out, cached, cacheWrite int
 		if statusCode == http.StatusOK {
-			in, out, cached = parseAnthropicJSONUsage(respData)
+			in, out, cached, cacheWrite = parseAnthropicJSONUsage(respData)
 		}
-		cost := s.computeCost(dec.Provider, dec.Model, in, out, cached)
+		cost := s.computeCost(dec.Provider, dec.Model, in, out, cached, cacheWrite)
 		s.logRequest(r.Context(), storage.RequestRecord{
-			ID:             s.storeNewULID(),
-			Timestamp:      start,
-			Agent:          requestAppID(r),
-			Protocol:       "anthropic",
-			RequestedModel: requestedModel,
-			Provider:       dec.Provider,
-			Model:          dec.Model,
-			InputTokens:    in,
-			OutputTokens:   out,
-			CostMicroUSD:   cost,
-			LatencyMS:      latencyMS,
-			StatusCode:     statusCode,
+			ID:               s.storeNewULID(),
+			Timestamp:        start,
+			Agent:            requestAppID(r),
+			Protocol:         "anthropic",
+			RequestedModel:   requestedModel,
+			Provider:         dec.Provider,
+			Model:            dec.Model,
+			InputTokens:      in,
+			OutputTokens:     out,
+			CachedTokens:     cached,
+			CacheWriteTokens: cacheWrite,
+			CostMicroUSD:     cost,
+			LatencyMS:        latencyMS,
+			StatusCode:       statusCode,
 		})
 	}
 }
@@ -885,21 +891,23 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 
 	if parsed.Stream && statusCode == http.StatusOK {
 		s.streamSSEWithCapture(w, r, upstreamResp.Body, func(captured []byte) {
-			in, out := parseOpenAISSEUsage(captured)
-			cost := s.computeCost(dec.Provider, dec.Model, in, out, 0)
+			in, out, cached, cacheWrite := parseOpenAISSEUsage(captured)
+			cost := s.computeCost(dec.Provider, dec.Model, in, out, cached, cacheWrite)
 			s.logRequest(r.Context(), storage.RequestRecord{
-				ID:             s.storeNewULID(),
-				Timestamp:      start,
-				Agent:          requestAppID(r),
-				Protocol:       "openai",
-				RequestedModel: parsed.Model,
-				Provider:       dec.Provider,
-				Model:          dec.Model,
-				InputTokens:    in,
-				OutputTokens:   out,
-				CostMicroUSD:   cost,
-				LatencyMS:      time.Since(start).Milliseconds(),
-				StatusCode:     statusCode,
+				ID:               s.storeNewULID(),
+				Timestamp:        start,
+				Agent:            requestAppID(r),
+				Protocol:         "openai",
+				RequestedModel:   parsed.Model,
+				Provider:         dec.Provider,
+				Model:            dec.Model,
+				InputTokens:      in,
+				OutputTokens:     out,
+				CachedTokens:     cached,
+				CacheWriteTokens: cacheWrite,
+				CostMicroUSD:     cost,
+				LatencyMS:        time.Since(start).Milliseconds(),
+				StatusCode:       statusCode,
 			})
 		})
 	} else {
@@ -907,22 +915,24 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 		w.WriteHeader(statusCode)
 		_, _ = w.Write(respData)
 		latencyMS := time.Since(start).Milliseconds()
-		var in, out int
+		var in, out, cached, cacheWrite int
 		if statusCode == http.StatusOK {
-			in, out = parseOpenAIJSONUsage(respData)
+			in, out, cached, cacheWrite = parseOpenAIJSONUsage(respData)
 		}
-		cost := s.computeCost(dec.Provider, dec.Model, in, out, 0)
+		cost := s.computeCost(dec.Provider, dec.Model, in, out, cached, cacheWrite)
 		s.logRequest(r.Context(), storage.RequestRecord{
-			ID:             s.storeNewULID(),
-			Timestamp:      start,
-			Agent:          requestAppID(r),
-			Protocol:       "openai",
-			RequestedModel: parsed.Model,
-			Provider:       dec.Provider,
-			Model:          dec.Model,
-			InputTokens:    in,
-			OutputTokens:   out,
-			CostMicroUSD:   cost,
+			ID:               s.storeNewULID(),
+			Timestamp:        start,
+			Agent:            requestAppID(r),
+			Protocol:         "openai",
+			RequestedModel:   parsed.Model,
+			Provider:         dec.Provider,
+			Model:            dec.Model,
+			InputTokens:      in,
+			OutputTokens:     out,
+			CachedTokens:     cached,
+			CacheWriteTokens: cacheWrite,
+			CostMicroUSD:     cost,
 			LatencyMS:      latencyMS,
 			StatusCode:     statusCode,
 		})
@@ -942,11 +952,11 @@ func (s *Server) currentPreset(ctx context.Context) string {
 }
 
 // computeCost returns micro-USD cost via the pricing service, or 0 if not available.
-func (s *Server) computeCost(provider, model string, inputTokens, outputTokens, cachedTokens int) int64 {
+func (s *Server) computeCost(provider, model string, inputTokens, outputTokens, cachedTokens, cacheWriteTokens int) int64 {
 	if s.pricing == nil {
 		return 0
 	}
-	return s.pricing.CostFor(provider, model, inputTokens, outputTokens, cachedTokens)
+	return s.pricing.CostFor(provider, model, inputTokens, outputTokens, cachedTokens, cacheWriteTokens)
 }
 
 // copyRequestHeaders copies safe request headers from src to dst.
@@ -1127,19 +1137,39 @@ func sniffAppID(r *http.Request) string {
 }
 
 // parseOpenAIJSONUsage extracts token counts from a non-streaming OpenAI response.
-func parseOpenAIJSONUsage(data []byte) (inputTokens, outputTokens int) {
+// Handles OpenAI standard (prompt_tokens_details.cached_tokens) and
+// DeepSeek's prompt_cache_hit_tokens field.
+//
+// OpenAI/DeepSeek do not expose a cache write field — cache is managed
+// automatically and the first write is charged at full prompt_tokens price.
+// cacheWriteTokens is therefore always 0 for this protocol.
+func parseOpenAIJSONUsage(data []byte) (inputTokens, outputTokens, cachedTokens, cacheWriteTokens int) {
 	var resp struct {
 		Usage struct {
-			PromptTokens     int `json:"prompt_tokens"`
-			CompletionTokens int `json:"completion_tokens"`
+			PromptTokens        int `json:"prompt_tokens"`
+			CompletionTokens    int `json:"completion_tokens"`
+			PromptTokensDetails struct {
+				CachedTokens int `json:"cached_tokens"`
+			} `json:"prompt_tokens_details"`
+			PromptCacheHitTokens int `json:"prompt_cache_hit_tokens"` // DeepSeek
 		} `json:"usage"`
 	}
 	_ = json.Unmarshal(data, &resp)
-	return resp.Usage.PromptTokens, resp.Usage.CompletionTokens
+	cachedTokens = resp.Usage.PromptTokensDetails.CachedTokens
+	if cachedTokens == 0 {
+		cachedTokens = resp.Usage.PromptCacheHitTokens
+	}
+	inputTokens = resp.Usage.PromptTokens - cachedTokens
+	if inputTokens < 0 {
+		inputTokens = 0
+	}
+	outputTokens = resp.Usage.CompletionTokens
+	return
 }
 
 // parseOpenAISSEUsage extracts the last token counts from OpenAI SSE stream bytes.
-func parseOpenAISSEUsage(data []byte) (inputTokens, outputTokens int) {
+// Handles OpenAI cached_tokens and DeepSeek prompt_cache_hit_tokens.
+func parseOpenAISSEUsage(data []byte) (inputTokens, outputTokens, cachedTokens, cacheWriteTokens int) {
 	if m := promptTokensRE.FindAllSubmatch(data, -1); len(m) > 0 {
 		last := m[len(m)-1]
 		_, _ = fmt.Sscanf(string(last[1]), "%d", &inputTokens)
@@ -1148,14 +1178,31 @@ func parseOpenAISSEUsage(data []byte) (inputTokens, outputTokens int) {
 		last := m[len(m)-1]
 		_, _ = fmt.Sscanf(string(last[1]), "%d", &outputTokens)
 	}
+	if m := cachedTokensRE.FindAllSubmatch(data, -1); len(m) > 0 {
+		last := m[len(m)-1]
+		_, _ = fmt.Sscanf(string(last[1]), "%d", &cachedTokens)
+	}
+	if cachedTokens == 0 {
+		if m := promptCacheHitTokensRE.FindAllSubmatch(data, -1); len(m) > 0 {
+			last := m[len(m)-1]
+			_, _ = fmt.Sscanf(string(last[1]), "%d", &cachedTokens)
+		}
+	}
+	inputTokens -= cachedTokens
+	if inputTokens < 0 {
+		inputTokens = 0
+	}
 	return
 }
 
 // parseAnthropicJSONUsage extracts token counts from a non-streaming Anthropic response.
-// It sums input_tokens + cache_creation_input_tokens + cache_read_input_tokens for
-// inputTokens so that prompt-caching responses (where input_tokens may be 0) are counted.
-// cachedTokens = cache_read_input_tokens, used by CostFor for discounted pricing.
-func parseAnthropicJSONUsage(data []byte) (inputTokens, outputTokens, cachedTokens int) {
+// Returns four mutually-exclusive buckets:
+//
+//	inputTokens:      input_tokens (fresh, neither cached nor written to cache)
+//	outputTokens:     output_tokens
+//	cachedTokens:     cache_read_input_tokens (billed at ~10% of input price)
+//	cacheWriteTokens: cache_creation_input_tokens (billed at 1.25× input price, 5m TTL)
+func parseAnthropicJSONUsage(data []byte) (inputTokens, outputTokens, cachedTokens, cacheWriteTokens int) {
 	var resp struct {
 		Usage struct {
 			InputTokens              int `json:"input_tokens"`
@@ -1166,18 +1213,13 @@ func parseAnthropicJSONUsage(data []byte) (inputTokens, outputTokens, cachedToke
 	}
 	_ = json.Unmarshal(data, &resp)
 	u := resp.Usage
-	inputTokens = u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens
-	outputTokens = u.OutputTokens
-	cachedTokens = u.CacheReadInputTokens
-	return
+	return u.InputTokens, u.OutputTokens, u.CacheReadInputTokens, u.CacheCreationInputTokens
 }
 
 // parseAnthropicSSEUsage extracts token counts from Anthropic SSE stream bytes.
-// It parses each data: JSON line and accumulates:
-//   - inputTokens  = input_tokens + cache_creation_input_tokens + cache_read_input_tokens
-//   - outputTokens = output_tokens from message_delta events
-//   - cachedTokens = cache_read_input_tokens (for discounted cost calculation)
-func parseAnthropicSSEUsage(data []byte) (inputTokens, outputTokens, cachedTokens int) {
+// Accumulates across message_start events (rare multi-message responses).
+// Returns four mutually-exclusive buckets matching parseAnthropicJSONUsage.
+func parseAnthropicSSEUsage(data []byte) (inputTokens, outputTokens, cachedTokens, cacheWriteTokens int) {
 	type usageFields struct {
 		InputTokens              int `json:"input_tokens"`
 		CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
@@ -1209,8 +1251,9 @@ func parseAnthropicSSEUsage(data []byte) (inputTokens, outputTokens, cachedToken
 		switch ev.Type {
 		case "message_start":
 			u := ev.Message.Usage
-			inputTokens += u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens
+			inputTokens += u.InputTokens
 			cachedTokens += u.CacheReadInputTokens
+			cacheWriteTokens += u.CacheCreationInputTokens
 		case "message_delta":
 			outputTokens += ev.Usage.OutputTokens
 		}
@@ -1242,7 +1285,8 @@ func (s *Server) logRequest(ctx context.Context, rec storage.RequestRecord) {
 			if rec.StatusCode >= 200 && rec.StatusCode < 300 {
 				_ = s.store.RecordSuccess(bg, rec.Provider)
 				if rec.Provider == "anthropic" {
-					total := rec.InputTokens + rec.OutputTokens
+					// Count all token buckets against quota to match Anthropic's billing.
+					total := rec.InputTokens + rec.CachedTokens + rec.CacheWriteTokens + rec.OutputTokens
 					if total > 0 {
 						_ = s.store.IncrementQuota(bg, "5h", int64(total))
 						_ = s.store.IncrementQuota(bg, "weekly", int64(total))

@@ -421,8 +421,11 @@ func (e *Engine) fallbackOpenAI(req Request, tried map[string]bool) Decision {
 	return Decision{}
 }
 
-// enrichDecision fills EstimatedCostUSD and appends a savings note to Reason
-// when the routing decision is cheaper than the originally requested model.
+// enrichDecision fills EstimatedCostUSD. Savings percentage display is
+// intentionally omitted here: the previous "比 X 便宜 Y%" calculation
+// ignored cache state, producing numbers that were badly wrong for long
+// sessions with high cache hit rates (Phase 3 will restore an accurate
+// session-aware version).
 func (e *Engine) enrichDecision(dec *Decision, req Request) {
 	if e.pricing == nil || dec.Provider == "" || req.InputTokenEst == 0 {
 		return
@@ -432,17 +435,6 @@ func (e *Engine) enrichDecision(dec *Decision, req Request) {
 	if dec.EstimatedCostUSD == 0 && dec.Model != "" {
 		costPerToken := e.pricing.InputCostPerToken(dec.Model)
 		dec.EstimatedCostUSD = costPerToken * float64(req.InputTokenEst)
-	}
-
-	// Append savings note when routing to a cheaper model than what was requested.
-	if dec.Model == req.RequestedModel || req.RequestedModel == "" {
-		return
-	}
-	requestedCost := e.pricing.InputCostPerToken(req.RequestedModel) * float64(req.InputTokenEst)
-	routedCost := e.pricing.InputCostPerToken(dec.Model) * float64(req.InputTokenEst)
-	if requestedCost > 0 && routedCost < requestedCost {
-		savings := (requestedCost - routedCost) / requestedCost * 100
-		dec.Reason = fmt.Sprintf("%s（比 %s 便宜 %.0f%%）", dec.Reason, req.RequestedModel, savings)
 	}
 }
 

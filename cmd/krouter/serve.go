@@ -384,7 +384,7 @@ The daemon listens on two ports:
 					// A 0 baseline (unknown model) would make the UI compute
 					// negative "savings"; omit it so the UI shows "unpriced"
 					// instead (matches /internal/logs omitempty). See #64.
-					if b := pricingSvc.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens); b > 0 {
+					if b := pricingSvc.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens, rec.CachedTokens, rec.CacheWriteTokens); b > 0 {
 						payload["baseline_cost_usd"] = float64(b) / 1_000_000
 					}
 				}

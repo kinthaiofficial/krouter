@@ -417,7 +417,7 @@ func (s *Server) handleBudget(w http.ResponseWriter, r *http.Request) {
 					if rec.CostMicroUSD <= 0 {
 						continue
 					}
-					baseline := s.pricing.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens)
+					baseline := s.pricing.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens, rec.CachedTokens, rec.CacheWriteTokens)
 					if saved := baseline - rec.CostMicroUSD; saved > 0 {
 						totalSavings += saved
 					}
@@ -630,10 +630,11 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 		RequestedModel string  `json:"requested_model,omitempty"`
 		Provider       string  `json:"provider"`
 		Model          string  `json:"model"`
-		InputTokens    int     `json:"input_tokens"`
-		OutputTokens   int     `json:"output_tokens"`
-		CachedTokens   int     `json:"cached_tokens"`
-		CostMicroUSD   int64   `json:"cost_micro_usd"`
+		InputTokens      int     `json:"input_tokens"`
+		OutputTokens     int     `json:"output_tokens"`
+		CachedTokens     int     `json:"cached_tokens"`
+		CacheWriteTokens int     `json:"cache_write_tokens"`
+		CostMicroUSD     int64   `json:"cost_micro_usd"`
 		CostUSD        float64 `json:"cost_usd"`
 		LatencyMS      int64   `json:"latency_ms"`
 		StatusCode     int     `json:"status_code"`
@@ -663,10 +664,11 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 			RequestedModel: rec.RequestedModel,
 			Provider:       rec.Provider,
 			Model:          rec.Model,
-			InputTokens:    rec.InputTokens,
-			OutputTokens:   rec.OutputTokens,
-			CachedTokens:   rec.CachedTokens,
-			CostMicroUSD:   rec.CostMicroUSD,
+			InputTokens:      rec.InputTokens,
+			OutputTokens:     rec.OutputTokens,
+			CachedTokens:     rec.CachedTokens,
+			CacheWriteTokens: rec.CacheWriteTokens,
+			CostMicroUSD:     rec.CostMicroUSD,
 			CostUSD:        float64(rec.CostMicroUSD) / 1_000_000,
 			LatencyMS:      rec.LatencyMS,
 			StatusCode:     rec.StatusCode,
@@ -676,7 +678,7 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 			r.RequestedProvider = s.pricing.ProviderFor(rec.RequestedModel)
 			r.RequestedInputPerMTok, r.RequestedOutputPerMTok = s.pricing.PriceFor(rec.RequestedModel)
 			r.RoutedInputPerMTok, r.RoutedOutputPerMTok = s.pricing.PriceFor(rec.Model)
-			r.BaselineCostUSD = float64(s.pricing.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens)) / 1_000_000
+			r.BaselineCostUSD = float64(s.pricing.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens, rec.CachedTokens, rec.CacheWriteTokens)) / 1_000_000
 		}
 		out = append(out, r)
 	}
@@ -756,7 +758,7 @@ func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request) {
 					if rec.CostMicroUSD <= 0 {
 						continue
 					}
-					baseline := s.pricing.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens)
+					baseline := s.pricing.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens, rec.CachedTokens, rec.CacheWriteTokens)
 					saved := baseline - rec.CostMicroUSD
 					if saved > 0 {
 						savingsTodayMicroUSD += saved
@@ -1375,7 +1377,7 @@ func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 					row.Stats.RequestsToday++
 					row.Stats.CostTodayUSD += float64(rec.CostMicroUSD) / 1_000_000
 					if s.pricing != nil {
-						baseline := s.pricing.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens)
+						baseline := s.pricing.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens, rec.CachedTokens, rec.CacheWriteTokens)
 						if saved := baseline - rec.CostMicroUSD; saved > 0 {
 							row.Stats.SavingsTodayUSD += float64(saved) / 1_000_000
 						}
@@ -1717,7 +1719,7 @@ func (s *Server) handleDashboardStats(w http.ResponseWriter, r *http.Request) {
 				cost := float64(rec.CostMicroUSD) / 1_000_000
 				resp.Weekly.CostUSD += cost
 				if s.pricing != nil {
-					baseline := s.pricing.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens)
+					baseline := s.pricing.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens, rec.CachedTokens, rec.CacheWriteTokens)
 					if saved := baseline - rec.CostMicroUSD; saved > 0 {
 						resp.Weekly.SavingsUSD += float64(saved) / 1_000_000
 					}
@@ -2126,7 +2128,7 @@ func (s *Server) handlePricingStatus(w http.ResponseWriter, r *http.Request) {
 					if rec.CostMicroUSD <= 0 {
 						continue
 					}
-					baseline := s.pricing.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens)
+					baseline := s.pricing.BaselineCostFor(rec.RequestedModel, rec.InputTokens, rec.OutputTokens, rec.CachedTokens, rec.CacheWriteTokens)
 					if saved := baseline - rec.CostMicroUSD; saved > 0 {
 						savedMicro += saved
 					}
