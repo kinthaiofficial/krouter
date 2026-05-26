@@ -193,6 +193,7 @@
     "est_tokens": "Est. tokens",
     "tokens_in_out": "{{in}} in / {{out}} out",
     "actual_tokens": "Actual tokens",
+    "cache_hit_rate": "Cache hit rate",
     "actual_cost": "Actual cost",
     "latency": "Latency",
     "savings_amount": "Saved {{amount}}{{pct}} by routing",

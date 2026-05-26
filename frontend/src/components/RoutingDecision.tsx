@@ -314,6 +314,10 @@ function ResponseCard({
     `${cachedTokens.toLocaleString()} ${t('router.tokens_read')}`,
     `${cacheWriteTokens.toLocaleString()} ${t('router.tokens_write')}`,
   ].join(' · ')
+  const totalInput = inputTokens + cachedTokens
+  const hitRateStr = totalInput > 0
+    ? `${((cachedTokens / totalInput) * 100).toFixed(1)}%`
+    : '—'
   return (
     <div className={['rounded-lg border px-4 py-3', toneCls].join(' ')}>
       <p className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold mb-2">
@@ -323,6 +327,11 @@ function ResponseCard({
         <Field
           k={t('router.actual_tokens')}
           v={tokenStr}
+          mono
+        />
+        <Field
+          k={t('router.cache_hit_rate')}
+          v={hitRateStr}
           mono
         />
         <Field

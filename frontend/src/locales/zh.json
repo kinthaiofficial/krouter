@@ -193,6 +193,7 @@
     "est_tokens": "预计 Token",
     "tokens_in_out": "{{in}} 入 / {{out}} 出",
     "actual_tokens": "实际 Token",
+    "cache_hit_rate": "缓存命中率",
     "actual_cost": "实际费用",
     "latency": "延迟",
     "savings_amount": "本次智能路由节省 {{amount}}{{pct}}",
