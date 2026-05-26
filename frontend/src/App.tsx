@@ -27,7 +27,7 @@ export default function App() {
             <Route index element={<Dashboard />} />
             <Route path="free-tokens" element={<FreeTokens />} />
             <Route path="router" element={<Router />} />
-            <Route path="agents" element={<Apps />} />
+            <Route path="apps" element={<Apps />} />
             <Route path="logs" element={<Logs />} />
             <Route path="providers" element={<Providers />} />
             <Route path="budget" element={<BudgetPage />} />
