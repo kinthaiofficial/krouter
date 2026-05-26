@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-05-26
+
+### Added
+- **Cache-aware sticky routing** (Phase 3): the routing engine now tracks per-session token-bucket stats (fresh input / cache-read / cache-write / output) and short-circuits to the session's bound (provider, model) when the observed cache hit rate exceeds the mathematical breakeven threshold `p* = (1 − 1.25 × P_candidate / P_bound) / 0.9`. Switching model mid-session requires paying a 25% write surcharge on a cold cache; sticky routing fires only when staying put is mathematically cheaper. Active for Saver and Balanced presets; Quality preset is unchanged. Eight decision rules cover output-share guard (>30% falls through), bound-provider liveness, cheapest-alternative scan, and breakeven comparison.
+- **Session tracking infrastructure** (Phase 2): `MemSessionStore` (in-memory, 75-minute TTL, background eviction) accumulates cache hit rates across turns in the same agent conversation. Session key is a 16-char SHA-256 fingerprint of `(api_key + system_prompt + tool_names + first_user_message)` — stable across turns, distinct across agents and users. Data feeds Phase 3 routing decisions without being persisted to disk.
+- **Session-aware savings annotation**: `enrichDecision` now computes the savings percentage using the actual session cache hit rate (`keptCost = price × tokens × (hitRate×0.1 + (1−hitRate))`) instead of a bare per-token comparison that ignored cache state. Falls back to the conservative cache-cold estimate on the first turn of a new session.
+
+### Fixed
+- **Cache write cost was under-charged by 25%**: `pricing.CostFor` applied the standard input rate to `cache_creation_input_tokens`; Anthropic charges a 1.25× surcharge on cache writes. Fixed with a new `cacheWriteTokens` parameter; all call sites updated.
+- **OpenAI `cached_tokens` were never parsed**: the OpenAI and DeepSeek response parsers read `prompt_tokens` as the full input count without subtracting `cached_tokens` / `prompt_cache_hit_tokens`, so cache-read tokens were billed at the full input rate instead of 10%. Both JSON and SSE parsers now extract the two cached-token fields and adjust `InputTokens` to fresh-only.
+- **`cached_tokens` were always 0 in the database**: none of the four `logRequest` call sites populated `CachedTokens` from the parse result. All four sites now carry both `CachedTokens` and `CacheWriteTokens` into the DB row.
+- **Savings percentage was computed from wrong baseline**: `enrichDecision` compared the routed model's cost against the *requested* model's cost without accounting for cache state, producing numbers that could be badly wrong for long sessions with high hit rates. The display was removed in Phase 1 and restored in Phase 3 with the session-aware formula.
+
+### Changed
+- `storage.RequestRecord` gains a `CacheWriteTokens int` field; migration `016` adds the `cache_write_tokens` column (nullable, default 0 — safe on existing databases).
+- `pricing.CostFor` and `pricing.BaselineCostFor` signatures gain `cacheWriteTokens int` as the last parameter. All internal call sites updated; external callers (none outside this repo) must add the parameter.
+
 ## [2.3.14] - 2026-05-26
 
 ### Fixed
