@@ -40,22 +40,26 @@ import (
 	"github.com/kinthaiofficial/krouter/internal/storage"
 )
 
-// decodeResponseBody wraps resp.Body with a gzip reader when the upstream
-// sent Content-Encoding: gzip. It also removes the header from resp so the
-// caller's header-copy loop does not forward it to the client (krouter always
-// sends decompressed bytes downstream). Returns resp.Body unchanged when no
-// gzip encoding is present. The caller is still responsible for closing
-// resp.Body; the returned reader need not be closed separately.
-func decodeResponseBody(resp *http.Response) (io.Reader, error) {
-	if !strings.EqualFold(resp.Header.Get("Content-Encoding"), "gzip") {
-		return resp.Body, nil
+// decompressForParsing returns a decompressed copy of data when the response
+// headers indicate Content-Encoding: gzip. Used by non-streaming paths to
+// parse usage tokens while forwarding the original (possibly compressed) bytes
+// to the client unchanged — the client sees the real Content-Encoding header
+// and handles decompression itself.
+// Falls back to returning data as-is on any decompression error.
+func decompressForParsing(header http.Header, data []byte) []byte {
+	if !strings.EqualFold(header.Get("Content-Encoding"), "gzip") {
+		return data
 	}
-	resp.Header.Del("Content-Encoding")
-	gr, err := gzip.NewReader(resp.Body)
+	gr, err := gzip.NewReader(bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("gzip decode upstream response: %w", err)
+		return data
 	}
-	return gr, nil
+	defer gr.Close()
+	out, err := io.ReadAll(gr)
+	if err != nil {
+		return data
+	}
+	return out
 }
 
 // hopByHopHeaders are headers that must not be forwarded to upstream.
@@ -415,15 +419,6 @@ func (s *Server) handleAnthropicWithRouting(
 		minimax.CacheOAuthToken(r.Header.Get("Authorization"))
 	}
 
-	// Decode gzip if upstream compressed the response, then forward safe headers.
-	// decodeResponseBody must run before the header-copy loop so that it can
-	// remove Content-Encoding: gzip before we forward headers to the client.
-	upstreamBody, err := decodeResponseBody(upstreamResp)
-	if err != nil {
-		s.logger.Error("failed to decode upstream response body", "err", err)
-		http.Error(w, "bad gateway", http.StatusBadGateway)
-		return
-	}
 	statusCode := upstreamResp.StatusCode
 	for k, vs := range upstreamResp.Header {
 		if hopByHopHeaders[strings.ToLower(k)] {
@@ -437,7 +432,7 @@ func (s *Server) handleAnthropicWithRouting(
 	w.Header().Set("X-Krouter-Model", dec.Model)
 
 	if stream && statusCode == http.StatusOK {
-		s.streamSSEWithCapture(w, r, upstreamBody, func(captured []byte) {
+		s.streamSSEWithCapture(w, r, upstreamResp.Body, func(captured []byte) {
 			// Store raw capture for /internal/debug/last-sse-capture diagnosis.
 			s.lastSSECaptureMu.Lock()
 			s.lastSSECapture = make([]byte, len(captured))
@@ -477,14 +472,16 @@ func (s *Server) handleAnthropicWithRouting(
 			s.updateSessionFromResponse(sessionKey, dec.Provider, dec.Model, in, out, cached, cacheWrite)
 		})
 	} else {
-		// Non-streaming or error: read full body, parse usage if success, then write.
-		respData, _ := io.ReadAll(upstreamBody)
+		// Non-streaming: forward original bytes to client (preserves Content-Encoding),
+		// then decompress a copy for token parsing so the client sees the real response.
+		respData, _ := io.ReadAll(upstreamResp.Body)
 		w.WriteHeader(statusCode)
 		_, _ = w.Write(respData)
 		latencyMS := time.Since(start).Milliseconds()
 		var in, out, cached, cacheWrite int
 		if statusCode == http.StatusOK {
-			in, out, cached, cacheWrite = parseAnthropicJSONUsage(respData)
+			in, out, cached, cacheWrite = parseAnthropicJSONUsage(
+				decompressForParsing(upstreamResp.Header, respData))
 		}
 		cost := s.computeCost(dec.Provider, dec.Model, in, out, cached, cacheWrite)
 		s.logRequest(r.Context(), storage.RequestRecord{
@@ -656,12 +653,6 @@ func (s *Server) forwardToUpstream(
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	respBody, decodeErr := decodeResponseBody(resp)
-	if decodeErr != nil {
-		s.logger.Error("failed to decode upstream response body", "err", decodeErr)
-		http.Error(w, "bad gateway", http.StatusBadGateway)
-		return
-	}
 	for k, vs := range resp.Header {
 		if hopByHopHeaders[strings.ToLower(k)] {
 			continue
@@ -672,10 +663,10 @@ func (s *Server) forwardToUpstream(
 	}
 
 	if stream && resp.StatusCode == http.StatusOK {
-		s.streamSSE(w, r, respBody)
+		s.streamSSE(w, r, resp.Body)
 	} else {
 		w.WriteHeader(resp.StatusCode)
-		_, _ = io.Copy(w, respBody)
+		_, _ = io.Copy(w, resp.Body)
 	}
 }
 
@@ -930,12 +921,6 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 		"reason", dec.Reason,
 	)
 
-	upstreamBody, err := decodeResponseBody(upstreamResp)
-	if err != nil {
-		s.logger.Error("failed to decode upstream response body", "err", err)
-		http.Error(w, "bad gateway", http.StatusBadGateway)
-		return
-	}
 	statusCode := upstreamResp.StatusCode
 	for k, vs := range upstreamResp.Header {
 		if hopByHopHeaders[strings.ToLower(k)] {
@@ -947,7 +932,7 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 	}
 
 	if parsed.Stream && statusCode == http.StatusOK {
-		s.streamSSEWithCapture(w, r, upstreamBody, func(captured []byte) {
+		s.streamSSEWithCapture(w, r, upstreamResp.Body, func(captured []byte) {
 			in, out, cached, cacheWrite := parseOpenAISSEUsage(captured)
 			cost := s.computeCost(dec.Provider, dec.Model, in, out, cached, cacheWrite)
 			s.logRequest(r.Context(), storage.RequestRecord{
@@ -969,13 +954,14 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 			s.updateSessionFromResponse(sessionKey, dec.Provider, dec.Model, in, out, cached, cacheWrite)
 		})
 	} else {
-		respData, _ := io.ReadAll(upstreamBody)
+		respData, _ := io.ReadAll(upstreamResp.Body)
 		w.WriteHeader(statusCode)
 		_, _ = w.Write(respData)
 		latencyMS := time.Since(start).Milliseconds()
 		var in, out, cached, cacheWrite int
 		if statusCode == http.StatusOK {
-			in, out, cached, cacheWrite = parseOpenAIJSONUsage(respData)
+			in, out, cached, cacheWrite = parseOpenAIJSONUsage(
+				decompressForParsing(upstreamResp.Header, respData))
 		}
 		cost := s.computeCost(dec.Provider, dec.Model, in, out, cached, cacheWrite)
 		s.logRequest(r.Context(), storage.RequestRecord{
