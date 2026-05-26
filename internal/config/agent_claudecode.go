@@ -16,12 +16,14 @@ const (
 // ShellInitOutput returns the shell export statements for the given shell type.
 // shell: "fish" emits set -gx; anything else emits export.
 func ShellInitOutput(shell string) string {
+	// The /a/claude-code path prefix lets the proxy attribute these requests to
+	// Claude Code by URL alone (no header sniffing). See spec/12 §6.3.
 	if shell == "fish" {
-		return "set -gx ANTHROPIC_BASE_URL \"http://localhost:8402\"\n" +
-			"set -gx OPENAI_BASE_URL \"http://localhost:8402/v1\"\n"
+		return "set -gx ANTHROPIC_BASE_URL \"http://127.0.0.1:8402/a/claude-code\"\n" +
+			"set -gx OPENAI_BASE_URL \"http://127.0.0.1:8402/a/claude-code/v1\"\n"
 	}
-	return "export ANTHROPIC_BASE_URL=\"http://localhost:8402\"\n" +
-		"export OPENAI_BASE_URL=\"http://localhost:8402/v1\"\n"
+	return "export ANTHROPIC_BASE_URL=\"http://127.0.0.1:8402/a/claude-code\"\n" +
+		"export OPENAI_BASE_URL=\"http://127.0.0.1:8402/a/claude-code/v1\"\n"
 }
 
 // DetectShellRC returns the shell rc file path based on $SHELL.

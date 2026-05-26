@@ -85,7 +85,7 @@ func TestFallbackDecide_OpenAIDeepSeekToMoonshot(t *testing.T) {
 func TestFallbackDecide_AllProvidersFailed(t *testing.T) {
 	engine := routing.New(openAIMultiProviderRegistry())
 	tried := map[string]bool{
-		"deepseek/deepseek-chat":   true,
+		"deepseek/deepseek-chat":  true,
 		"moonshot/moonshot-v1-8k": true,
 	}
 
@@ -214,7 +214,7 @@ func TestRoutingOverride_AlwaysUse(t *testing.T) {
 	dec := engine.Decide(routing.Request{
 		Protocol:       "openai",
 		RequestedModel: "gpt-4o",
-		AgentName:      "openclaw",
+		AppID:          "openclaw",
 	}, routing.PresetQuality)
 
 	assert.Equal(t, "deepseek", dec.Provider)
@@ -231,7 +231,7 @@ func TestRoutingOverride_PresetOverride(t *testing.T) {
 	dec := engine.Decide(routing.Request{
 		Protocol:       "anthropic",
 		RequestedModel: "claude-opus-4-5",
-		AgentName:      "cursor",
+		AppID:          "cursor",
 	}, routing.PresetQuality)
 
 	// Preset overridden to saver → should route to haiku.
@@ -247,7 +247,7 @@ func TestRoutingOverride_UnknownAgent_NoEffect(t *testing.T) {
 	dec := engine.Decide(routing.Request{
 		Protocol:       "anthropic",
 		RequestedModel: "claude-sonnet-4-5",
-		AgentName:      "unknown",
+		AppID:          "unknown",
 	}, routing.PresetBalanced)
 
 	// Override is only for openclaw — unknown agent should get normal routing.

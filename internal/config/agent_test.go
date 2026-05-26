@@ -28,7 +28,7 @@ func TestConnectOpenClaw_SetsBaseURLAndApi(t *testing.T) {
 	require.NoError(t, json.Unmarshal(data, &root))
 
 	provider := root["models"].(map[string]any)["providers"].(map[string]any)["anthropic"].(map[string]any)
-	assert.Equal(t, "http://127.0.0.1:8402", provider["baseUrl"])
+	assert.Equal(t, "http://127.0.0.1:8402/a/openclaw", provider["baseUrl"])
 	assert.Equal(t, "anthropic-messages", provider["api"])
 	// Real apiKey must be preserved — never overwritten with placeholder.
 	assert.Equal(t, "sk-ant-real", provider["apiKey"])
@@ -73,7 +73,7 @@ func TestConnectOpenClaw_NoApiKeyInjectedWhenMissing(t *testing.T) {
 	require.NoError(t, json.Unmarshal(data, &root))
 
 	provider := root["models"].(map[string]any)["providers"].(map[string]any)["anthropic"].(map[string]any)
-	assert.Equal(t, "http://127.0.0.1:8402", provider["baseUrl"])
+	assert.Equal(t, "http://127.0.0.1:8402/a/openclaw", provider["baseUrl"])
 	assert.NotContains(t, provider, "apiKey", "krouter must not inject apiKey placeholder")
 	// Other providers must be untouched.
 	minimax := root["models"].(map[string]any)["providers"].(map[string]any)["minimax"].(map[string]any)
@@ -195,7 +195,7 @@ func TestConnectOpenClaw_RedirectsMinimaxPortal_WhenPresent(t *testing.T) {
 	require.NoError(t, json.Unmarshal(data, &root))
 
 	portal := root["models"].(map[string]any)["providers"].(map[string]any)["minimax-portal"].(map[string]any)
-	assert.Equal(t, "http://127.0.0.1:8402", portal["baseUrl"], "minimax-portal baseUrl must point to krouter")
+	assert.Equal(t, "http://127.0.0.1:8402/a/openclaw/anthropic/v1", portal["baseUrl"], "minimax-portal baseUrl must point to krouter, preserving its path")
 	assert.Equal(t, true, portal["authHeader"], "authHeader must be preserved")
 	models, _ := portal["models"].([]any)
 	assert.NotEmpty(t, models, "models list must be preserved")
@@ -258,7 +258,7 @@ func TestConnectOpenClaw_RedirectsOpenAIProvider_WithV1(t *testing.T) {
 	// its original endpoint saved in the krouter sidecar. api / apiKey untouched.
 	dir := t.TempDir()
 	cfg := filepath.Join(dir, "openclaw.json")
-	initial := `{"models":{"providers":{"anthropic":{"apiKey":"sk-real"},"deepseek":{"baseUrl":"https://api.deepseek.com","api":"openai-responses","apiKey":"ds-key"}}}}`
+	initial := `{"models":{"providers":{"anthropic":{"apiKey":"sk-real"},"deepseek":{"baseUrl":"https://api.deepseek.com/v1","api":"openai-responses","apiKey":"ds-key"}}}}`
 	require.NoError(t, os.WriteFile(cfg, []byte(initial), 0644))
 
 	require.NoError(t, config.ConnectOpenClaw(cfg))
@@ -269,14 +269,14 @@ func TestConnectOpenClaw_RedirectsOpenAIProvider_WithV1(t *testing.T) {
 	providers := root["models"].(map[string]any)["providers"].(map[string]any)
 
 	ds := providers["deepseek"].(map[string]any)
-	assert.Equal(t, "http://127.0.0.1:8402/v1", ds["baseUrl"], "openai provider must get the /v1 proxy base")
+	assert.Equal(t, "http://127.0.0.1:8402/a/openclaw/v1", ds["baseUrl"], "origin replaced, path (/v1) preserved")
 	assert.Equal(t, "openai-responses", ds["api"], "api must be left untouched")
 	assert.Equal(t, "ds-key", ds["apiKey"], "apiKey must be preserved")
-	assert.Equal(t, "https://api.deepseek.com", ds["_krouterOriginalBaseUrl"], "original baseUrl must be saved in sidecar")
+	assert.Equal(t, "https://api.deepseek.com/v1", ds["_krouterOriginalBaseUrl"], "original baseUrl must be saved in sidecar")
 
-	// Anthropic still routes to the bare base (no /v1).
+	// Anthropic (no original base) synthesizes the bare /a/openclaw base.
 	anthropic := providers["anthropic"].(map[string]any)
-	assert.Equal(t, "http://127.0.0.1:8402", anthropic["baseUrl"])
+	assert.Equal(t, "http://127.0.0.1:8402/a/openclaw", anthropic["baseUrl"])
 }
 
 func TestOpenClaw_OpenAIProvider_RoundTrip(t *testing.T) {
@@ -308,7 +308,7 @@ func TestConnectOpenClaw_RedirectsSubAgentModelsJSON(t *testing.T) {
 	subDir := filepath.Join(dir, "agents", "claude", "agent")
 	require.NoError(t, os.MkdirAll(subDir, 0755))
 	subModels := filepath.Join(subDir, "models.json")
-	require.NoError(t, os.WriteFile(subModels, []byte(`{"providers":{"deepseek":{"baseUrl":"https://api.deepseek.com","api":"openai-responses","apiKey":"k"}}}`), 0644))
+	require.NoError(t, os.WriteFile(subModels, []byte(`{"providers":{"deepseek":{"baseUrl":"https://api.deepseek.com/v1","api":"openai-responses","apiKey":"k"}}}`), 0644))
 
 	require.NoError(t, config.ConnectOpenClaw(cfg))
 
@@ -316,8 +316,8 @@ func TestConnectOpenClaw_RedirectsSubAgentModelsJSON(t *testing.T) {
 	var root map[string]any
 	require.NoError(t, json.Unmarshal(data, &root))
 	ds := root["providers"].(map[string]any)["deepseek"].(map[string]any)
-	assert.Equal(t, "http://127.0.0.1:8402/v1", ds["baseUrl"], "sub-agent openai provider must be redirected")
-	assert.Equal(t, "https://api.deepseek.com", ds["_krouterOriginalBaseUrl"])
+	assert.Equal(t, "http://127.0.0.1:8402/a/openclaw/v1", ds["baseUrl"], "sub-agent provider redirected, path preserved")
+	assert.Equal(t, "https://api.deepseek.com/v1", ds["_krouterOriginalBaseUrl"])
 
 	require.NoError(t, config.DisconnectOpenClaw(cfg))
 
@@ -325,8 +325,30 @@ func TestConnectOpenClaw_RedirectsSubAgentModelsJSON(t *testing.T) {
 	root = nil
 	require.NoError(t, json.Unmarshal(data, &root))
 	ds = root["providers"].(map[string]any)["deepseek"].(map[string]any)
-	assert.Equal(t, "https://api.deepseek.com", ds["baseUrl"], "sub-agent baseUrl must be restored")
+	assert.Equal(t, "https://api.deepseek.com/v1", ds["baseUrl"], "sub-agent baseUrl must be restored")
 	assert.NotContains(t, ds, "_krouterOriginalBaseUrl")
+}
+
+func TestConnectOpenClaw_Idempotent(t *testing.T) {
+	// Connecting twice must not double-prefix the base or clobber the sidecar.
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "openclaw.json")
+	require.NoError(t, os.WriteFile(cfg, []byte(`{"models":{"providers":{"anthropic":{"apiKey":"sk"},"deepseek":{"baseUrl":"https://api.deepseek.com/v1","api":"openai-responses"}}}}`), 0644))
+
+	require.NoError(t, config.ConnectOpenClaw(cfg))
+	require.NoError(t, config.ConnectOpenClaw(cfg))
+
+	data, _ := os.ReadFile(cfg)
+	var root map[string]any
+	require.NoError(t, json.Unmarshal(data, &root))
+	providers := root["models"].(map[string]any)["providers"].(map[string]any)
+
+	ds := providers["deepseek"].(map[string]any)
+	assert.Equal(t, "http://127.0.0.1:8402/a/openclaw/v1", ds["baseUrl"], "must not double-prefix on re-connect")
+	assert.Equal(t, "https://api.deepseek.com/v1", ds["_krouterOriginalBaseUrl"], "sidecar keeps the true original")
+
+	anthropic := providers["anthropic"].(map[string]any)
+	assert.Equal(t, "http://127.0.0.1:8402/a/openclaw", anthropic["baseUrl"])
 }
 
 // ── Cursor ────────────────────────────────────────────────────────────────────
@@ -342,8 +364,8 @@ func TestConnectCursor_SetsFields(t *testing.T) {
 	var root map[string]any
 	require.NoError(t, json.Unmarshal(data, &root))
 
-	assert.Equal(t, "http://127.0.0.1:8402", root["cursor.anthropic.baseUrl"])
-	assert.Equal(t, "http://127.0.0.1:8402/v1", root["cursor.openai.baseUrl"])
+	assert.Equal(t, "http://127.0.0.1:8402/a/cursor", root["cursor.anthropic.baseUrl"])
+	assert.Equal(t, "http://127.0.0.1:8402/a/cursor/v1", root["cursor.openai.baseUrl"])
 	assert.Equal(t, float64(14), root["editor.fontSize"]) // pre-existing field preserved
 }
 
@@ -409,14 +431,14 @@ func TestDisconnectClaudeCode_RemovesMarker(t *testing.T) {
 
 func TestShellInitOutput_Bash(t *testing.T) {
 	out := config.ShellInitOutput("bash")
-	assert.Contains(t, out, `export ANTHROPIC_BASE_URL="http://localhost:8402"`)
-	assert.Contains(t, out, `export OPENAI_BASE_URL="http://localhost:8402/v1"`)
+	assert.Contains(t, out, `export ANTHROPIC_BASE_URL="http://127.0.0.1:8402/a/claude-code"`)
+	assert.Contains(t, out, `export OPENAI_BASE_URL="http://127.0.0.1:8402/a/claude-code/v1"`)
 }
 
 func TestShellInitOutput_Fish(t *testing.T) {
 	out := config.ShellInitOutput("fish")
-	assert.Contains(t, out, `set -gx ANTHROPIC_BASE_URL "http://localhost:8402"`)
-	assert.Contains(t, out, `set -gx OPENAI_BASE_URL "http://localhost:8402/v1"`)
+	assert.Contains(t, out, `set -gx ANTHROPIC_BASE_URL "http://127.0.0.1:8402/a/claude-code"`)
+	assert.Contains(t, out, `set -gx OPENAI_BASE_URL "http://127.0.0.1:8402/a/claude-code/v1"`)
 }
 
 // ── Hermes ────────────────────────────────────────────────────────────────────
@@ -436,7 +458,7 @@ func TestConnectHermes_SetsBaseURL(t *testing.T) {
 
 	providers := root["providers"].(map[string]any)
 	anthropic := providers["anthropic"].(map[string]any)
-	assert.Equal(t, "http://127.0.0.1:8402", anthropic["base_url"])
+	assert.Equal(t, "http://127.0.0.1:8402/a/hermes", anthropic["base_url"])
 }
 
 func TestDisconnectHermes_RemovesBaseURL(t *testing.T) {
@@ -585,7 +607,7 @@ func TestUpdateOpenClawModels(t *testing.T) {
 	require.NoError(t, json.Unmarshal(data, &root))
 
 	provider := root["models"].(map[string]any)["providers"].(map[string]any)["anthropic"].(map[string]any)
-	// Other fields preserved.
+	// Other fields preserved (UpdateOpenClawModels only touches the models list).
 	assert.Equal(t, "http://127.0.0.1:8402", provider["baseUrl"])
 	assert.Equal(t, "anthropic-messages", provider["api"])
 	assert.Equal(t, "sk-real", provider["apiKey"])
@@ -662,7 +684,7 @@ func TestConnectOpenCode_SetsBaseUrl(t *testing.T) {
 	var root map[string]any
 	require.NoError(t, json.Unmarshal(data, &root))
 
-	assert.Equal(t, "http://127.0.0.1:8402", root["baseUrl"])
+	assert.Equal(t, "http://127.0.0.1:8402/a/opencode", root["baseUrl"])
 	assert.Equal(t, "anthropic", root["provider"])
 	assert.Equal(t, "sk-test", root["apiKey"])
 }
@@ -713,7 +735,7 @@ wire_api = "chat"
 
 	krouter, _ := providers["krouter"].(map[string]any)
 	require.NotNil(t, krouter, "krouter provider entry must be created")
-	assert.Equal(t, "http://127.0.0.1:8402/v1", krouter["base_url"])
+	assert.Equal(t, "http://127.0.0.1:8402/a/codex/v1", krouter["base_url"])
 	assert.Equal(t, "OPENAI_API_KEY", krouter["env_key"], "env_key inherited from previous provider")
 
 	// Original provider preserved.

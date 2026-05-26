@@ -149,6 +149,9 @@ The daemon listens on two ports:
 				proxy.WithRegistry(reg),
 				proxy.WithStore(store),
 				proxy.WithPricing(pricingSvc),
+				// Recognise the /a/<appid> attribution prefix for every app krouter
+				// can connect (spec/12 §6.3).
+				proxy.WithKnownApps(agentscan.IDs()),
 			)
 
 			// Proxy refresh — re-detects OS proxy every 60s (handles VPN/network changes).

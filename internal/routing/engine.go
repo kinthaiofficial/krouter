@@ -102,7 +102,7 @@ type Request struct {
 	HasImages      bool
 	HasTools       bool
 	SystemPrompt   string // first 300 chars of system prompt, for complexity classification
-	AgentName      string // "claude-code" | "openclaw" | "cursor" | "unknown"
+	AppID          string // application id: "openclaw" | "claude-code" | "cursor" | … ; "unknown" = unrecognised source
 	UserAPIKey     string // forwarded at request time — DO NOT LOG
 }
 
@@ -303,15 +303,15 @@ func (e *Engine) Decide(req Request, preset string) Decision {
 	}
 
 	// Per-agent override takes priority over preset and quota logic.
-	if e.overrides != nil && req.AgentName != "" {
-		if alwaysUse, overridePreset := e.overrides.GetRoutingOverride(req.AgentName); alwaysUse != "" {
+	if e.overrides != nil && req.AppID != "" {
+		if alwaysUse, overridePreset := e.overrides.GetRoutingOverride(req.AppID); alwaysUse != "" {
 			proto := providers.Protocol(req.Protocol)
 			provider := e.pickProviderForModel(proto, alwaysUse)
 			if provider != nil {
 				dec := Decision{
 					Provider: provider.Name(),
 					Model:    alwaysUse,
-					Reason:   fmt.Sprintf("per-agent override for %s: always_use %s", req.AgentName, alwaysUse),
+					Reason:   fmt.Sprintf("per-agent override for %s: always_use %s", req.AppID, alwaysUse),
 				}
 				e.enrichDecision(&dec, req)
 				return dec

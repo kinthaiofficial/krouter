@@ -24,7 +24,18 @@ func ConnectHermes(configPath string) error {
 		return fmt.Errorf("hermes: parse TOML: %w", err)
 	}
 
-	ensureMap(ensureMap(root, "providers"), "anthropic")["base_url"] = proxyBase
+	anthropic := ensureMap(ensureMap(root, "providers"), "anthropic")
+	cur, _ := anthropic["base_url"].(string)
+	if cur != "" && !isKrouterBase(cur) {
+		if _, has := anthropic[krouterOrigBaseURLKey]; !has {
+			anthropic[krouterOrigBaseURLKey] = cur
+		}
+	}
+	base := cur
+	if base == "" {
+		base = "https://api.anthropic.com"
+	}
+	anthropic["base_url"] = krouterAppBaseURL("hermes", base)
 
 	return writeTOML(configPath, root)
 }
@@ -42,7 +53,12 @@ func DisconnectHermes(configPath string) error {
 	}
 
 	if provider := deepMap(root, "providers", "anthropic"); provider != nil {
-		delete(provider, "base_url")
+		if orig, ok := provider[krouterOrigBaseURLKey].(string); ok && orig != "" {
+			provider["base_url"] = orig
+			delete(provider, krouterOrigBaseURLKey)
+		} else {
+			delete(provider, "base_url")
+		}
 	}
 
 	return writeTOML(configPath, root)
