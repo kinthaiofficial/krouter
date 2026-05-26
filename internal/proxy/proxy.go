@@ -326,6 +326,18 @@ func (s *Server) handleAnthropicWithRouting(
 	upstreamResp, dec, err := s.tryWithFallback(r.Context(), r.Header, body, req, preset, "/v1/messages")
 	if err != nil {
 		if errors.Is(err, routing.ErrBudgetExceeded) {
+			// Record the blocked request so it still appears on the dashboards
+			// (#66). Nothing was forwarded upstream, so provider/model are empty.
+			s.logRequest(r.Context(), storage.RequestRecord{
+				ID:             s.storeNewULID(),
+				Timestamp:      start,
+				Agent:          requestAppID(r),
+				Protocol:       "anthropic",
+				RequestedModel: req.RequestedModel,
+				StatusCode:     http.StatusTooManyRequests,
+				LatencyMS:      time.Since(start).Milliseconds(),
+				ErrorMessage:   err.Error(),
+			})
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusTooManyRequests)
 			_, _ = w.Write([]byte(`{"type":"error","error":{"type":"rate_limit_error","message":"Daily budget limit exceeded. Adjust your limit in KRouter Settings."}}`))
@@ -817,6 +829,17 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 	upstreamResp, dec, err := s.tryWithFallback(r.Context(), r.Header, body, req, preset, "/v1/chat/completions")
 	if err != nil {
 		if errors.Is(err, routing.ErrBudgetExceeded) {
+			// Record the blocked request so it still appears on the dashboards (#66).
+			s.logRequest(r.Context(), storage.RequestRecord{
+				ID:             s.storeNewULID(),
+				Timestamp:      start,
+				Agent:          requestAppID(r),
+				Protocol:       "openai",
+				RequestedModel: req.RequestedModel,
+				StatusCode:     http.StatusTooManyRequests,
+				LatencyMS:      time.Since(start).Milliseconds(),
+				ErrorMessage:   err.Error(),
+			})
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusTooManyRequests)
 			_, _ = w.Write([]byte(`{"error":{"type":"insufficient_quota","message":"Daily budget limit exceeded. Adjust your limit in KRouter Settings."}}`))
