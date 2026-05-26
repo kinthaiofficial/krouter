@@ -187,6 +187,8 @@
     "endpoint": "Endpoint",
     "price_input": "输入价格",
     "price_output": "输出价格",
+    "price_cache_read": "缓存读价格",
+    "price_cache_write": "缓存写价格",
     "est_tokens": "预计 Token",
     "tokens_in_out": "{{in}} 入 / {{out}} 出",
     "actual_tokens": "实际 Token",

@@ -187,6 +187,8 @@
     "endpoint": "Endpoint",
     "price_input": "Input price",
     "price_output": "Output price",
+    "price_cache_read": "Cache read price",
+    "price_cache_write": "Cache write price",
     "est_tokens": "Est. tokens",
     "tokens_in_out": "{{in}} in / {{out}} out",
     "actual_tokens": "Actual tokens",

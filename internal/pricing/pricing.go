@@ -380,6 +380,18 @@ func (s *Service) PriceFor(model string) (inputPerMTok, outputPerMTok float64) {
 	return e.InputCostPerToken * 1e6, e.OutputCostPerToken * 1e6
 }
 
+// CacheReadPerMTok returns the cache-read cost per million tokens for model.
+// Returns 0 for models that don't support prompt caching.
+func (s *Service) CacheReadPerMTok(model string) float64 {
+	s.mu.RLock()
+	e, ok := s.prices[model]
+	s.mu.RUnlock()
+	if !ok {
+		return 0
+	}
+	return e.CachedInputCostPerToken * 1e6
+}
+
 // ProviderFor returns the canonical provider name for a given model id —
 // i.e. the provider that "owns" the model in the LiteLLM catalogue.
 // Returns "" for unknown models. Used by the Router dashboard card to

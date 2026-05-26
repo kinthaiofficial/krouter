@@ -93,6 +93,7 @@ export function DecisionCard({ rec, pulse = false, showLatestBadge = false }: De
               model={requestedModel}
               inputPerMTok={rec.requested_input_per_mtok}
               outputPerMTok={rec.requested_output_per_mtok}
+              cacheReadPerMTok={rec.requested_cache_read_per_mtok}
               estInputTokens={rec.input_tokens}
               estOutputTokens={rec.output_tokens}
               t={t}
@@ -110,6 +111,7 @@ export function DecisionCard({ rec, pulse = false, showLatestBadge = false }: De
               highlightModel={modelChanged}
               inputPerMTok={rec.routed_input_per_mtok}
               outputPerMTok={rec.routed_output_per_mtok}
+              cacheReadPerMTok={rec.routed_cache_read_per_mtok}
               highlightPrice={modelChanged}
               estInputTokens={rec.input_tokens}
               estOutputTokens={rec.output_tokens}
@@ -205,6 +207,7 @@ interface RequestCardProps {
   highlightModel?: boolean
   inputPerMTok?: number
   outputPerMTok?: number
+  cacheReadPerMTok?: number
   highlightPrice?: boolean
   estInputTokens: number
   estOutputTokens: number
@@ -213,14 +216,15 @@ interface RequestCardProps {
 
 function RequestCard({
   label, tone, endpoint, protocol, provider, model,
-  highlightModel = false, inputPerMTok, outputPerMTok, highlightPrice = false,
-  estInputTokens, estOutputTokens, t,
+  highlightModel = false, inputPerMTok, outputPerMTok, cacheReadPerMTok,
+  highlightPrice = false, estInputTokens, estOutputTokens, t,
 }: RequestCardProps) {
   const toneCls = {
     gray: 'bg-gray-50 border-gray-200',
     blue: 'bg-blue-50 border-blue-200',
     green: 'bg-green-50 border-green-200',
   }[tone]
+  const cacheWritePerMTok = inputPerMTok != null && inputPerMTok > 0 ? inputPerMTok * 1.25 : undefined
   return (
     <div className={['rounded-lg border px-4 py-3', toneCls].join(' ')}>
       <p className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold mb-2">
@@ -249,6 +253,20 @@ function RequestCard({
           mono
           highlight={highlightPrice}
         />
+        {cacheReadPerMTok != null && cacheReadPerMTok > 0 && (
+          <Field
+            k={t('router.price_cache_read')}
+            v={`$${cacheReadPerMTok.toFixed(2)} / 1M`}
+            mono
+          />
+        )}
+        {cacheWritePerMTok != null && cacheReadPerMTok != null && cacheReadPerMTok > 0 && (
+          <Field
+            k={t('router.price_cache_write')}
+            v={`$${cacheWritePerMTok.toFixed(2)} / 1M`}
+            mono
+          />
+        )}
         <Field
           k={t('router.est_tokens')}
           v={t('router.tokens_in_out', {

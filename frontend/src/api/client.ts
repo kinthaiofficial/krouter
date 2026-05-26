@@ -101,11 +101,13 @@ export interface LogRecord {
   // Optional / absent for legacy daemons and for unknown models — the UI
   // falls back to "—" cleanly.
   requested_provider?: string
-  requested_input_per_mtok?: number   // $ / 1M tokens
+  requested_input_per_mtok?: number        // $ / 1M tokens
   requested_output_per_mtok?: number
+  requested_cache_read_per_mtok?: number   // 0 for models without prompt caching
   routed_input_per_mtok?: number
   routed_output_per_mtok?: number
-  baseline_cost_usd?: number          // (requested model rate × actual tokens)
+  routed_cache_read_per_mtok?: number
+  baseline_cost_usd?: number               // (requested model rate × actual tokens)
 }
 
 export interface StatusResponse {
