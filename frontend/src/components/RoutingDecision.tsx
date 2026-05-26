@@ -306,19 +306,14 @@ function ResponseCard({
     blue: 'bg-blue-50 border-blue-200',
     green: 'bg-green-50 border-green-200',
   }[tone]
-  const tokenParts = [
+  const tokenStr = [
     t('router.tokens_breakdown', {
       in: inputTokens.toLocaleString(),
       out: outputTokens.toLocaleString(),
     }),
-  ]
-  if (cachedTokens > 0) {
-    tokenParts.push(`${cachedTokens.toLocaleString()} ${t('router.tokens_read')}`)
-  }
-  if (cacheWriteTokens > 0) {
-    tokenParts.push(`${cacheWriteTokens.toLocaleString()} ${t('router.tokens_write')}`)
-  }
-  const tokenStr = tokenParts.join(' · ')
+    `${cachedTokens.toLocaleString()} ${t('router.tokens_read')}`,
+    `${cacheWriteTokens.toLocaleString()} ${t('router.tokens_write')}`,
+  ].join(' · ')
   return (
     <div className={['rounded-lg border px-4 py-3', toneCls].join(' ')}>
       <p className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold mb-2">
