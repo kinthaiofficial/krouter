@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.14] - 2026-05-26
+
+### Fixed
+- **MiniMax requests no longer 401 when re-routed via the subscription shortcut** (#63): the MiniMax adapter forwarded the inbound auth header as-is, so a request the engine re-routed here carrying another provider's credential (e.g. an OpenClaw `claude` sub-agent sending an Anthropic `x-api-key`) reached MiniMax without its OAuth Bearer and was rejected. The adapter now injects `Authorization: Bearer <token>` (resolved from `inherited_endpoints.extras_json` — scanned from `auth-profiles.json` — falling back to the in-memory request-header cache) and drops the stale `x-api-key`. When no token is resolvable it falls back to transparent passthrough, so a direct `minimax-portal` request is unaffected.
+- **Budget-blocked requests are written to the dashboards** (#66): the `ErrBudgetExceeded` path returned `429` without logging, so budget-blocked requests vanished from Router/Logs and per-provider stats (the #52 fix only covered the fallback-exhausted `502` path). Both handlers now write a durable `429` log row before responding.
+- **No more negative "savings" for unpriced models** (#64): after #53 (a `$0` baseline for models absent from the pricing catalog), the per-request savings banner rendered `baseline − cost` as a negative number. The daemon now omits the baseline from the live event when it is `0` (matching `/internal/logs`), and the UI renders the savings banner only when the baseline is positive — an unpriced model shows no banner instead of a misleading loss.
+
 ## [2.3.13] - 2026-05-26
 
 ### Changed
