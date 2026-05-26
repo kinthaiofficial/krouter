@@ -179,6 +179,7 @@
     "agent": "Agent",
     "saved_vs_requested": "相比原模型已节省",
     "no_change": "未做模型与 Provider 切换，无节省可统计。",
+    "no_routing_change": "未改写",
     "open_logs": "查看日志",
     "all_loaded": "已加载全部 {{n}} 条",
     "latest_badge": "最新",

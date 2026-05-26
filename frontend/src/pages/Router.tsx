@@ -77,7 +77,7 @@ export default function Router() {
   }, [hasMore])
 
   return (
-    <div className="p-6 space-y-4 max-w-6xl mx-auto">
+    <div className="p-6 space-y-5 max-w-6xl mx-auto">
       <PageHeader
         title={t('router.title')}
         subtitle={t('router.subtitle')}

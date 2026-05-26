@@ -179,6 +179,7 @@
     "agent": "Agent",
     "saved_vs_requested": "saved vs. requested model",
     "no_change": "Routed to the same model and provider — no savings to report.",
+    "no_routing_change": "unchanged",
     "open_logs": "View logs",
     "all_loaded": "All {{n}} requests loaded",
     "latest_badge": "LATEST",
