@@ -330,6 +330,20 @@ func (e *Engine) Decide(req Request, preset string) Decision {
 		}
 	}
 
+	// Session-sticky short-circuit: preserve prompt cache value when the
+	// cache hit rate is high enough that staying on the bound (provider, model)
+	// is mathematically cheaper than switching to a cheaper alternative.
+	// Only active for saver/balanced — quality users prioritise capability.
+	if e.session != nil && req.SessionKey != "" &&
+		(preset == PresetSaver || preset == PresetBalanced || preset == "") {
+		if sess, ok := e.session.Get(req.SessionKey); ok && sess.RequestCount > 0 {
+			if dec, sticky := e.tryStickyRoute(req, sess); sticky {
+				e.enrichDecision(&dec, req)
+				return dec
+			}
+		}
+	}
+
 	preset = e.applyQuotaDowngrade(preset)
 	var dec Decision
 	switch preset {
@@ -430,11 +444,16 @@ func (e *Engine) fallbackOpenAI(req Request, tried map[string]bool) Decision {
 	return Decision{}
 }
 
-// enrichDecision fills EstimatedCostUSD. Savings percentage display is
-// intentionally omitted here: the previous "比 X 便宜 Y%" calculation
-// ignored cache state, producing numbers that were badly wrong for long
-// sessions with high cache hit rates (Phase 3 will restore an accurate
-// session-aware version).
+// enrichDecision fills EstimatedCostUSD and, when the routed model differs from
+// the requested model, appends a savings annotation to Reason.
+//
+// When session data is available, savings are computed cache-aware:
+//
+//	keptCost   = requestedPrice × tokens × (hitRate×0.1 + (1−hitRate))
+//	switchCost = routedPrice × tokens × 1.25   (cache cold + write surcharge)
+//
+// When there is no session data yet, falls back to a conservative bare
+// input-price comparison (both sides assumed cache cold).
 func (e *Engine) enrichDecision(dec *Decision, req Request) {
 	if e.pricing == nil || dec.Provider == "" || req.InputTokenEst == 0 {
 		return
@@ -444,6 +463,124 @@ func (e *Engine) enrichDecision(dec *Decision, req Request) {
 	if dec.EstimatedCostUSD == 0 && dec.Model != "" {
 		costPerToken := e.pricing.InputCostPerToken(dec.Model)
 		dec.EstimatedCostUSD = costPerToken * float64(req.InputTokenEst)
+	}
+
+	if dec.Model == req.RequestedModel || req.RequestedModel == "" {
+		return
+	}
+
+	requestedPrice := e.pricing.InputCostPerToken(req.RequestedModel)
+	routedPrice := e.pricing.InputCostPerToken(dec.Model)
+	if requestedPrice == 0 || routedPrice == 0 {
+		return
+	}
+
+	tokens := float64(req.InputTokenEst)
+
+	// Session-aware savings: account for cache hit rate on the requested model.
+	if e.session != nil && req.SessionKey != "" {
+		if sess, ok := e.session.Get(req.SessionKey); ok && sess.RequestCount > 0 {
+			hitRate := sess.CacheHitRate()
+			keptCost := requestedPrice * tokens * (hitRate*0.1 + (1-hitRate))
+			switchCost := routedPrice * tokens * 1.25
+			if switchCost < keptCost {
+				savings := (keptCost - switchCost) / keptCost * 100
+				dec.Reason = fmt.Sprintf("%s（比延续 %s 便宜约 %.0f%%）",
+					dec.Reason, req.RequestedModel, savings)
+			}
+			return
+		}
+	}
+
+	// No session data — conservative bare-price comparison.
+	if routedPrice < requestedPrice {
+		savings := (requestedPrice - routedPrice) / requestedPrice * 100
+		dec.Reason = fmt.Sprintf("%s（比 %s 便宜 %.0f%%）",
+			dec.Reason, req.RequestedModel, savings)
+	}
+}
+
+// tryStickyRoute returns (decision, true) when the session should stick to its
+// bound (provider, model). Returns (zero, false) to fall through to preset logic.
+//
+// Decision rules (evaluated in order):
+//
+//  1. OutputShare > 30% → fall through (output savings dominate cache value)
+//  2. Bound provider no longer healthy/available → fall through
+//  3. No cheaper alternative in same protocol → stick
+//  4. prices unknown → stick conservatively
+//  5. Compute breakeven hit rate; if ≥ 1.0 → fall through (candidate always wins)
+//  6. If breakeven ≤ 0 → stick (no incentive to switch)
+//  7. If actual hit rate ≥ breakeven → stick
+//  8. Otherwise → fall through (let preset pick cheaper)
+func (e *Engine) tryStickyRoute(req Request, sess SessionState) (Decision, bool) {
+	// Rule 1: output-dominated requests — cache savings can't compensate.
+	if sess.OutputShare() > 0.30 {
+		return Decision{}, false
+	}
+
+	proto := providers.Protocol(req.Protocol)
+
+	// Rule 2: bound provider must still be online and healthy.
+	boundProv := e.pickProviderForModel(proto, sess.BoundModel)
+	if boundProv == nil || boundProv.Name() != sess.BoundProvider {
+		return Decision{}, false
+	}
+
+	// Rule 3 & 4: no pricing or no cheaper alternative → stick.
+	if e.pricing == nil {
+		return e.buildStickyDecision(sess), true
+	}
+	candProv, candModel := e.cheapestProviderModel(proto)
+	if candProv == nil ||
+		(candProv.Name() == sess.BoundProvider && candModel == sess.BoundModel) {
+		return e.buildStickyDecision(sess), true
+	}
+
+	boundPrice := e.pricing.InputCostPerToken(sess.BoundModel)
+	candPrice := e.pricing.InputCostPerToken(candModel)
+	threshold := cacheHitBreakeven(boundPrice, candPrice)
+
+	// Rule 4: price signal missing → stick conservatively.
+	if threshold < 0 {
+		return e.buildStickyDecision(sess), true
+	}
+	// Rule 5: candidate so cheap that cache can never save the bound model.
+	if threshold >= 1.0 {
+		return Decision{}, false
+	}
+	// Rule 6: no incentive to switch (candidate not actually cheaper).
+	if threshold <= 0 {
+		return e.buildStickyDecision(sess), true
+	}
+
+	// Rule 7-8: compare actual hit rate against breakeven.
+	actual := sess.CacheHitRate()
+	if actual >= threshold {
+		return e.buildStickyDecisionWithThreshold(sess, actual, threshold, candModel), true
+	}
+	return Decision{}, false
+}
+
+func (e *Engine) buildStickyDecision(sess SessionState) Decision {
+	return Decision{
+		Provider: sess.BoundProvider,
+		Model:    sess.BoundModel,
+		Reason: fmt.Sprintf("sticky: hit_rate=%.2f, output_share=%.2f, turn=%d",
+			sess.CacheHitRate(), sess.OutputShare(), sess.RequestCount),
+	}
+}
+
+func (e *Engine) buildStickyDecisionWithThreshold(
+	sess SessionState, actual, threshold float64, cmpModel string,
+) Decision {
+	return Decision{
+		Provider: sess.BoundProvider,
+		Model:    sess.BoundModel,
+		Reason: fmt.Sprintf(
+			"sticky: hit_rate=%.2f >= breakeven=%.2f (vs %s), output_share=%.2f, turn=%d",
+			actual, threshold, cmpModel, sess.OutputShare(), sess.RequestCount,
+		),
 	}
 }
 

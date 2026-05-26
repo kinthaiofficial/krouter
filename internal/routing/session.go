@@ -2,16 +2,20 @@ package routing
 
 // SessionState tracks aggregated token usage for a single agent conversation
 // (identified by a stable session key derived from api_key + system_prompt +
-// tools + first user message). Used in Phase 2 (shadow mode) to observe cache
-// hit rates before Phase 3 enables cache-aware sticky routing.
+// tools + first user message).
+//
+// BoundProvider and BoundModel are set from the first request's routing
+// decision and never updated. They are the sticky target for Phase 3
+// cache-aware routing: switching away from this (provider, model) pair would
+// invalidate the accumulated prompt cache.
 type SessionState struct {
-	Requests         int
+	BoundProvider    string // first request's resolved provider — sticky target
+	BoundModel       string // first request's resolved model — sticky target
+	RequestCount     int
 	FreshInputTokens int
 	CachedTokens     int
 	OutputTokens     int
 	CacheWriteTokens int
-	LastProvider     string
-	LastModel        string
 }
 
 // CacheHitRate returns the fraction of input tokens served from cache.

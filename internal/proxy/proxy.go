@@ -1175,13 +1175,17 @@ func (s *Server) updateSessionFromResponse(key, provider, model string, in, out,
 		return
 	}
 	s.sessionStore.Update(key, func(st *routing.SessionState) {
-		st.Requests++
+		if st.RequestCount == 0 {
+			// Bind provider and model on the first observed request only.
+			// These are the sticky targets for Phase 3 cache-aware routing.
+			st.BoundProvider = provider
+			st.BoundModel = model
+		}
+		st.RequestCount++
 		st.FreshInputTokens += in
 		st.CachedTokens += cached
 		st.OutputTokens += out
 		st.CacheWriteTokens += cacheWrite
-		st.LastProvider = provider
-		st.LastModel = model
 	})
 }
 
