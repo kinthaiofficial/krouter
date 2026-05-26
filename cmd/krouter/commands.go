@@ -283,10 +283,19 @@ func newTestCommand() *cobra.Command {
 			defer func() { _ = resp.Body.Close() }()
 			_, _ = io.ReadAll(resp.Body)
 
-			provider := resp.Header.Get("X-Krouter-Provider")
-			model := resp.Header.Get("X-Krouter-Model")
-			if provider != "" && model != "" {
-				fmt.Printf("  ✓ Routing decided: %s/%s (%s preset)\n", provider, model, preset)
+			// Read routing decision from the management API logs (non-streaming
+			// path writes the log synchronously before the response returns).
+			if token, tokErr := readInternalToken(); tokErr == nil {
+				if logsResp, logsErr := callManagement(token, "/internal/logs?limit=1"); logsErr == nil {
+					defer func() { _ = logsResp.Body.Close() }()
+					var rows []struct {
+						Provider string `json:"provider"`
+						Model    string `json:"model"`
+					}
+					if json.NewDecoder(logsResp.Body).Decode(&rows) == nil && len(rows) > 0 {
+						fmt.Printf("  ✓ Routing decided: %s/%s (%s preset)\n", rows[0].Provider, rows[0].Model, preset)
+					}
+				}
 			}
 			fmt.Printf("  ✓ Upstream response: %d %s\n", resp.StatusCode, http.StatusText(resp.StatusCode))
 			fmt.Printf("  ✓ Response time: %dms\n", latency.Milliseconds())

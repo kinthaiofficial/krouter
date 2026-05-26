@@ -428,9 +428,6 @@ func (s *Server) handleAnthropicWithRouting(
 			w.Header().Add(k, v)
 		}
 	}
-	w.Header().Set("X-Krouter-Provider", dec.Provider)
-	w.Header().Set("X-Krouter-Model", dec.Model)
-
 	if stream && statusCode == http.StatusOK {
 		s.streamSSEWithCapture(w, r, upstreamResp.Body, func(captured []byte) {
 			// Store raw capture for /internal/debug/last-sse-capture diagnosis.
