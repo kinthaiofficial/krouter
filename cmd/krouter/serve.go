@@ -112,7 +112,19 @@ The daemon listens on two ports:
 			// hardcoded entries that require special protocol handling.
 			reg := providers.New()
 			reg.Register(anthropicadapter.New("https://api.anthropic.com", sharedClient))
-			reg.Register(minimaxadapter.New(sharedClient)) // transparent proxy — auth header comes from the agent (OpenClaw OAuth)
+			// MiniMax: inject its OAuth Bearer so requests the engine re-routes
+			// here (e.g. an OpenClaw claude sub-agent sending an Anthropic
+			// x-api-key) authenticate against MiniMax instead of 401ing (#63).
+			// Token source mirrors the quota poller: inherited_endpoints
+			// (scanned from auth-profiles.json) → in-memory request cache.
+			mmAdapter := minimaxadapter.New(sharedClient)
+			mmAdapter.SetAuthResolver(func() string {
+				if t := readMinimaxOAuthFromInheritedEndpoints(context.Background(), store); t != "" {
+					return t
+				}
+				return minimaxadapter.GetCachedToken()
+			})
+			reg.Register(mmAdapter)
 			loadProvidersFromDB(ctx, store, reg, sharedClient)
 
 			// Routing engine.

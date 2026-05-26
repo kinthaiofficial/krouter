@@ -36,7 +36,18 @@ type Adapter struct {
 	baseURL    string
 	models     []string
 	httpClient *http.Client
+
+	// authResolver, when set and returning a non-empty token, makes Forward
+	// inject "Authorization: Bearer <token>" and drop the inbound x-api-key.
+	// Used by MiniMax: a request the engine re-routes here may carry another
+	// provider's auth (e.g. an Anthropic x-api-key from OpenClaw's claude
+	// sub-agent), so the inbound header must be replaced with MiniMax's own
+	// OAuth token. Nil = transparent passthrough (forward auth as-is).
+	authResolver func() string
 }
+
+// SetAuthResolver installs an auth-token resolver (see the authResolver field).
+func (a *Adapter) SetAuthResolver(fn func() string) { a.authResolver = fn }
 
 // New creates an Anthropic adapter targeting https://api.anthropic.com.
 // baseURL is typically "https://api.anthropic.com"; pass a test server URL for testing.
@@ -69,7 +80,7 @@ func NewNamed(name, baseURL string, models []string, client *http.Client) *Adapt
 	}
 }
 
-func (a *Adapter) Name() string                { return a.name }
+func (a *Adapter) Name() string                 { return a.name }
 func (a *Adapter) Protocol() providers.Protocol { return providers.ProtocolAnthropic }
 func (a *Adapter) SupportedModels() []string {
 	if a.models != nil {
@@ -164,6 +175,17 @@ func (a *Adapter) Forward(ctx context.Context, req *http.Request) (*http.Respons
 	// Remove Accept-Encoding so Anthropic returns plain text, not gzip.
 	// krouter must parse the SSE stream for token counts; gzip bytes are unparseable.
 	upstreamReq.Header.Del("Accept-Encoding")
+
+	// Inject this provider's own auth when a resolver supplies a token. This
+	// covers re-routed requests that arrived carrying a different provider's
+	// credential (see authResolver). With no resolver / no token we forward the
+	// inbound auth untouched (transparent proxy).
+	if a.authResolver != nil {
+		if tok := a.authResolver(); tok != "" {
+			upstreamReq.Header.Set("Authorization", "Bearer "+tok)
+			upstreamReq.Header.Del("x-api-key")
+		}
+	}
 
 	resp, err := a.httpClient.Do(upstreamReq)
 	if err != nil {

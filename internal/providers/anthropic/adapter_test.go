@@ -77,6 +77,61 @@ func TestAdapter_Forward_HeadersForwarded(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
+// When an auth resolver yields a token, Forward injects it as Bearer and drops
+// the stale inbound x-api-key — the MiniMax re-route fix for #63.
+func TestAdapter_Forward_AuthResolverInjectsBearer(t *testing.T) {
+	var gotAuth, gotXAPIKey string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotXAPIKey = r.Header.Get("x-api-key")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer upstream.Close()
+
+	a := anthropicadapter.New(upstream.URL, upstream.Client())
+	a.SetAuthResolver(func() string { return "mm-oauth-token" })
+
+	// Inbound carries an Anthropic x-api-key, as a re-routed claude request would.
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost,
+		"http://127.0.0.1:8402/v1/messages", strings.NewReader(`{}`))
+	req.Header.Set("x-api-key", "sk-anthropic-wrong")
+
+	resp, err := a.Forward(context.Background(), req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, "Bearer mm-oauth-token", gotAuth, "resolver token must be injected as Bearer")
+	assert.Empty(t, gotXAPIKey, "stale x-api-key must be dropped")
+}
+
+// With no resolved token, Forward leaves the inbound auth untouched (passthrough).
+func TestAdapter_Forward_AuthResolverEmptyPassesThrough(t *testing.T) {
+	var gotAuth, gotXAPIKey string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotXAPIKey = r.Header.Get("x-api-key")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer upstream.Close()
+
+	a := anthropicadapter.New(upstream.URL, upstream.Client())
+	a.SetAuthResolver(func() string { return "" }) // no token → passthrough
+
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost,
+		"http://127.0.0.1:8402/v1/messages", strings.NewReader(`{}`))
+	req.Header.Set("x-api-key", "sk-direct")
+	req.Header.Set("Authorization", "Bearer inbound-bearer")
+
+	resp, err := a.Forward(context.Background(), req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, "sk-direct", gotXAPIKey, "no resolved token → forward inbound untouched")
+	assert.Equal(t, "Bearer inbound-bearer", gotAuth)
+}
+
 func TestAdapter_Forward_UpstreamErrorPassthrough(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
