@@ -4,8 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { RefreshCw, ChevronDown, ChevronUp, Check, Power, Edit2 } from 'lucide-react'
 import {
   api,
-  type SupportedAgent,
-  type ConfiguredAgent,
+  type SupportedApp,
+  type ConfiguredApp,
 } from '../api/client'
 
 // AppInheritanceSection renders the spec/04 app-inheritance UI: it lists
@@ -107,8 +107,8 @@ function AgentRow({
   onDisable,
   onRescan,
 }: {
-  supported: SupportedAgent
-  config?: ConfiguredAgent
+  supported: SupportedApp
+  config?: ConfiguredApp
   busy: boolean
   onEnable: () => void
   onDisable: () => void

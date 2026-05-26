@@ -61,11 +61,11 @@ export function DecisionCard({ rec, pulse = false, showLatestBadge = false }: De
           <span className="text-xs text-gray-400 tabular-nums font-mono">
             {new Date(rec.ts).toLocaleString()}
           </span>
-          {rec.agent && (
+          {rec.app && (
             <>
               <span className="text-gray-300 text-xs">·</span>
               <span className="inline-flex items-center text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full">
-                {rec.agent}
+                {rec.app}
               </span>
             </>
           )}
@@ -376,7 +376,7 @@ export function DecisionRow({
         <span className="text-xs text-gray-400 w-32 shrink-0 tabular-nums">
           {new Date(r.ts).toLocaleString()}
         </span>
-        <span className="w-24 shrink-0 truncate text-gray-700">{r.agent ?? '—'}</span>
+        <span className="w-24 shrink-0 truncate text-gray-700">{r.app ?? '—'}</span>
         <span className="font-mono text-xs text-gray-500 truncate">{requested}</span>
         <ArrowRight size={12} className="text-gray-300 shrink-0" />
         <span className={['font-mono text-xs truncate', modelChanged ? 'text-green-700 font-semibold' : 'text-gray-500'].join(' ')}>
