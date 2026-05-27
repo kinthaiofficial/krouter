@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.7] - 2026-05-27
+
+### Fixed
+- **Quality preset no longer over-upgrades simple requests to opus** (#65): `ComplexityScore` previously treated `HasTools=true` and system-prompt keywords (e.g. "debug", "refactor") as complexity signals, which caused every Claude Code / Cursor request to score as "complex" and get upgraded to opus — bypassing the MiniMax subscription benefit. Those signals are removed; complexity now depends only on `HasImages` and `InputTokenEst` (>10 k tokens → complex, 4 k–10 k → medium).
+- **Apply Update button no longer stays stuck on "Restarting…"** (#71): after the daemon restarts from a self-update, the About page now polls `/internal/status` every 1.5 s until the version changes (or a 2-minute timeout), then resets the mutation state and re-runs the update check so the UI reflects the new version instead of staying frozen.
+
 ## [2.4.6] - 2026-05-26
 
 ### Changed
