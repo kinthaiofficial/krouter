@@ -9,6 +9,7 @@ package agentscan
 //
 // Phase 1: OpenClaw and Claude Code (validated against real on-disk schemas).
 // Phase 2: Cursor, Hermes, OpenCode, Codex (config formats confirmed).
+// Phase 2: Pi (terminal coding agent, ~/.pi/agent/models.json).
 var Scanners = []Scanner{
 	OpenClawScanner{},
 	ClaudeCodeScanner{},
@@ -16,6 +17,7 @@ var Scanners = []Scanner{
 	HermesScanner{},
 	OpenCodeScanner{},
 	CodexScanner{},
+	PiScanner{},
 }
 
 // Get returns the Scanner with the given AppID, or nil if none is
