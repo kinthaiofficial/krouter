@@ -51,11 +51,9 @@ describe('Dashboard', () => {
     expect(screen.getByText('Dashboard')).toBeInTheDocument()
   })
 
-  it('displays preset switcher', () => {
+  it('displays provider distribution panel', () => {
     renderWithProviders(<Dashboard />)
-    expect(screen.getByText('Saver')).toBeInTheDocument()
-    expect(screen.getByText('Balanced')).toBeInTheDocument()
-    expect(screen.getByText('Quality')).toBeInTheDocument()
+    expect(screen.getByText(/Provider Distribution/i)).toBeInTheDocument()
   })
 
   it('shows today stats from /internal/budget', async () => {

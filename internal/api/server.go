@@ -71,6 +71,7 @@ var validPresets = map[string]bool{
 	"balanced":    true,
 	"quality":     true,
 	"passthrough": true,
+	"":            true, // empty = reset to type-based default
 }
 
 // sseEvent is a single Server-Sent Event.

@@ -109,7 +109,9 @@
     "preview_detail": "Review the config changes before connecting.",
     "before": "Before",
     "after": "After",
-    "confirm_connect": "Confirm Connect"
+    "confirm_connect": "Confirm Connect",
+    "preset_label": "Routing",
+    "preset_reset": "Reset to default"
   },
   "logs": {
     "title": "Request Logs",

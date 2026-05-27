@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 import {
   api,
-  type BackupInfo, type AppDiff,
+  type Preset, type BackupInfo, type AppDiff,
   type SupportedApp, type ConfiguredApp, type KeyHintChannel,
 } from '../api/client'
 import { PageHeader } from '../components/ui'
@@ -364,6 +364,10 @@ function UnifiedAgentCard({
     mutationFn: (path?: string) => api.appRescan(a.id, path),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['apps-configured'] }) },
   })
+  const setPreset = useMutation({
+    mutationFn: (preset: string) => api.setAppPreset(a.id, preset),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['apps-configured'] }) },
+  })
 
   // Proxy connect/disconnect mutations
   const connectMutation = useMutation({
@@ -581,6 +585,32 @@ function UnifiedAgentCard({
             {(a.status.providers ?? []).map((name) => (
               <ProviderChip key={name} name={name} />
             ))}
+          </div>
+        )}
+
+        {/* Routing preset selector */}
+        {a.config && (
+          <div className="flex items-center gap-2 text-xs border-t border-gray-100 pt-3">
+            <span className="text-gray-500">{t('apps.preset_label')}:</span>
+            <select
+              value={a.config.preset || defaultPresetForApp(a.id)}
+              onChange={(e) => setPreset.mutate(e.target.value)}
+              disabled={setPreset.isPending}
+              className="text-xs border border-gray-200 rounded px-1.5 py-0.5 bg-white disabled:opacity-50"
+            >
+              {(['saver', 'balanced', 'quality', 'passthrough'] as Preset[]).map((p) => (
+                <option key={p} value={p}>{t(`preset.${p}`)}</option>
+              ))}
+            </select>
+            {a.config.preset && (
+              <button
+                onClick={() => setPreset.mutate('')}
+                disabled={setPreset.isPending}
+                className="text-[11px] text-gray-400 hover:text-gray-600 disabled:opacity-50"
+              >
+                {t('apps.preset_reset')}
+              </button>
+            )}
           </div>
         )}
 
@@ -834,6 +864,12 @@ function KeyHintChannels({ hints }: { hints: KeyHintChannel[] }) {
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
+
+const codingAppIDs = new Set(['claude-code', 'cursor', 'codex', 'opencode', 'pi'])
+
+function defaultPresetForApp(appId: string): Preset {
+  return codingAppIDs.has(appId) ? 'passthrough' : 'balanced'
+}
 
 function relativeTime(msUTC: number): string {
   const seconds = Math.floor((Date.now() - msUTC) / 1000)

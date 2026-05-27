@@ -14,21 +14,23 @@ type AppSetting struct {
 	ConfigPath    string `json:"config_path"`
 	LastScannedAt *int64 `json:"last_scanned_at,omitempty"` // ms UTC, nil when never scanned
 	LastError     string `json:"last_error,omitempty"`
+	Preset        string `json:"preset,omitempty"` // "" = use type-based default
 }
 
 // GetAppSetting returns the row for appID or (nil, nil) when no row exists.
 // A missing row is normal: the user has not enabled / customised this app.
 func (s *Store) GetAppSetting(ctx context.Context, appID string) (*AppSetting, error) {
-	const q = `SELECT app_id, enabled, config_path, last_scanned_at, last_error
+	const q = `SELECT app_id, enabled, config_path, last_scanned_at, last_error, preset
 	           FROM app_settings WHERE app_id = ?`
 	var (
 		a            AppSetting
 		enabled      int
 		lastScanned  sql.NullInt64
 		lastErrorStr sql.NullString
+		preset       sql.NullString
 	)
 	err := s.db.QueryRowContext(ctx, q, appID).Scan(
-		&a.AppID, &enabled, &a.ConfigPath, &lastScanned, &lastErrorStr,
+		&a.AppID, &enabled, &a.ConfigPath, &lastScanned, &lastErrorStr, &preset,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -44,12 +46,15 @@ func (s *Store) GetAppSetting(ctx context.Context, appID string) (*AppSetting, e
 	if lastErrorStr.Valid {
 		a.LastError = lastErrorStr.String
 	}
+	if preset.Valid {
+		a.Preset = preset.String
+	}
 	return &a, nil
 }
 
 // ListAppSettings returns every row in app_settings, ordered by app_id.
 func (s *Store) ListAppSettings(ctx context.Context) ([]AppSetting, error) {
-	const q = `SELECT app_id, enabled, config_path, last_scanned_at, last_error
+	const q = `SELECT app_id, enabled, config_path, last_scanned_at, last_error, preset
 	           FROM app_settings ORDER BY app_id`
 	rows, err := s.db.QueryContext(ctx, q)
 	if err != nil {
@@ -63,8 +68,9 @@ func (s *Store) ListAppSettings(ctx context.Context) ([]AppSetting, error) {
 			enabled      int
 			lastScanned  sql.NullInt64
 			lastErrorStr sql.NullString
+			preset       sql.NullString
 		)
-		if err := rows.Scan(&a.AppID, &enabled, &a.ConfigPath, &lastScanned, &lastErrorStr); err != nil {
+		if err := rows.Scan(&a.AppID, &enabled, &a.ConfigPath, &lastScanned, &lastErrorStr, &preset); err != nil {
 			return nil, err
 		}
 		a.Enabled = enabled != 0
@@ -74,6 +80,9 @@ func (s *Store) ListAppSettings(ctx context.Context) ([]AppSetting, error) {
 		}
 		if lastErrorStr.Valid {
 			a.LastError = lastErrorStr.String
+		}
+		if preset.Valid {
+			a.Preset = preset.String
 		}
 		out = append(out, a)
 	}
@@ -85,13 +94,14 @@ func (s *Store) ListAppSettings(ctx context.Context) ([]AppSetting, error) {
 // (handled by the SQL via COALESCE so callers can omit timestamps when only
 // flipping enabled/config_path).
 func (s *Store) UpsertAppSetting(ctx context.Context, a AppSetting) error {
-	const q = `INSERT INTO app_settings (app_id, enabled, config_path, last_scanned_at, last_error)
-	           VALUES (?, ?, ?, ?, ?)
+	const q = `INSERT INTO app_settings (app_id, enabled, config_path, last_scanned_at, last_error, preset)
+	           VALUES (?, ?, ?, ?, ?, ?)
 	           ON CONFLICT(app_id) DO UPDATE SET
 	             enabled         = excluded.enabled,
 	             config_path     = excluded.config_path,
 	             last_scanned_at = COALESCE(excluded.last_scanned_at, app_settings.last_scanned_at),
-	             last_error      = excluded.last_error`
+	             last_error      = excluded.last_error,
+	             preset          = excluded.preset`
 	enabled := 0
 	if a.Enabled {
 		enabled = 1
@@ -104,7 +114,7 @@ func (s *Store) UpsertAppSetting(ctx context.Context, a AppSetting) error {
 	if a.LastError != "" {
 		le = a.LastError
 	}
-	_, err := s.db.ExecContext(ctx, q, a.AppID, enabled, a.ConfigPath, ls, le)
+	_, err := s.db.ExecContext(ctx, q, a.AppID, enabled, a.ConfigPath, ls, le, a.Preset)
 	return err
 }
 

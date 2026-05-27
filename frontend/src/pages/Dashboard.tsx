@@ -2,8 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { useTranslation } from 'react-i18next'
-import { api, type Preset, type DashboardStats, type PresetStat } from '../api/client'
-import PresetSwitcher from '../components/PresetSwitcher'
+import { api, type DashboardStats, type PresetStat } from '../api/client'
 import QuotaBar from '../components/QuotaBar'
 import { Panel, Badge } from '../components/ui'
 
@@ -15,7 +14,6 @@ export default function Dashboard() {
   const { data: status } = useQuery({ queryKey: ['status'], queryFn: api.status })
   const { data: budget } = useQuery({ queryKey: ['budget'], queryFn: api.budget })
   const { data: quotas } = useQuery({ queryKey: ['quota'], queryFn: api.quota })
-  const { data: presetData } = useQuery({ queryKey: ['preset'], queryFn: api.preset })
   const { data: dashStats } = useQuery<DashboardStats>({
     queryKey: ['dashboard-stats'],
     queryFn: api.dashboardStats,
@@ -32,7 +30,6 @@ export default function Dashboard() {
       qc.invalidateQueries({ queryKey: ['quota'] })
     })
     es.addEventListener('settings_changed', () => {
-      qc.invalidateQueries({ queryKey: ['preset'] })
       qc.invalidateQueries({ queryKey: ['settings'] })
     })
     es.addEventListener('budget_warning', () => {
@@ -40,11 +37,6 @@ export default function Dashboard() {
     })
     return () => es.close()
   }, [qc])
-
-  const setPreset = useMutation({
-    mutationFn: (p: Preset) => api.setPreset(p),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['preset'] }),
-  })
 
   const savings = budget?.savings_today_usd ?? 0
   const cost = budget?.cost_today_usd ?? 0
@@ -78,26 +70,19 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Preset + provider distribution */}
-      <div className="grid md:grid-cols-[300px_1fr] gap-4 items-start">
-        <PresetSwitcher
-          current={presetData?.preset ?? 'balanced'}
-          onSelect={(p) => setPreset.mutate(p)}
-        />
-
-        {dashStats && dashStats.providers.length > 0 ? (
-          <Panel
-            title={t('dashboard.provider_distribution')}
-            right={<Badge>{t('dashboard.apps_connected', { count: dashStats.apps_connected })}</Badge>}
-          >
-            <ProviderDist providers={dashStats.providers} />
-          </Panel>
-        ) : (
-          <Panel title={t('dashboard.provider_distribution')}>
-            <p className="text-sm text-faint">{t('dashboard.no_requests')}</p>
-          </Panel>
-        )}
-      </div>
+      {/* Provider distribution */}
+      {dashStats && dashStats.providers.length > 0 ? (
+        <Panel
+          title={t('dashboard.provider_distribution')}
+          right={<Badge>{t('dashboard.apps_connected', { count: dashStats.apps_connected })}</Badge>}
+        >
+          <ProviderDist providers={dashStats.providers} />
+        </Panel>
+      ) : (
+        <Panel title={t('dashboard.provider_distribution')}>
+          <p className="text-sm text-faint">{t('dashboard.no_requests')}</p>
+        </Panel>
+      )}
 
       {budget?.daily_limit_usd && (
         <BudgetBar

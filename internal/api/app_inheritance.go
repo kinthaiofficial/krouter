@@ -29,6 +29,7 @@ type configuredAppJSON struct {
 	LastScannedAt  *int64 `json:"last_scanned_at,omitempty"`
 	LastError      string `json:"last_error,omitempty"`
 	InheritedCount int    `json:"inherited_count"`
+	Preset         string `json:"preset,omitempty"` // "" = use type-based default
 }
 
 // ─── GET /internal/apps/supported ───────────────────────────────────────────
@@ -78,6 +79,7 @@ func (s *Server) handleAppsConfigured(w http.ResponseWriter, r *http.Request) {
 			LastScannedAt:  st.LastScannedAt,
 			LastError:      st.LastError,
 			InheritedCount: count,
+			Preset:         st.Preset,
 		})
 	}
 	writeJSON(w, out)
@@ -244,7 +246,7 @@ func (s *Server) doAppDelete(w http.ResponseWriter, r *http.Request, appID strin
 // ─── Dispatch helpers ──────────────────────────────────────────────────────
 
 // inheritanceActionDispatch is called from handleAppAction's default branch
-// when the action is one of the inheritance verbs (rescan / enable / disable).
+// when the action is one of the inheritance verbs (rescan / enable / disable / preset).
 // Returns true if it handled the request.
 func (s *Server) inheritanceActionDispatch(w http.ResponseWriter, r *http.Request, name, action string) bool {
 	switch action {
@@ -257,8 +259,56 @@ func (s *Server) inheritanceActionDispatch(w http.ResponseWriter, r *http.Reques
 	case "disable":
 		s.doAppDisable(w, r, name)
 		return true
+	case "preset":
+		s.doAppSetPreset(w, r, name)
+		return true
 	}
 	return false
+}
+
+// ─── POST /internal/apps/{id}/preset ────────────────────────────────────────
+
+func (s *Server) doAppSetPreset(w http.ResponseWriter, r *http.Request, appID string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.store == nil {
+		http.Error(w, "store unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	var body struct {
+		Preset string `json:"preset"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if !validPresets[body.Preset] {
+		http.Error(w, "invalid preset", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+	existing, err := s.store.GetAppSetting(ctx, appID)
+	if err != nil {
+		http.Error(w, "database error", http.StatusInternalServerError)
+		return
+	}
+	if existing == nil {
+		http.Error(w, "app not found", http.StatusNotFound)
+		return
+	}
+
+	existing.Preset = body.Preset
+	if err := s.store.UpsertAppSetting(ctx, *existing); err != nil {
+		http.Error(w, "database error", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, map[string]any{"ok": true, "app_id": appID, "preset": body.Preset})
+	s.Broadcast("apps_changed", map[string]any{"app_id": appID})
 }
 
 // resolveProviderKey returns the API key for providerName inherited from any

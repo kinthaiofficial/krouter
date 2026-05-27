@@ -109,7 +109,9 @@
     "preview_detail": "连接前请确认配置变更内容。",
     "before": "变更前",
     "after": "变更后",
-    "confirm_connect": "确认连接"
+    "confirm_connect": "确认连接",
+    "preset_label": "路由模式",
+    "preset_reset": "重置为默认"
   },
   "logs": {
     "title": "请求日志",

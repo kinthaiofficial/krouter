@@ -344,7 +344,7 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 	start := time.Now()
 
 	if s.engine != nil {
-		preset := s.currentPreset(r.Context())
+		preset := s.presetForApp(r.Context(), requestAppID(r))
 		s.handleAnthropicWithRouting(w, r, body, parsed.Model, parsed.Stream, len(parsed.Tools) > 0, start, preset)
 		return
 	}
@@ -874,7 +874,7 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 	_ = json.Unmarshal(body, &parsed)
 
 	start := time.Now()
-	preset := s.currentPreset(r.Context())
+	preset := s.presetForApp(r.Context(), requestAppID(r))
 
 	hasImages, systemPrompt := extractOpenAIMeta(body)
 	sessionKey := computeSessionKey(r.Header, body)
@@ -1007,7 +1007,8 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 	}
 }
 
-// currentPreset reads the active preset from the store. Returns "balanced" on error or when store is nil.
+// currentPreset reads the active global preset from the store. Returns "balanced" on error or when store is nil.
+// Kept for the global preset API endpoint; routing decisions use presetForApp instead.
 func (s *Server) currentPreset(ctx context.Context) string {
 	if s.store == nil {
 		return routing.PresetBalanced
@@ -1017,6 +1018,34 @@ func (s *Server) currentPreset(ctx context.Context) string {
 		return routing.PresetBalanced
 	}
 	return v
+}
+
+// codingApps holds app IDs whose requests benefit from passthrough by default
+// (large context, model substitution is disruptive).
+var codingApps = map[string]bool{
+	"claude-code": true,
+	"cursor":      true,
+	"codex":       true,
+	"opencode":    true,
+	"pi":          true,
+}
+
+func defaultPresetForApp(appID string) string {
+	if codingApps[appID] {
+		return routing.PresetPassthrough
+	}
+	return routing.PresetBalanced
+}
+
+// presetForApp returns the effective preset for appID: per-app DB override if set,
+// otherwise the type-based default (coding apps → passthrough, others → balanced).
+func (s *Server) presetForApp(ctx context.Context, appID string) string {
+	if s.store != nil {
+		if row, err := s.store.GetAppSetting(ctx, appID); err == nil && row != nil && row.Preset != "" {
+			return row.Preset
+		}
+	}
+	return defaultPresetForApp(appID)
 }
 
 // computeCost returns micro-USD cost via the pricing service, or 0 if not available.

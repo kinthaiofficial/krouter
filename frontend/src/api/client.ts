@@ -265,6 +265,7 @@ export interface ConfiguredApp {
   last_scanned_at?: number   // ms UTC
   last_error?: string
   inherited_count: number
+  preset?: string            // "" or undefined = use type-based default
 }
 
 export interface RescanResult {
@@ -383,6 +384,8 @@ export const api = {
   appDisable: (id: string) =>
     post<{ ok: boolean }>(`/internal/apps/${encodeURIComponent(id)}/disable`),
   appDelete: (id: string) => deleteReq(`/internal/apps/${encodeURIComponent(id)}`),
+  setAppPreset: (id: string, preset: string) =>
+    post<{ ok: boolean }>(`/internal/apps/${encodeURIComponent(id)}/preset`, { preset }),
 
   // ─── Subscription quota (spec/05) ───────────────────────────────────────
   subscriptionStatus: () => get<SubscriptionProvider[]>('/internal/subscription/status'),

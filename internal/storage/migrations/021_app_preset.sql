@@ -1,0 +1,1 @@
+ALTER TABLE app_settings ADD COLUMN preset TEXT NOT NULL DEFAULT '';
