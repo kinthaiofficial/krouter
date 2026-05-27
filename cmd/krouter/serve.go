@@ -379,6 +379,7 @@ The daemon listens on two ports:
 					"latency_ms":      rec.LatencyMS,
 					"status_code":     rec.StatusCode,
 					"error_message":   rec.ErrorMessage,
+				"routing_preset":  rec.RoutingPreset,
 				}
 				if pricingSvc != nil {
 					payload["requested_provider"] = pricingSvc.ProviderFor(rec.RequestedModel)

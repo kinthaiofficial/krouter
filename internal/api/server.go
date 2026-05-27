@@ -655,6 +655,7 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 		// What the user would have paid if krouter hadn't picked a
 		// cheaper provider/model. UI computes savings = baseline - actual.
 		BaselineCostUSD float64 `json:"baseline_cost_usd,omitempty"`
+		RoutingPreset   string  `json:"routing_preset,omitempty"`
 	}
 
 	out := make([]row, 0, len(records))
@@ -676,6 +677,7 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 			LatencyMS:      rec.LatencyMS,
 			StatusCode:     rec.StatusCode,
 			ErrorMessage:   rec.ErrorMessage,
+			RoutingPreset:  rec.RoutingPreset,
 		}
 		if s.pricing != nil {
 			r.RequestedProvider = s.pricing.ProviderFor(rec.RequestedModel)

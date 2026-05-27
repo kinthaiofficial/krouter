@@ -58,6 +58,7 @@ export function DecisionCard({ rec, pulse = false, showLatestBadge = false }: De
               {t('router.latest_badge')}
             </span>
           )}
+          {rec.routing_preset && <PresetBadge preset={rec.routing_preset} t={t} />}
           <span className="text-xs text-gray-400 tabular-nums font-mono">
             {new Date(rec.ts).toLocaleString()}
           </span>
@@ -394,6 +395,25 @@ export function DecisionRow({
         </div>
       )}
     </li>
+  )
+}
+
+// ─── Preset badge ─────────────────────────────────────────────────────────
+
+const presetStyle: Record<string, string> = {
+  saver:       'bg-emerald-50 text-emerald-700 border-emerald-200',
+  balanced:    'bg-blue-50   text-blue-700   border-blue-200',
+  quality:     'bg-purple-50 text-purple-700 border-purple-200',
+  passthrough: 'bg-gray-100  text-gray-500   border-gray-200',
+}
+
+function PresetBadge({ preset, t }: { preset: string; t: ReturnType<typeof useTranslation>['t'] }) {
+  const cls = presetStyle[preset] ?? 'bg-gray-100 text-gray-500 border-gray-200'
+  const label = t(`preset.${preset}`, { defaultValue: preset })
+  return (
+    <span className={`inline-flex items-center text-[10px] font-bold tracking-wider px-2 py-0.5 rounded-full border ${cls}`}>
+      {label}
+    </span>
   )
 }
 

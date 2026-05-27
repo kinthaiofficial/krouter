@@ -97,6 +97,9 @@ export interface LogRecord {
   status_code: number
   error_message?: string
 
+  // Routing mode active when this request was processed.
+  routing_preset?: string  // "saver" | "balanced" | "quality" | "passthrough" | ""
+
   // Routing-decision enrichment used by the Router page card.
   // Optional / absent for legacy daemons and for unknown models — the UI
   // falls back to "—" cleanly.
