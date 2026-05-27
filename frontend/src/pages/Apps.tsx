@@ -219,16 +219,29 @@ export default function Apps() {
     qc.invalidateQueries({ queryKey: ['apps-configured'] })
   }
 
+  const [redetecting, setRedetecting] = useState(false)
+  const redetect = async () => {
+    setRedetecting(true)
+    try {
+      await Promise.allSettled(supported.map((s) => api.appRescan(s.app_id)))
+    } finally {
+      setRedetecting(false)
+      refetch()
+      invalidate()
+    }
+  }
+
   return (
     <div className="p-6 space-y-4 max-w-6xl mx-auto">
       <PageHeader
         title={t('apps.title')}
         right={
           <button
-            onClick={() => { refetch(); invalidate() }}
-            className="flex items-center gap-1.5 text-sm font-medium text-muted hover:text-ink border border-line-strong bg-card px-3 py-1.5 rounded-lg transition-colors"
+            onClick={redetect}
+            disabled={redetecting}
+            className="flex items-center gap-1.5 text-sm font-medium text-muted hover:text-ink border border-line-strong bg-card px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
           >
-            <RefreshCw size={14} />
+            <RefreshCw size={14} className={redetecting ? 'animate-spin' : ''} />
             {t('apps.re_detect')}
           </button>
         }
