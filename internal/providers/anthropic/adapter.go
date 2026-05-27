@@ -172,6 +172,13 @@ func (a *Adapter) Forward(ctx context.Context, req *http.Request) (*http.Respons
 		return nil, fmt.Errorf("anthropic adapter: build request: %w", err)
 	}
 	upstreamReq.Header = req.Header.Clone()
+	// Strip Accept-Encoding so Go's Transport manages compression negotiation.
+	// When Transport adds Accept-Encoding: gzip itself it also auto-decompresses
+	// the response body — this is the only way both streaming and non-streaming
+	// paths receive plain text that the SSE/JSON parsers can read. Without this,
+	// Anthropic compresses the SSE stream and the capture buffer gets gzip bytes
+	// instead of text events, making every token count come back as zero.
+	upstreamReq.Header.Del("Accept-Encoding")
 
 	// Inject this provider's own auth when a resolver supplies a token. This
 	// covers re-routed requests that arrived carrying a different provider's

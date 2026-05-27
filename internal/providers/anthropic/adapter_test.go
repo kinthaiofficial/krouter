@@ -236,3 +236,38 @@ func TestDiscoverModels_DisplayNameFallsBackToID(t *testing.T) {
 	require.Len(t, models, 1)
 	assert.Equal(t, "claude-haiku-4-5", models[0].DisplayName)
 }
+
+// Regression for #72: the inbound client's Accept-Encoding must be stripped before
+// forwarding upstream. Without this, Anthropic returns gzip-compressed SSE and the
+// token parser sees binary bytes, logging input_tokens=output_tokens=0.
+//
+// We use a transport with DisableCompression so the adapter's own transport doesn't
+// add a replacement header — letting us verify the stripped value is truly gone.
+func TestAdapter_Forward_AcceptEncodingStripped(t *testing.T) {
+	var gotAcceptEncoding string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAcceptEncoding = r.Header.Get("Accept-Encoding")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer upstream.Close()
+
+	// Use a transport with DisableCompression so the adapter won't add its own
+	// Accept-Encoding header — only then can we assert the header is absent.
+	noCompressClient := &http.Client{Transport: &http.Transport{
+		DialContext:         upstream.Client().Transport.(*http.Transport).DialContext,
+		DisableCompression:  true,
+	}}
+	a := anthropicadapter.New(upstream.URL, noCompressClient)
+
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost,
+		"http://127.0.0.1:8402/v1/messages", strings.NewReader(`{}`))
+	// Simulate what Go's HTTP client adds automatically (and what clients like OpenClaw send).
+	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+
+	resp, err := a.Forward(context.Background(), req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Empty(t, gotAcceptEncoding, "inbound Accept-Encoding must be stripped before forwarding upstream")
+}

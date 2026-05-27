@@ -192,6 +192,11 @@ func (a *Adapter) Forward(ctx context.Context, req *http.Request) (*http.Respons
 		return nil, fmt.Errorf("openai adapter %s: build request: %w", a.name, err)
 	}
 	upstreamReq.Header = req.Header.Clone()
+	// Strip Accept-Encoding so Go's Transport manages compression negotiation.
+	// When Transport adds Accept-Encoding: gzip itself it also auto-decompresses
+	// the response body — this ensures SSE capture buffers always receive plain
+	// text events regardless of whether the upstream compresses the stream.
+	upstreamReq.Header.Del("Accept-Encoding")
 
 	// Inject OpenAI-style auth. The incoming request may carry Anthropic headers
 	// (x-api-key) which must be removed; we substitute our own key.

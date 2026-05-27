@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.8] - 2026-05-27
+
+### Fixed
+- **Anthropic streaming token counts always 0 for opus-4 and newer models** (#72): when a client (e.g. OpenClaw) sends `Accept-Encoding: gzip`, krouter was forwarding it to Anthropic, which then returned a gzip-compressed SSE stream. Because Go's Transport only auto-decompresses when it added the `Accept-Encoding` header itself, the SSE capture buffer received raw compressed bytes — causing `parseAnthropicSSEUsage` to return 0 for all token buckets. The Anthropic and OpenAI adapters now strip `Accept-Encoding` before forwarding, so Go's Transport manages compression negotiation and transparently decompresses both streaming and non-streaming responses.
+
 ## [2.4.7] - 2026-05-27
 
 ### Fixed
