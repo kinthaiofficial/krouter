@@ -15,7 +15,7 @@ jobs:
       - name: Trigger server pull
         env:
           PAYLOAD: '{"repo":"krouter","event":"pricing-update"}'
-          SECRET: ${{ secrets.SYNC_WEBHOOK_SECRET }}
+          SECRET: ${{ secrets.WEBHOOK_SECRET }}
         run: |
           SIG="sha256=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')"
           curl -sf --max-time 15 \
