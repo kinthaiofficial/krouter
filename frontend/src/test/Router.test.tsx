@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, waitFor, fireEvent, act } from '@testing-library/react'
+import { screen, waitFor, act } from '@testing-library/react'
 import { renderWithProviders } from './helpers'
 import '../i18n' // initialise translations so t() returns real strings, not key fallbacks
 import Router from '../pages/Router'

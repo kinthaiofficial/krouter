@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Link2, Link2Off, RefreshCw, ChevronDown, ChevronUp,
-  TerminalSquare, RotateCcw, History, Check, Power, Edit2,
+  TerminalSquare, RotateCcw, History, Edit2,
   ExternalLink,
 } from 'lucide-react'
 import {
@@ -343,7 +343,6 @@ function UnifiedAgentCard({
   const { t } = useTranslation()
   const qc = useQueryClient()
 
-  const enabled = a.config?.enabled ?? false
   const connected = a.status?.connected ?? false
   const inherited = a.config?.inherited_count ?? 0
   const lastScannedAt = a.config?.last_scanned_at
@@ -361,14 +360,6 @@ function UnifiedAgentCard({
   const [restartKind, setRestartKind] = useState<string | null>(null)
 
   // Inheritance mutations
-  const enable = useMutation({
-    mutationFn: () => api.appEnable(a.id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['apps-configured'] }) },
-  })
-  const disable = useMutation({
-    mutationFn: () => api.appDisable(a.id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['apps-configured'] }) },
-  })
   const rescan = useMutation({
     mutationFn: (path?: string) => api.appRescan(a.id, path),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['apps-configured'] }) },
@@ -405,7 +396,7 @@ function UnifiedAgentCard({
   })
 
   const isBusy =
-    enable.isPending || disable.isPending || rescan.isPending ||
+    rescan.isPending ||
     connectMutation.isPending || disconnectMutation.isPending || getDiff.isPending
 
   const { data: logs = [], isLoading: logsLoading } = useQuery<LogRow[]>({
@@ -425,10 +416,10 @@ function UnifiedAgentCard({
 
         {/* Header row: avatar · name · badges · action buttons */}
         <div className="flex items-start gap-3">
-          {/* Avatar circle — green when enabled, gray otherwise */}
+          {/* Avatar circle — green when connected, gray otherwise */}
           <span
             className={`shrink-0 mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-full text-white text-[11px] font-bold tracking-tight ${
-              enabled ? 'bg-brand' : 'bg-gray-300'
+              connected ? 'bg-brand' : 'bg-gray-300'
             }`}
           >
             {a.id.slice(0, 2).toUpperCase()}
@@ -438,17 +429,6 @@ function UnifiedAgentCard({
             {/* Name + status badges */}
             <div className="flex items-center gap-2 flex-wrap">
               <p className="font-semibold text-sm">{a.displayName}</p>
-
-              {/* Inheritance: enabled / disabled */}
-              {enabled ? (
-                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 rounded-full px-2 py-0.5">
-                  <Check className="w-3 h-3" /> {t('common.enabled')}
-                </span>
-              ) : a.config ? (
-                <span className="text-[11px] font-medium text-gray-500 bg-gray-100 rounded-full px-2 py-0.5">
-                  {t('common.disabled')}
-                </span>
-              ) : null}
 
               {/* Proxy: connected / not connected */}
               {connected ? (
@@ -495,7 +475,7 @@ function UnifiedAgentCard({
               <p className="text-[11px] text-gray-500 mt-0.5">
                 {inherited > 0
                   ? t('inheritance.providers_count', { count: inherited })
-                  : enabled ? t('inheritance.no_providers') : '—'}
+                  : t('inheritance.no_providers')}
                 {lastScannedAt && (
                   <>
                     {' · '}{t('inheritance.last_scan')}{' '}
@@ -539,19 +519,6 @@ function UnifiedAgentCard({
                     {rescan.isPending ? t('inheritance.scanning') : t('inheritance.rescan')}
                   </button>
                 )}
-                <button
-                  type="button"
-                  onClick={enabled ? () => disable.mutate() : () => enable.mutate()}
-                  disabled={isBusy}
-                  className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-md disabled:opacity-50 ${
-                    enabled
-                      ? 'border border-gray-200 hover:bg-gray-50'
-                      : 'bg-brand text-white hover:bg-brand-dark'
-                  }`}
-                >
-                  <Power className="w-3 h-3" />
-                  {enabled ? t('inheritance.disable') : t('inheritance.enable')}
-                </button>
               </>
             )}
 
