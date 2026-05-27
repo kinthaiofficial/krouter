@@ -3,7 +3,9 @@ name: Sync pricing data to krouter.kinthai.ai
 on:
   push:
     branches: [main]
-    paths: ['data/token_price_sub.json']
+    paths:
+      - 'data/token_price_sub.json'
+      - 'data/token_prices.json'
 
 jobs:
   sync:
@@ -18,11 +20,12 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           echo "StrictHostKeyChecking no" >> ~/.ssh/config
 
-      - name: Sync data file
+      - name: Sync data files
         run: |
           rsync -avz \
             -e "ssh -i ~/.ssh/deploy_key" \
             data/token_price_sub.json \
+            data/token_prices.json \
             ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/var/www/krouter.kinthai.ai/data/
 
       - name: Cleanup

@@ -1,0 +1,30 @@
+name: Update LiteLLM prices
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # daily at 02:00 UTC
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Update token_prices.json
+        run: go run scripts/update_prices.go
+
+      - name: Commit if changed
+        run: |
+          git config user.name  "krouter-bot"
+          git config user.email "bot@kinthai.ai"
+          git add data/token_prices.json
+          git diff --cached --quiet && echo "no changes" && exit 0
+          git commit -m "chore(data): sync LiteLLM token prices $(date -u +%Y-%m-%d)"
+          git push

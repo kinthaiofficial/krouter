@@ -2,14 +2,20 @@
 //
 // Three-layer architecture (see spec/04-pricing.md):
 //   - Layer 1: Static fallback bundled at compile time
-//   - Layer 2: Live sync from LiteLLM JSON every 24h
+//   - Layer 2: Live sync from krouter CDN (primary) / GitHub raw (fallback) every 24h
 //   - Layer 3: Per-request cost accounting
+//
+// The sync source is data/token_prices.json, a file auto-generated daily by
+// scripts/update_prices.go which merges LiteLLM pricing with the local
+// supplement (data/token_prices_ext.json). Fetching from our own CDN rather
+// than directly from LiteLLM means a LiteLLM format change breaks only the
+// daily Action, not every running daemon simultaneously.
 package pricing
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -17,10 +23,20 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kinthaiofficial/krouter/data"
 	"github.com/kinthaiofficial/krouter/internal/storage"
 )
 
-const defaultLiteLLMURL = "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+const (
+	// defaultPrimaryURL is the krouter-hosted canonical pricing file.
+	// Self-hosting gives us access logs (version distribution, 304 ratio,
+	// geographic breakdown) that raw.githubusercontent.com doesn't expose.
+	defaultPrimaryURL = "https://krouter.kinthai.ai/data/token_prices.json"
+
+	// defaultFallbackURL is the same file served by GitHub raw.
+	// Used only when the primary endpoint fails (CDN outage, DNS issue).
+	defaultFallbackURL = "https://raw.githubusercontent.com/kinthaiofficial/krouter/main/data/token_prices.json"
+)
 
 // LiteLLMToKrouterProvider maps LiteLLM's litellm_provider value to krouter's
 // adapter name when the two names differ. Providers not listed here use the
@@ -75,30 +91,48 @@ var staticPrices = map[string]PriceEntry{
 
 // Service maintains the LLM pricing table and computes costs.
 type Service struct {
-	mu         sync.RWMutex
-	prices     map[string]PriceEntry // model_id → PriceEntry (live, may be updated by sync)
-	store      *storage.Store
-	httpClient *http.Client
-	logger     *slog.Logger
-	syncURL    string
+	mu          sync.RWMutex
+	prices      map[string]PriceEntry // model_id → PriceEntry (live, may be updated by sync)
+	store       *storage.Store
+	httpClient  *http.Client
+	logger      *slog.Logger
+	primaryURL  string
+	fallbackURL string
+	userAgent   string
 }
 
 // New creates a pricing service. store may be nil (disables SQLite caching).
 func New(store *storage.Store) *Service {
-	return NewWithSyncURL(store, defaultLiteLLMURL)
+	return newService(store, defaultPrimaryURL, defaultFallbackURL)
 }
 
-// NewWithSyncURL creates a pricing service with a custom sync URL (for testing).
+// NewWithSyncURL creates a pricing service with a custom primary sync URL (for testing).
+// The fallback URL is set to the GitHub raw mirror.
 func NewWithSyncURL(store *storage.Store, syncURL string) *Service {
+	return newService(store, syncURL, defaultFallbackURL)
+}
+
+func newService(store *storage.Store, primaryURL, fallbackURL string) *Service {
 	s := &Service{
-		prices:     make(map[string]PriceEntry, len(staticPrices)),
-		store:      store,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		logger:     slog.Default(),
-		syncURL:    syncURL,
+		prices:      make(map[string]PriceEntry, len(staticPrices)),
+		store:       store,
+		httpClient:  &http.Client{Timeout: 30 * time.Second},
+		logger:      slog.Default(),
+		primaryURL:  primaryURL,
+		fallbackURL: fallbackURL,
+		userAgent:   "krouter-pricing-sync/dev",
 	}
 	for k, v := range staticPrices {
 		s.prices[k] = v
+	}
+	return s
+}
+
+// WithVersion sets the daemon version in the User-Agent header so CDN
+// access logs can show fleet version distribution.
+func (s *Service) WithVersion(v string) *Service {
+	if v != "" {
+		s.userAgent = "krouter-pricing-sync/" + v
 	}
 	return s
 }
@@ -149,11 +183,21 @@ func (s *Service) CostFor(provider, model string, inputTokens, outputTokens, cac
 	return int64(cost * 1_000_000)
 }
 
-// StartSync launches the background 24h LiteLLM sync goroutine.
-// It runs an initial sync immediately (on a separate goroutine so Serve is not blocked),
-// then repeats every interval. Stops when ctx is cancelled.
+// StartSync launches the background 24h sync goroutine.
+// Load order on startup:
+//  1. Embedded seed (data/token_prices.json via go:embed) — always available offline
+//  2. SQLite cache — faster than HTTP, reflects last successful remote sync
+//  3. Remote sync (primary CDN → GitHub raw fallback) — picks up updates
+//
+// Stops when ctx is cancelled.
 func (s *Service) StartSync(ctx context.Context, interval time.Duration) {
-	// Load from SQLite cache first (faster than HTTP).
+	// Load embedded seed so the service has complete pricing from the first
+	// request, even before the DB or remote sync completes.
+	if err := s.loadFromSeed(data.TokenPricesSeedJSON); err != nil {
+		s.logger.Warn("pricing: failed to load embedded seed", "err", err)
+	}
+
+	// SQLite cache overlays any updates since the last binary release.
 	if s.store != nil {
 		if err := s.loadFromDB(ctx); err != nil {
 			s.logger.Warn("pricing: failed to load from DB cache", "err", err)
@@ -207,59 +251,43 @@ func (s *Service) loadFromDB(ctx context.Context) error {
 	return nil
 }
 
-// syncOnce fetches the LiteLLM JSON and updates the in-memory table.
+// errNotModified signals a 304 response from tryFetch.
+var errNotModified = errors.New("not modified")
+
+// syncOnce fetches token_prices.json from the CDN (primary) or GitHub raw
+// (fallback) and updates the in-memory table. Both failures are logged; the
+// daemon keeps the last-known-good prices in memory.
 func (s *Service) syncOnce(ctx context.Context) {
-	s.logger.Info("pricing: syncing from LiteLLM")
+	s.logger.Info("pricing: syncing")
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.syncURL, nil)
+	body, etag, err := s.tryFetch(ctx, s.primaryURL, "primary")
 	if err != nil {
-		s.logger.Warn("pricing: failed to build sync request", "err", err)
-		return
-	}
-
-	// Set If-None-Match if we have a cached ETag.
-	if s.store != nil {
-		if etag, _ := s.store.GetSyncMeta(ctx, "last_etag"); etag != "" {
-			req.Header.Set("If-None-Match", etag)
+		if errors.Is(err, errNotModified) {
+			s.logger.Info("pricing: no changes (304)", "url", "primary")
+			return
+		}
+		s.logger.Warn("pricing: primary failed, trying fallback", "err", err)
+		body, etag, err = s.tryFetch(ctx, s.fallbackURL, "fallback")
+		if err != nil {
+			if errors.Is(err, errNotModified) {
+				s.logger.Info("pricing: no changes (304)", "url", "fallback")
+				return
+			}
+			s.logger.Warn("pricing: fallback also failed; keeping existing prices", "err", err)
+			return
 		}
 	}
 
-	resp, err := s.httpClient.Do(req)
+	updated, sha, err := s.parseKrouterPrices(body)
 	if err != nil {
-		s.logger.Warn("pricing: sync request failed", "err", err)
-		return
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode == http.StatusNotModified {
-		s.logger.Info("pricing: no changes (304)")
-		return
-	}
-	if resp.StatusCode != http.StatusOK {
-		s.logger.Warn("pricing: unexpected status", "code", resp.StatusCode)
-		return
-	}
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 50*1024*1024)) // 50MB max
-	if err != nil {
-		s.logger.Warn("pricing: failed to read sync response", "err", err)
-		return
-	}
-
-	// Sanity check: must be large enough to be a real LiteLLM JSON.
-	hash := fmt.Sprintf("%x", sha256.Sum256(body))
-
-	updated, err := s.parseLiteLLM(body)
-	if err != nil {
-		s.logger.Warn("pricing: failed to parse LiteLLM JSON", "err", err)
+		s.logger.Warn("pricing: failed to parse token_prices.json", "err", err)
 		return
 	}
 	if len(updated) < 50 {
-		s.logger.Warn("pricing: suspiciously few models in LiteLLM JSON", "count", len(updated))
+		s.logger.Warn("pricing: suspiciously few models in token_prices.json", "count", len(updated))
 		return
 	}
 
-	// Merge into in-memory table (don't delete existing entries not in new data).
 	s.mu.Lock()
 	for k, v := range updated {
 		s.prices[k] = v.PriceEntry
@@ -268,43 +296,74 @@ func (s *Service) syncOnce(ctx context.Context) {
 
 	s.logger.Info("pricing: sync complete", "models", len(updated))
 
-	// Persist per-token pricing to SQLite and update sync meta. LiteLLM is the
-	// source for *pricing only*; the routable model list comes from live
-	// /v1/models discovery, not from this sync.
 	if s.store != nil {
 		now := time.Now().UTC()
 		for modelID, entry := range updated {
 			_ = s.store.UpsertPrice(ctx, storage.PriceCacheEntry{
-				ModelID:                       modelID,
-				Provider:                      entry.Provider,
-				InputCostPerToken:             entry.InputCostPerToken,
-				OutputCostPerToken:            entry.OutputCostPerToken,
-				CachedInputCostPerToken:       entry.CachedInputCostPerToken,
-				CacheWriteInputCostPerToken:   entry.CacheWriteInputCostPerToken,
+				ModelID:                        modelID,
+				Provider:                       entry.Provider,
+				InputCostPerToken:              entry.InputCostPerToken,
+				OutputCostPerToken:             entry.OutputCostPerToken,
+				CachedInputCostPerToken:        entry.CachedInputCostPerToken,
+				CacheWriteInputCostPerToken:    entry.CacheWriteInputCostPerToken,
 				CacheWriteInputCostPerToken1hr: entry.CacheWriteInputCostPerToken1hr,
-				MaxTokens:                     entry.MaxTokens,
-				RawJSON:                       entry.RawJSON,
-				UpdatedAt:                     now,
+				MaxTokens:                      entry.MaxTokens,
+				RawJSON:                        entry.RawJSON,
+				UpdatedAt:                      now,
 			})
 		}
 		_ = s.store.SetSyncMeta(ctx, "last_sync_at", now.Format(time.RFC3339))
-		_ = s.store.SetSyncMeta(ctx, "last_sha256", hash)
-		_ = s.store.SetSyncMeta(ctx, "source_url", s.syncURL)
-		if etag := resp.Header.Get("ETag"); etag != "" {
+		_ = s.store.SetSyncMeta(ctx, "last_sha256", sha)
+		if etag != "" {
 			_ = s.store.SetSyncMeta(ctx, "last_etag", etag)
 		}
 	}
 }
 
-// liteLLMEntry is the parsed shape of a single entry from the LiteLLM JSON.
-type liteLLMEntry struct {
-	InputCostPerToken                  float64 `json:"input_cost_per_token"`
-	OutputCostPerToken                 float64 `json:"output_cost_per_token"`
-	CacheReadInputTokenCost            float64 `json:"cache_read_input_token_cost"`
-	CacheCreationInputTokenCost        float64 `json:"cache_creation_input_token_cost"`
+// tryFetch performs a conditional GET against url. Returns errNotModified on
+// 304, an error on non-200, or the body bytes + ETag on success.
+func (s *Service) tryFetch(ctx context.Context, url, label string) ([]byte, string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	if s.store != nil {
+		if etag, _ := s.store.GetSyncMeta(ctx, "last_etag"); etag != "" {
+			req.Header.Set("If-None-Match", etag)
+		}
+	}
+	req.Header.Set("User-Agent", s.userAgent)
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("%s: %w", label, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusNotModified {
+		return nil, "", errNotModified
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, "", fmt.Errorf("%s: HTTP %d", label, resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 100<<20))
+	if err != nil {
+		return nil, "", fmt.Errorf("%s: read body: %w", label, err)
+	}
+	return body, resp.Header.Get("ETag"), nil
+}
+
+// modelEntry is the per-model shape inside token_prices.json.
+// Field names match LiteLLM's canonical format exactly so the file
+// can be parsed without transformation.
+type modelEntry struct {
+	InputCostPerToken                   float64 `json:"input_cost_per_token"`
+	OutputCostPerToken                  float64 `json:"output_cost_per_token"`
+	CacheReadInputTokenCost             float64 `json:"cache_read_input_token_cost"`
+	CacheCreationInputTokenCost         float64 `json:"cache_creation_input_token_cost"`
 	CacheCreationInputTokenCostAbove1hr float64 `json:"cache_creation_input_token_cost_above_1hr"`
-	MaxTokens                          int     `json:"max_tokens"`
-	Provider                           string  `json:"litellm_provider"`
+	MaxTokens                           int     `json:"max_tokens"`
+	Provider                            string  `json:"litellm_provider"`
 }
 
 // parsedEntry combines a PriceEntry with the original raw JSON bytes for DB storage.
@@ -313,38 +372,63 @@ type parsedEntry struct {
 	RawJSON string
 }
 
-// parseLiteLLM parses the top-level map from LiteLLM JSON.
-// Returns only entries that have non-zero input cost. RawJSON carries the
-// original per-model bytes for storage in the token_price_api.raw_json column.
-func (s *Service) parseLiteLLM(data []byte) (map[string]parsedEntry, error) {
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return nil, fmt.Errorf("unmarshal: %w", err)
+// parseKrouterPrices parses data/token_prices.json (krouter canonical format).
+// The file is a thin wrapper around the LiteLLM model map:
+//
+//	{ "schema_version":1, "source_sha256":"...", "models": { <model_id>: {...} } }
+//
+// Returns the parsed entries and the source_sha256 field.
+// All models are included regardless of whether input_cost_per_token is zero,
+// since fields like max_tokens are useful even for free-tier models.
+func (s *Service) parseKrouterPrices(body []byte) (map[string]parsedEntry, string, error) {
+	var file struct {
+		SchemaVersion int                        `json:"schema_version"`
+		SourceSHA256  string                     `json:"source_sha256"`
+		Models        map[string]json.RawMessage `json:"models"`
+	}
+	if err := json.Unmarshal(body, &file); err != nil {
+		return nil, "", fmt.Errorf("unmarshal: %w", err)
+	}
+	if file.SchemaVersion != 1 {
+		return nil, "", fmt.Errorf("unsupported schema_version=%d (this build expects 1)", file.SchemaVersion)
 	}
 
-	out := make(map[string]parsedEntry, len(raw))
-	for modelID, entryRaw := range raw {
-		var e liteLLMEntry
+	out := make(map[string]parsedEntry, len(file.Models))
+	for modelID, entryRaw := range file.Models {
+		var e modelEntry
 		if err := json.Unmarshal(entryRaw, &e); err != nil {
-			continue // skip malformed entries
-		}
-		if e.InputCostPerToken == 0 {
-			continue // skip free/unknown models without pricing
+			continue
 		}
 		out[modelID] = parsedEntry{
 			PriceEntry: PriceEntry{
-				Provider:                     e.Provider,
-				InputCostPerToken:            e.InputCostPerToken,
-				OutputCostPerToken:           e.OutputCostPerToken,
-				CachedInputCostPerToken:      e.CacheReadInputTokenCost,
-				CacheWriteInputCostPerToken:  e.CacheCreationInputTokenCost,
+				Provider:                       e.Provider,
+				InputCostPerToken:              e.InputCostPerToken,
+				OutputCostPerToken:             e.OutputCostPerToken,
+				CachedInputCostPerToken:        e.CacheReadInputTokenCost,
+				CacheWriteInputCostPerToken:    e.CacheCreationInputTokenCost,
 				CacheWriteInputCostPerToken1hr: e.CacheCreationInputTokenCostAbove1hr,
-				MaxTokens:                    e.MaxTokens,
+				MaxTokens:                      e.MaxTokens,
 			},
 			RawJSON: string(entryRaw),
 		}
 	}
-	return out, nil
+	return out, file.SourceSHA256, nil
+}
+
+// loadFromSeed parses the embedded token_prices.json and populates the
+// in-memory price table. Called once at startup before any remote sync.
+func (s *Service) loadFromSeed(seedJSON []byte) error {
+	entries, sha, err := s.parseKrouterPrices(seedJSON)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	for k, v := range entries {
+		s.prices[k] = v.PriceEntry
+	}
+	s.mu.Unlock()
+	s.logger.Info("pricing: loaded embedded seed", "models", len(entries), "sha256", sha[:12])
+	return nil
 }
 
 // InputCostPerToken returns the input cost per token in USD for the given model.

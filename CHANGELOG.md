@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.10] - 2026-05-27
+
+### Changed
+- **Pricing data pipeline: LiteLLM → krouter CDN → daemon**: the daemon no longer fetches directly from LiteLLM's raw GitHub JSON. A new daily GitHub Action (`update-litellm-prices.yml`) fetches from LiteLLM, merges with the local supplement file (`data/token_prices_ext.json`), and commits `data/token_prices.json` to the repo in a stable krouter-owned format. The daemon fetches from `krouter.kinthai.ai/data/token_prices.json` (primary) with `raw.githubusercontent.com` as fallback — the same CDN + GitHub Raw pattern used by subscription pricing. This isolates all krouter daemons from LiteLLM format changes: a format break now only affects the daily Action and is fixed with one commit. The file is also embedded via `go:embed` so freshly-installed daemons have full pricing data offline without waiting for a network sync.
+
+### Added
+- **`data/token_prices_ext.json`**: manually-maintained supplement for models absent from LiteLLM. Initial entries: `claude-3-5-sonnet-20241022`, `claude-3-5-haiku-20241022`, `deepseek-coder`, `MiniMax-M2.7`, `MiniMax-M2.7-highspeed`. Prices sourced from respective vendor pricing pages.
+
 ## [2.4.8] - 2026-05-27
 
 ### Fixed

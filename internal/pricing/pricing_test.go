@@ -124,19 +124,25 @@ func TestSavings_DeepSeekVsSonnet(t *testing.T) {
 	assert.Greater(t, saved, int64(0), "deepseek should be cheaper than claude-sonnet")
 }
 
-func TestParseLiteLLM_ValidJSON(t *testing.T) {
-	// Minimal LiteLLM JSON with 60 entries.
-	entries := make(map[string]any)
+func TestParseKrouterPrices_ValidJSON(t *testing.T) {
+	// Minimal token_prices.json with 60 model entries in krouter wrapped format.
+	models := make(map[string]any)
 	for i := 0; i < 60; i++ {
 		modelID := "model-" + string(rune('a'+i%26)) + "-" + string(rune('0'+i/26))
-		entries[modelID] = map[string]any{
+		models[modelID] = map[string]any{
 			"input_cost_per_token":  0.000003,
 			"output_cost_per_token": 0.000015,
 			"litellm_provider":      "anthropic",
 		}
 	}
+	file := map[string]any{
+		"schema_version": 1,
+		"generated_at":   "2026-01-01T00:00:00Z",
+		"source_sha256":  "abc123",
+		"models":         models,
+	}
 
-	body, err := json.Marshal(entries)
+	body, err := json.Marshal(file)
 	require.NoError(t, err)
 
 	// Serve from mock HTTP server.
