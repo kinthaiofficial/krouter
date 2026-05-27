@@ -6,28 +6,20 @@ on:
     paths:
       - 'data/token_price_sub.json'
       - 'data/token_prices.json'
+      - 'data/free_tokens.json'
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-
-      - name: Write SSH key
+      - name: Trigger server pull
+        env:
+          PAYLOAD: '{"repo":"krouter","event":"pricing-update"}'
+          SECRET: ${{ secrets.SYNC_WEBHOOK_SECRET }}
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          echo "StrictHostKeyChecking no" >> ~/.ssh/config
-
-      - name: Sync data files
-        run: |
-          rsync -avz \
-            -e "ssh -i ~/.ssh/deploy_key" \
-            data/token_price_sub.json \
-            data/token_prices.json \
-            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/var/www/krouter.kinthai.ai/data/
-
-      - name: Cleanup
-        if: always()
-        run: rm -f ~/.ssh/deploy_key
+          SIG="sha256=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')"
+          curl -sf --max-time 15 \
+            -X POST https://krouter.kinthai.ai:9001/webhook/krouter-pricing \
+            -H "Content-Type: application/json" \
+            -H "X-Hub-Signature-256: $SIG" \
+            -d "$PAYLOAD"
