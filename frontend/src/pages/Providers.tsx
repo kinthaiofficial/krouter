@@ -470,15 +470,29 @@ function ModelsTable({
             <th className="text-left py-1 font-normal">{t('providers.model_id')}</th>
             <th className="text-right py-1 font-normal">{t('providers.input_per_mtok')}</th>
             <th className="text-right py-1 font-normal">{t('providers.output_per_mtok')}</th>
+            <th className="text-right py-1 font-normal">{t('providers.cache_read_per_mtok')}</th>
+            <th className="text-right py-1 font-normal">{t('providers.cache_write_per_mtok')}</th>
             <th className="text-right py-1 font-normal">{t('providers.max_tokens')}</th>
           </tr>
         </thead>
         <tbody>
           {models.map((m) => (
             <tr key={m.model_id} className="border-b border-gray-50">
-              <td className="py-1 font-mono text-gray-700 max-w-[260px] truncate" title={m.model_id}>{m.model_id}</td>
+              <td className="py-1 font-mono text-gray-700 max-w-[200px] truncate" title={m.model_id}>{m.model_id}</td>
               <td className="py-1 text-right tabular-nums">{m.input_per_mtok > 0 ? `$${m.input_per_mtok.toFixed(2)}` : '—'}</td>
               <td className="py-1 text-right tabular-nums">{m.output_per_mtok > 0 ? `$${m.output_per_mtok.toFixed(2)}` : '—'}</td>
+              <td className="py-1 text-right tabular-nums text-blue-600">
+                {m.cached_input_per_mtok > 0 ? `$${m.cached_input_per_mtok.toFixed(3)}` : '—'}
+              </td>
+              <td className="py-1 text-right tabular-nums text-amber-600">
+                {(m.cache_write_per_mtok ?? 0) > 0
+                  ? <span title={m.cache_write_1hr_per_mtok && m.cache_write_1hr_per_mtok > 0
+                      ? `${t('providers.cache_write_1hr')}: $${m.cache_write_1hr_per_mtok.toFixed(2)}`
+                      : undefined}>
+                      {`$${m.cache_write_per_mtok!.toFixed(2)}`}
+                    </span>
+                  : '—'}
+              </td>
               <td className="py-1 text-right tabular-nums text-gray-500">
                 {m.max_tokens > 0 ? m.max_tokens.toLocaleString() : '—'}
               </td>

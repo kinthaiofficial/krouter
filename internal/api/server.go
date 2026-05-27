@@ -2023,11 +2023,13 @@ func (s *Server) handleProviderModels(w http.ResponseWriter, r *http.Request, pr
 	}
 
 	type row struct {
-		ModelID            string  `json:"model_id"`
-		InputPerMTok       float64 `json:"input_per_mtok"`
-		OutputPerMTok      float64 `json:"output_per_mtok"`
-		CachedInputPerMTok float64 `json:"cached_input_per_mtok"`
-		MaxTokens          int     `json:"max_tokens"`
+		ModelID                string  `json:"model_id"`
+		InputPerMTok           float64 `json:"input_per_mtok"`
+		OutputPerMTok          float64 `json:"output_per_mtok"`
+		CachedInputPerMTok     float64 `json:"cached_input_per_mtok"`
+		CacheWritePerMTok      float64 `json:"cache_write_per_mtok,omitempty"`
+		CacheWrite1hrPerMTok   float64 `json:"cache_write_1hr_per_mtok,omitempty"`
+		MaxTokens              int     `json:"max_tokens"`
 	}
 	out := make([]row, 0)
 	for _, e := range prices {
@@ -2035,11 +2037,13 @@ func (s *Server) handleProviderModels(w http.ResponseWriter, r *http.Request, pr
 			continue
 		}
 		out = append(out, row{
-			ModelID:            e.ModelID,
-			InputPerMTok:       e.InputCostPerToken * 1_000_000,
-			OutputPerMTok:      e.OutputCostPerToken * 1_000_000,
-			CachedInputPerMTok: e.CachedInputCostPerToken * 1_000_000,
-			MaxTokens:          e.MaxTokens,
+			ModelID:              e.ModelID,
+			InputPerMTok:         e.InputCostPerToken * 1_000_000,
+			OutputPerMTok:        e.OutputCostPerToken * 1_000_000,
+			CachedInputPerMTok:   e.CachedInputCostPerToken * 1_000_000,
+			CacheWritePerMTok:    e.CacheWriteInputCostPerToken * 1_000_000,
+			CacheWrite1hrPerMTok: e.CacheWriteInputCostPerToken1hr * 1_000_000,
+			MaxTokens:            e.MaxTokens,
 		})
 	}
 	// Stable order so the UI doesn't flicker between refreshes.

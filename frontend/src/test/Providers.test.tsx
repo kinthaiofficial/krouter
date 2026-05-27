@@ -113,8 +113,8 @@ describe('Providers page', () => {
       cost_total_usd: 0,
     })]
     modelsByProvider['zai'] = [
-      { model_id: 'glm-4.6', input_per_mtok: 0.5, output_per_mtok: 1.5, max_tokens: 128000 },
-      { model_id: 'glm-4-flash', input_per_mtok: 0, output_per_mtok: 0, max_tokens: 32768 },
+      { model_id: 'glm-4.6', input_per_mtok: 0.5, output_per_mtok: 1.5, cached_input_per_mtok: 0, max_tokens: 128000 },
+      { model_id: 'glm-4-flash', input_per_mtok: 0, output_per_mtok: 0, cached_input_per_mtok: 0, max_tokens: 32768 },
     ]
     renderWithProviders(<Providers />)
     await waitFor(() => screen.getByText('Zhipu'))

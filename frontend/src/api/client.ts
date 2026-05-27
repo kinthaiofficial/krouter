@@ -183,6 +183,9 @@ export interface ProviderModelRow {
   model_id: string
   input_per_mtok: number
   output_per_mtok: number
+  cached_input_per_mtok: number
+  cache_write_per_mtok?: number       // cache_creation (standard 5-min TTL)
+  cache_write_1hr_per_mtok?: number   // cache_creation (>1 hr extended TTL)
   max_tokens: number
 }
 

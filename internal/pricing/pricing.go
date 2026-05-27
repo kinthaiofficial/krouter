@@ -35,32 +35,37 @@ var LiteLLMToKrouterProvider = map[string]string{
 
 // PriceEntry holds per-token costs for a model.
 type PriceEntry struct {
-	Provider                string
-	InputCostPerToken       float64 // cost per single token in USD
-	OutputCostPerToken      float64
-	CachedInputCostPerToken float64
-	MaxTokens               int
+	Provider                     string
+	InputCostPerToken            float64 // cost per single token in USD
+	OutputCostPerToken           float64
+	CachedInputCostPerToken      float64 // cache_read: billed at ~10% of input
+	CacheWriteInputCostPerToken  float64 // cache_creation (standard 5-min TTL): typically 1.25× input for Anthropic
+	CacheWriteInputCostPerToken1hr float64 // cache_creation for TTL > 1 hr (Anthropic extended caching)
+	MaxTokens                    int
 }
 
 // staticPrices is the Layer-1 fallback bundled at compile time.
 // Values are cost-per-token in USD (divide $N/M by 1_000_000).
+// Source: LiteLLM model_prices_and_context_window.json (2026-05).
 var staticPrices = map[string]PriceEntry{
-	// Anthropic
-	"claude-opus-4-7":            {Provider: "anthropic", InputCostPerToken: 15.0 / 1e6, OutputCostPerToken: 75.0 / 1e6, CachedInputCostPerToken: 1.5 / 1e6},
-	"claude-sonnet-4-6":          {Provider: "anthropic", InputCostPerToken: 3.0 / 1e6, OutputCostPerToken: 15.0 / 1e6, CachedInputCostPerToken: 0.3 / 1e6},
-	"claude-opus-4-5":            {Provider: "anthropic", InputCostPerToken: 15.0 / 1e6, OutputCostPerToken: 75.0 / 1e6, CachedInputCostPerToken: 1.5 / 1e6},
-	"claude-sonnet-4-5":          {Provider: "anthropic", InputCostPerToken: 3.0 / 1e6, OutputCostPerToken: 15.0 / 1e6, CachedInputCostPerToken: 0.3 / 1e6},
-	"claude-haiku-4-5":           {Provider: "anthropic", InputCostPerToken: 0.8 / 1e6, OutputCostPerToken: 4.0 / 1e6, CachedInputCostPerToken: 0.08 / 1e6},
-	"claude-haiku-4-5-20251001":  {Provider: "anthropic", InputCostPerToken: 0.8 / 1e6, OutputCostPerToken: 4.0 / 1e6, CachedInputCostPerToken: 0.08 / 1e6},
-	"claude-3-5-sonnet-20241022": {Provider: "anthropic", InputCostPerToken: 3.0 / 1e6, OutputCostPerToken: 15.0 / 1e6, CachedInputCostPerToken: 0.3 / 1e6},
-	"claude-3-5-haiku-20241022":  {Provider: "anthropic", InputCostPerToken: 0.8 / 1e6, OutputCostPerToken: 4.0 / 1e6, CachedInputCostPerToken: 0.08 / 1e6},
-	"claude-3-opus-20240229":     {Provider: "anthropic", InputCostPerToken: 15.0 / 1e6, OutputCostPerToken: 75.0 / 1e6, CachedInputCostPerToken: 1.5 / 1e6},
-	// DeepSeek
-	"deepseek-chat":  {Provider: "deepseek", InputCostPerToken: 0.14 / 1e6, OutputCostPerToken: 0.28 / 1e6},
+	// Anthropic — input/output/cache_read/cache_write all from LiteLLM.
+	// cache_write_1hr: extended cache TTL (>1 hr), higher rate.
+	"claude-opus-4-7":            {Provider: "anthropic", InputCostPerToken: 5.0 / 1e6, OutputCostPerToken: 25.0 / 1e6, CachedInputCostPerToken: 0.5 / 1e6, CacheWriteInputCostPerToken: 6.25 / 1e6, CacheWriteInputCostPerToken1hr: 10.0 / 1e6},
+	"claude-sonnet-4-6":          {Provider: "anthropic", InputCostPerToken: 3.0 / 1e6, OutputCostPerToken: 15.0 / 1e6, CachedInputCostPerToken: 0.3 / 1e6, CacheWriteInputCostPerToken: 3.75 / 1e6},
+	"claude-opus-4-5":            {Provider: "anthropic", InputCostPerToken: 15.0 / 1e6, OutputCostPerToken: 75.0 / 1e6, CachedInputCostPerToken: 1.5 / 1e6, CacheWriteInputCostPerToken: 18.75 / 1e6},
+	"claude-sonnet-4-5":          {Provider: "anthropic", InputCostPerToken: 3.0 / 1e6, OutputCostPerToken: 15.0 / 1e6, CachedInputCostPerToken: 0.3 / 1e6, CacheWriteInputCostPerToken: 3.75 / 1e6},
+	"claude-haiku-4-5":           {Provider: "anthropic", InputCostPerToken: 0.8 / 1e6, OutputCostPerToken: 4.0 / 1e6, CachedInputCostPerToken: 0.08 / 1e6, CacheWriteInputCostPerToken: 1.0 / 1e6},
+	"claude-haiku-4-5-20251001":  {Provider: "anthropic", InputCostPerToken: 1.0 / 1e6, OutputCostPerToken: 5.0 / 1e6, CachedInputCostPerToken: 0.1 / 1e6, CacheWriteInputCostPerToken: 1.25 / 1e6, CacheWriteInputCostPerToken1hr: 2.0 / 1e6},
+	"claude-3-5-sonnet-20241022": {Provider: "anthropic", InputCostPerToken: 3.0 / 1e6, OutputCostPerToken: 15.0 / 1e6, CachedInputCostPerToken: 0.3 / 1e6, CacheWriteInputCostPerToken: 3.75 / 1e6},
+	"claude-3-5-haiku-20241022":  {Provider: "anthropic", InputCostPerToken: 0.8 / 1e6, OutputCostPerToken: 4.0 / 1e6, CachedInputCostPerToken: 0.08 / 1e6, CacheWriteInputCostPerToken: 1.0 / 1e6},
+	"claude-3-opus-20240229":     {Provider: "anthropic", InputCostPerToken: 15.0 / 1e6, OutputCostPerToken: 75.0 / 1e6, CachedInputCostPerToken: 1.5 / 1e6, CacheWriteInputCostPerToken: 18.75 / 1e6},
+	// DeepSeek — supports cache read; no cache creation charge.
+	// LiteLLM 2026-05: deepseek-chat $0.28/$0.42 per MTok input/output.
+	"deepseek-chat":  {Provider: "deepseek", InputCostPerToken: 0.28 / 1e6, OutputCostPerToken: 0.42 / 1e6, CachedInputCostPerToken: 0.028 / 1e6},
 	"deepseek-coder": {Provider: "deepseek", InputCostPerToken: 0.14 / 1e6, OutputCostPerToken: 0.28 / 1e6},
-	// OpenAI
-	"gpt-4o":        {Provider: "openai", InputCostPerToken: 2.5 / 1e6, OutputCostPerToken: 10.0 / 1e6},
-	"gpt-4o-mini":   {Provider: "openai", InputCostPerToken: 0.15 / 1e6, OutputCostPerToken: 0.6 / 1e6},
+	// OpenAI — supports cache read; no separate cache creation charge.
+	"gpt-4o":        {Provider: "openai", InputCostPerToken: 2.5 / 1e6, OutputCostPerToken: 10.0 / 1e6, CachedInputCostPerToken: 1.25 / 1e6},
+	"gpt-4o-mini":   {Provider: "openai", InputCostPerToken: 0.15 / 1e6, OutputCostPerToken: 0.6 / 1e6, CachedInputCostPerToken: 0.075 / 1e6},
 	"gpt-4-turbo":   {Provider: "openai", InputCostPerToken: 10.0 / 1e6, OutputCostPerToken: 30.0 / 1e6},
 	"gpt-3.5-turbo": {Provider: "openai", InputCostPerToken: 0.5 / 1e6, OutputCostPerToken: 1.5 / 1e6},
 	// MiniMax (LiteLLM does not include these; static fallback from MiniMax API platform)
@@ -131,9 +136,14 @@ func (s *Service) CostFor(provider, model string, inputTokens, outputTokens, cac
 		inputTokens = 0
 	}
 
+	// Use the model's actual cache-write rate from the pricing table.
+	// Falls back to 0 for providers that don't support prompt caching
+	// (e.g. DeepSeek, OpenAI — no cache_creation_input_token_cost in LiteLLM).
+	cacheWriteRate := entry.CacheWriteInputCostPerToken
+
 	cost := float64(inputTokens)*entry.InputCostPerToken +
 		float64(cachedTokens)*entry.CachedInputCostPerToken +
-		float64(cacheWriteTokens)*entry.InputCostPerToken*1.25 +
+		float64(cacheWriteTokens)*cacheWriteRate +
 		float64(outputTokens)*entry.OutputCostPerToken
 
 	return int64(cost * 1_000_000)
@@ -184,11 +194,13 @@ func (s *Service) loadFromDB(ctx context.Context) error {
 	defer s.mu.Unlock()
 	for _, e := range entries {
 		s.prices[e.ModelID] = PriceEntry{
-			Provider:                e.Provider,
-			InputCostPerToken:       e.InputCostPerToken,
-			OutputCostPerToken:      e.OutputCostPerToken,
-			CachedInputCostPerToken: e.CachedInputCostPerToken,
-			MaxTokens:               e.MaxTokens,
+			Provider:                     e.Provider,
+			InputCostPerToken:            e.InputCostPerToken,
+			OutputCostPerToken:           e.OutputCostPerToken,
+			CachedInputCostPerToken:      e.CachedInputCostPerToken,
+			CacheWriteInputCostPerToken:  e.CacheWriteInputCostPerToken,
+			CacheWriteInputCostPerToken1hr: e.CacheWriteInputCostPerToken1hr,
+			MaxTokens:                    e.MaxTokens,
 		}
 	}
 	s.logger.Info("pricing: loaded from SQLite cache", "models", len(entries))
@@ -263,14 +275,16 @@ func (s *Service) syncOnce(ctx context.Context) {
 		now := time.Now().UTC()
 		for modelID, entry := range updated {
 			_ = s.store.UpsertPrice(ctx, storage.PriceCacheEntry{
-				ModelID:                 modelID,
-				Provider:                entry.Provider,
-				InputCostPerToken:       entry.InputCostPerToken,
-				OutputCostPerToken:      entry.OutputCostPerToken,
-				CachedInputCostPerToken: entry.CachedInputCostPerToken,
-				MaxTokens:               entry.MaxTokens,
-				RawJSON:                 entry.RawJSON,
-				UpdatedAt:               now,
+				ModelID:                       modelID,
+				Provider:                      entry.Provider,
+				InputCostPerToken:             entry.InputCostPerToken,
+				OutputCostPerToken:            entry.OutputCostPerToken,
+				CachedInputCostPerToken:       entry.CachedInputCostPerToken,
+				CacheWriteInputCostPerToken:   entry.CacheWriteInputCostPerToken,
+				CacheWriteInputCostPerToken1hr: entry.CacheWriteInputCostPerToken1hr,
+				MaxTokens:                     entry.MaxTokens,
+				RawJSON:                       entry.RawJSON,
+				UpdatedAt:                     now,
 			})
 		}
 		_ = s.store.SetSyncMeta(ctx, "last_sync_at", now.Format(time.RFC3339))
@@ -284,11 +298,13 @@ func (s *Service) syncOnce(ctx context.Context) {
 
 // liteLLMEntry is the parsed shape of a single entry from the LiteLLM JSON.
 type liteLLMEntry struct {
-	InputCostPerToken       float64 `json:"input_cost_per_token"`
-	OutputCostPerToken      float64 `json:"output_cost_per_token"`
-	CacheReadInputTokenCost float64 `json:"cache_read_input_token_cost"`
-	MaxTokens               int     `json:"max_tokens"`
-	Provider                string  `json:"litellm_provider"`
+	InputCostPerToken                  float64 `json:"input_cost_per_token"`
+	OutputCostPerToken                 float64 `json:"output_cost_per_token"`
+	CacheReadInputTokenCost            float64 `json:"cache_read_input_token_cost"`
+	CacheCreationInputTokenCost        float64 `json:"cache_creation_input_token_cost"`
+	CacheCreationInputTokenCostAbove1hr float64 `json:"cache_creation_input_token_cost_above_1hr"`
+	MaxTokens                          int     `json:"max_tokens"`
+	Provider                           string  `json:"litellm_provider"`
 }
 
 // parsedEntry combines a PriceEntry with the original raw JSON bytes for DB storage.
@@ -317,11 +333,13 @@ func (s *Service) parseLiteLLM(data []byte) (map[string]parsedEntry, error) {
 		}
 		out[modelID] = parsedEntry{
 			PriceEntry: PriceEntry{
-				Provider:                e.Provider,
-				InputCostPerToken:       e.InputCostPerToken,
-				OutputCostPerToken:      e.OutputCostPerToken,
-				CachedInputCostPerToken: e.CacheReadInputTokenCost,
-				MaxTokens:               e.MaxTokens,
+				Provider:                     e.Provider,
+				InputCostPerToken:            e.InputCostPerToken,
+				OutputCostPerToken:           e.OutputCostPerToken,
+				CachedInputCostPerToken:      e.CacheReadInputTokenCost,
+				CacheWriteInputCostPerToken:  e.CacheCreationInputTokenCost,
+				CacheWriteInputCostPerToken1hr: e.CacheCreationInputTokenCostAbove1hr,
+				MaxTokens:                    e.MaxTokens,
 			},
 			RawJSON: string(entryRaw),
 		}
@@ -429,9 +447,10 @@ func (s *Service) BaselineCostFor(requestedModel string, inputTokens, outputToke
 	if !ok {
 		return 0
 	}
+	cacheWriteRate := entry.CacheWriteInputCostPerToken
 	cost := float64(inputTokens)*entry.InputCostPerToken +
 		float64(cachedTokens)*entry.CachedInputCostPerToken +
-		float64(cacheWriteTokens)*entry.InputCostPerToken*1.25 +
+		float64(cacheWriteTokens)*cacheWriteRate +
 		float64(outputTokens)*entry.OutputCostPerToken
 	return int64(cost * 1_000_000)
 }

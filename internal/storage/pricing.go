@@ -9,33 +9,39 @@ import (
 // (Table was renamed from pricing_cache in migration 001; the in-memory
 // type name is kept for now to keep the diff focused.)
 type PriceCacheEntry struct {
-	ModelID                  string
-	Provider                 string
-	InputCostPerToken        float64
-	OutputCostPerToken       float64
-	CachedInputCostPerToken  float64
-	MaxTokens                int
-	RawJSON                  string
-	UpdatedAt                time.Time
+	ModelID                       string
+	Provider                      string
+	InputCostPerToken             float64
+	OutputCostPerToken            float64
+	CachedInputCostPerToken       float64 // cache_read_input_token_cost
+	CacheWriteInputCostPerToken   float64 // cache_creation_input_token_cost (standard 5-min TTL)
+	CacheWriteInputCostPerToken1hr float64 // cache_creation_input_token_cost_above_1hr
+	MaxTokens                     int
+	RawJSON                       string
+	UpdatedAt                     time.Time
 }
 
 // UpsertPrice inserts or replaces a single entry in token_price_api.
 func (s *Store) UpsertPrice(ctx context.Context, e PriceCacheEntry) error {
 	const q = `INSERT INTO token_price_api
 		(model_id, provider, input_cost_per_token, output_cost_per_token,
-		 cached_input_cost_per_token, max_tokens, raw_json, updated_at)
-		VALUES (?,?,?,?,?,?,?,?)
+		 cached_input_cost_per_token, cache_write_input_cost_per_token,
+		 cache_write_input_cost_per_token_1hr, max_tokens, raw_json, updated_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(model_id) DO UPDATE SET
 		  provider=excluded.provider,
 		  input_cost_per_token=excluded.input_cost_per_token,
 		  output_cost_per_token=excluded.output_cost_per_token,
 		  cached_input_cost_per_token=excluded.cached_input_cost_per_token,
+		  cache_write_input_cost_per_token=excluded.cache_write_input_cost_per_token,
+		  cache_write_input_cost_per_token_1hr=excluded.cache_write_input_cost_per_token_1hr,
 		  max_tokens=excluded.max_tokens,
 		  raw_json=excluded.raw_json,
 		  updated_at=excluded.updated_at`
 	_, err := s.db.ExecContext(ctx, q,
 		e.ModelID, e.Provider,
 		e.InputCostPerToken, e.OutputCostPerToken, e.CachedInputCostPerToken,
+		e.CacheWriteInputCostPerToken, e.CacheWriteInputCostPerToken1hr,
 		e.MaxTokens, e.RawJSON,
 		e.UpdatedAt.UTC().Format(time.RFC3339),
 	)
@@ -46,8 +52,10 @@ func (s *Store) UpsertPrice(ctx context.Context, e PriceCacheEntry) error {
 func (s *Store) GetAllPrices(ctx context.Context) ([]PriceCacheEntry, error) {
 	const q = `SELECT model_id, provider,
 		COALESCE(input_cost_per_token,0), COALESCE(output_cost_per_token,0),
-		COALESCE(cached_input_cost_per_token,0), COALESCE(max_tokens,0),
-		COALESCE(raw_json,''), updated_at
+		COALESCE(cached_input_cost_per_token,0),
+		COALESCE(cache_write_input_cost_per_token,0),
+		COALESCE(cache_write_input_cost_per_token_1hr,0),
+		COALESCE(max_tokens,0), COALESCE(raw_json,''), updated_at
 		FROM token_price_api`
 	rows, err := s.db.QueryContext(ctx, q)
 	if err != nil {
@@ -62,6 +70,7 @@ func (s *Store) GetAllPrices(ctx context.Context) ([]PriceCacheEntry, error) {
 		if err := rows.Scan(
 			&e.ModelID, &e.Provider,
 			&e.InputCostPerToken, &e.OutputCostPerToken, &e.CachedInputCostPerToken,
+			&e.CacheWriteInputCostPerToken, &e.CacheWriteInputCostPerToken1hr,
 			&e.MaxTokens, &e.RawJSON, &updStr,
 		); err != nil {
 			return nil, err

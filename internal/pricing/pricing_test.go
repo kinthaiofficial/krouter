@@ -78,13 +78,13 @@ func TestCostFor_UnknownModelReturnsZero(t *testing.T) {
 
 func TestCostFor_DeepSeek(t *testing.T) {
 	svc := pricing.New(nil)
-	// deepseek-chat: $0.14/M input, $0.28/M output
+	// deepseek-chat (LiteLLM 2026-05): $0.28/M input, $0.42/M output
 	// 1000 input, 500 output
-	// input: 1000 * 0.00000014 * 1e6 = 140
-	// output: 500 * 0.00000028 * 1e6 = 140
-	// total: 280
+	// input: 1000 * 0.28/1e6 * 1e6 = 280
+	// output: 500 * 0.42/1e6 * 1e6 = 210
+	// total: 490
 	cost := svc.CostFor("deepseek", "deepseek-chat", 1000, 500, 0, 0)
-	assert.Equal(t, int64(280), cost)
+	assert.Equal(t, int64(490), cost)
 }
 
 func TestBaselineCostFor_KnownModel(t *testing.T) {
@@ -99,7 +99,7 @@ func TestBaselineCostFor_WithCacheTokens(t *testing.T) {
 	// Baseline accounts for cache buckets just like CostFor
 	// 500 fresh + 300 cached-read + 200 cache-write, 100 output
 	baseline := svc.BaselineCostFor("claude-sonnet-4-5", 500, 100, 300, 200)
-	// fresh: 500*3 = 1500, cached: 300*0.3 = 90, write: 200*3*1.25 = 750, out: 100*15 = 1500 → 3840
+	// fresh: 500*3 = 1500, cached: 300*0.3 = 90, write: 200*3.75 = 750, out: 100*15 = 1500 → 3840
 	assert.Equal(t, int64(3840), baseline)
 }
 
