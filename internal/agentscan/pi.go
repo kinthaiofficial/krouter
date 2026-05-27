@@ -37,20 +37,45 @@ type piProviderEntry struct {
 	APIKey  string `json:"apiKey"`
 }
 
-// piProtocolHint maps Pi's "api" field to krouter's protocol hint.
-// Pi uses "anthropic-messages" directly; all OpenAI variants map to "openai-chat".
+// piBuiltinAPI maps Pi's built-in provider names to their wire protocol.
+// When models.json overrides only baseUrl/apiKey for a built-in provider, the
+// "api" field is omitted; Pi resolves it from this same internal registry.
+// Source: github.com/earendil-works/pi packages/coding-agent provider list.
+var piBuiltinAPI = map[string]string{
+	"anthropic": "anthropic-messages",
+	// All other built-in providers use OpenAI-compatible completions.
+	"openai":     "openai-completions",
+	"deepseek":   "openai-completions",
+	"groq":       "openai-completions",
+	"mistral":    "openai-completions",
+	"xai":        "openai-completions",
+	"minimax":    "openai-completions",
+	"openrouter": "openai-completions",
+	"azure":      "openai-completions",
+	"together":   "openai-completions",
+	"deepinfra":  "openai-completions",
+	"fireworks":  "openai-completions",
+	"cerebras":   "openai-completions",
+	// google-generative-ai is not currently supported by krouter.
+}
+
+// piProtocolHint maps Pi's "api" field (or built-in default) to krouter's
+// protocol hint. Returns "" for protocols krouter does not support.
 func piProtocolHint(apiType, providerName string) string {
+	if apiType == "" {
+		// No explicit api field: entry is overriding a built-in provider.
+		// Look up the built-in default; custom providers always require api.
+		apiType = piBuiltinAPI[providerName]
+	}
 	switch apiType {
 	case "anthropic-messages":
 		return "anthropic-messages"
 	case "openai-completions", "openai-responses":
 		return "openai-chat"
+	default:
+		// google-generative-ai and unknown types: not supported.
+		return ""
 	}
-	// No explicit api type: infer from well-known provider names.
-	if providerName == "anthropic" {
-		return "anthropic-messages"
-	}
-	return "openai-chat"
 }
 
 func (s PiScanner) Scan(_ context.Context, configPath string) ([]InheritedEndpoint, error) {
@@ -69,10 +94,14 @@ func (s PiScanner) Scan(_ context.Context, configPath string) ([]InheritedEndpoi
 		if entry.BaseURL == "" && entry.APIKey == "" {
 			continue
 		}
+		hint := piProtocolHint(entry.API, name)
+		if hint == "" {
+			continue // unsupported protocol (e.g. google-generative-ai)
+		}
 		out = append(out, InheritedEndpoint{
 			Provider:     name,
 			EndpointURL:  entry.BaseURL,
-			ProtocolHint: piProtocolHint(entry.API, name),
+			ProtocolHint: hint,
 			APIKey:       entry.APIKey,
 		})
 	}

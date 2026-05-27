@@ -112,7 +112,7 @@ func TestPiScanner_Scan_MultipleProviders(t *testing.T) {
 	}
 }
 
-func TestPiScanner_Scan_SkipsEmptyEntries(t *testing.T) {
+func TestPiScanner_Scan_SkipsNoCredentials(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/models.json"
 
@@ -134,15 +134,19 @@ func TestPiScanner_Scan_SkipsEmptyEntries(t *testing.T) {
 	}
 }
 
-func TestPiScanner_Scan_InferProtocolFromName(t *testing.T) {
+// TestPiScanner_Scan_BuiltinOverride verifies that omitting the "api" field is
+// valid for built-in providers (user is only overriding baseUrl/apiKey).
+// Pi resolves the api type from its internal built-in registry in this case.
+func TestPiScanner_Scan_BuiltinOverride(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/models.json"
 
-	// No explicit "api" field — infer from provider name.
 	writeJSON(t, path, map[string]any{
 		"providers": map[string]any{
+			// Built-in provider overrides — no "api" field.
 			"anthropic": map[string]any{
-				"apiKey": "sk-ant-xyz",
+				"baseUrl": "http://127.0.0.1:8402",
+				"apiKey":  "sk-ant-xyz",
 			},
 			"groq": map[string]any{
 				"apiKey": "gsk-test",
@@ -163,6 +167,29 @@ func TestPiScanner_Scan_InferProtocolFromName(t *testing.T) {
 	}
 	if byProvider["groq"].ProtocolHint != "openai-chat" {
 		t.Errorf("groq hint = %q, want openai-chat", byProvider["groq"].ProtocolHint)
+	}
+}
+
+func TestPiScanner_Scan_SkipsUnsupportedProtocol(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/models.json"
+
+	// google-generative-ai is not supported by krouter.
+	writeJSON(t, path, map[string]any{
+		"providers": map[string]any{
+			"google": map[string]any{
+				"api":    "google-generative-ai",
+				"apiKey": "AIza-test",
+			},
+		},
+	})
+
+	eps, err := PiScanner{}.Scan(context.Background(), path)
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	if len(eps) != 0 {
+		t.Errorf("got %d endpoints, want 0 (google-generative-ai unsupported)", len(eps))
 	}
 }
 
