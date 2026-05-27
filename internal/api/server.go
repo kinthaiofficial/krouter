@@ -1494,7 +1494,7 @@ func (s *Server) doAgentConnect(w http.ResponseWriter, r *http.Request, name str
 		}
 	}
 	if found == nil {
-		http.Error(w, `{"error":"agent not found"}`, http.StatusNotFound)
+		http.Error(w, `{"error":"app not found"}`, http.StatusNotFound)
 		return
 	}
 
@@ -1553,7 +1553,7 @@ func (s *Server) doAgentDisconnect(w http.ResponseWriter, r *http.Request, name 
 		}
 	}
 	if found == nil {
-		http.Error(w, `{"error":"agent not found"}`, http.StatusNotFound)
+		http.Error(w, `{"error":"app not found"}`, http.StatusNotFound)
 		return
 	}
 
@@ -1595,7 +1595,7 @@ func (s *Server) doAppDiff(w http.ResponseWriter, r *http.Request, name string) 
 		}
 	}
 	if found == nil {
-		http.Error(w, `{"error":"agent not found"}`, http.StatusNotFound)
+		http.Error(w, `{"error":"app not found"}`, http.StatusNotFound)
 		return
 	}
 	switch name {
@@ -1629,7 +1629,7 @@ func (s *Server) doAppBackups(w http.ResponseWriter, r *http.Request, name strin
 		}
 	}
 	if found == nil {
-		http.Error(w, `{"error":"agent not found"}`, http.StatusNotFound)
+		http.Error(w, `{"error":"app not found"}`, http.StatusNotFound)
 		return
 	}
 	if found.ConfigPath == "" {
@@ -1690,7 +1690,7 @@ func (s *Server) doAppRestore(w http.ResponseWriter, r *http.Request, name strin
 		}
 	}
 	if found == nil {
-		http.Error(w, `{"error":"agent not found"}`, http.StatusNotFound)
+		http.Error(w, `{"error":"app not found"}`, http.StatusNotFound)
 		return
 	}
 	var body struct {

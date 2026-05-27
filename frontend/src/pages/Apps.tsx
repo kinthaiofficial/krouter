@@ -751,6 +751,7 @@ function AvailableAgentRow({
   onMutationSuccess: () => void
 }) {
   const { t } = useTranslation()
+  const qc = useQueryClient()
   const [pendingDiff, setPendingDiff] = useState<AppDiff | null>(null)
   const [showDiff, setShowDiff] = useState(false)
 
@@ -767,10 +768,17 @@ function AvailableAgentRow({
     mutationFn: () => api.appDiff(a.id),
     onSuccess: (diff) => { setPendingDiff(diff); setShowDiff(true) },
   })
+  const rescanMutation = useMutation({
+    mutationFn: () => api.appRescan(a.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['apps'] })
+      qc.invalidateQueries({ queryKey: ['apps-configured'] })
+    },
+  })
 
   const configPath = a.config?.config_path ?? a.supported?.default_path ?? a.status?.config_path
   const detected = !!a.status   // appears in /internal/apps — binary on PATH
-  const isBusy = connectMutation.isPending || getDiff.isPending
+  const isBusy = connectMutation.isPending || getDiff.isPending || rescanMutation.isPending
 
   return (
     <div className="flex items-center gap-3 px-3 py-2 bg-white rounded-lg border border-gray-200">
@@ -792,20 +800,29 @@ function AvailableAgentRow({
           </p>
         )}
       </div>
-      {detected && (
+      <div className="flex items-center gap-2 shrink-0">
         <button
-          onClick={() => {
-            if (a.id === 'openclaw') getDiff.mutate()
-            else connectMutation.mutate()
-          }}
+          onClick={() => rescanMutation.mutate()}
           disabled={isBusy}
-          className="shrink-0 text-xs px-2.5 py-1 rounded-md bg-brand-light text-brand hover:bg-green-100 disabled:opacity-50 font-medium"
+          className="text-xs px-2.5 py-1 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50 font-medium"
         >
-          {getDiff.isPending ? t('apps.loading')
-            : connectMutation.isPending ? t('apps.connecting')
-            : t('apps.connect')}
+          {rescanMutation.isPending ? t('inheritance.scanning') : t('inheritance.rescan')}
         </button>
-      )}
+        {detected && (
+          <button
+            onClick={() => {
+              if (a.id === 'openclaw') getDiff.mutate()
+              else connectMutation.mutate()
+            }}
+            disabled={isBusy}
+            className="text-xs px-2.5 py-1 rounded-md bg-brand-light text-brand hover:bg-green-100 disabled:opacity-50 font-medium"
+          >
+            {getDiff.isPending ? t('apps.loading')
+              : connectMutation.isPending ? t('apps.connecting')
+              : t('apps.connect')}
+          </button>
+        )}
+      </div>
       {connectMutation.error && (
         <span className="text-[11px] text-red-500 ml-2">
           {(connectMutation.error as Error).message}

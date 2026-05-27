@@ -227,12 +227,12 @@ func TestAgentAction_LegacyVerbsStillReachableUnderNewDispatch(t *testing.T) {
 	// catch-all 404. We deliberately use an agent name that
 	// DetectInstalledAgents guarantees won't be found (versus "openclaw",
 	// which exists on developer machines and would cause the handler to
-	// attempt a real connect). The handler returns "agent not found" once
+	// attempt a real connect). The handler returns "app not found" once
 	// detection comes back empty for this name; that JSON body proves
 	// dispatch reached the handler — what this test exists to assert.
 	w := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(w, authedReq(t, http.MethodPost,
 		"/internal/apps/nonexistent-vendor-xyz/connect", ""))
-	assert.Contains(t, w.Body.String(), "agent not found",
+	assert.Contains(t, w.Body.String(), "app not found",
 		"connect verb must reach its handler, not a routing 404; got %d body=%s", w.Code, w.Body.String())
 }
