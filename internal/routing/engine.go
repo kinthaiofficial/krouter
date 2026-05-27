@@ -26,18 +26,17 @@ const healthRecoveryTTL = 5 * time.Minute
 // HTTP 429 so the agent sees a clear, actionable error instead of a 502.
 var ErrBudgetExceeded = errors.New("daily budget limit exceeded")
 
-// complexityKeywords indicate a request that likely benefits from a more capable model.
-var complexityKeywords = []string{
-	"debug", "refactor", "architect", "design", "analyze",
-	"optimize", "implement", "review", "audit", "migration",
-}
-
 // ComplexityScore returns a score in [0.0, 1.0] estimating request complexity.
 // Scores >= 0.4 are treated as "complex" by the Quality preset.
 // Exported for testing; internal callers use the same function.
+//
+// Only two signals are used: images (clear multi-modal requirement) and raw
+// context size (>10k tokens). HasTools and system-prompt keywords are
+// intentionally excluded — they fire on framework/harness boilerplate (tool
+// definitions, agent system prompts) rather than the actual task difficulty,
+// and caused simple requests to be misclassified as complex (#65).
 func ComplexityScore(req Request) float64 {
 	score := 0.0
-
 	if req.HasImages {
 		score += 0.4
 	}
@@ -46,17 +45,6 @@ func ComplexityScore(req Request) float64 {
 	} else if req.InputTokenEst > 4000 {
 		score += 0.2
 	}
-	if req.HasTools && req.InputTokenEst > 4000 {
-		score += 0.15
-	}
-
-	sp := strings.ToLower(req.SystemPrompt)
-	for _, kw := range complexityKeywords {
-		if strings.Contains(sp, kw) {
-			score += 0.05
-		}
-	}
-
 	if score > 1.0 {
 		return 1.0
 	}

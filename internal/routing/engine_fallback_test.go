@@ -124,18 +124,23 @@ func TestComplexityScore_SmallTokensSimple(t *testing.T) {
 	assert.Less(t, routing.ComplexityScore(req), 0.4)
 }
 
-func TestComplexityScore_KeywordsIncrease(t *testing.T) {
-	withKeyword := routing.Request{SystemPrompt: "please refactor the codebase", InputTokenEst: 3000}
-	without := routing.Request{InputTokenEst: 3000}
-	assert.Greater(t, routing.ComplexityScore(withKeyword), routing.ComplexityScore(without))
+func TestComplexityScore_HarnessBoilerplateNotComplex(t *testing.T) {
+	// Regression for #65: a short user task inside a large-tool harness (7k tokens,
+	// HasTools=true, system prompt with complexity keywords) must not be classified
+	// as complex — those are framework signals, not task signals.
+	req := routing.Request{
+		InputTokenEst: 7000,
+		HasTools:      true,
+		SystemPrompt:  "debug and refactor and implement and review",
+	}
+	assert.Less(t, routing.ComplexityScore(req), 0.4, "harness overhead must not push score to complex")
 }
 
-func TestComplexityScore_MultipleKeywordsCanCrossThreshold(t *testing.T) {
-	// 10 keywords × 0.05 = 0.50 (avoids floating-point 0.39999 edge case at exactly 8).
-	req := routing.Request{
-		SystemPrompt: "debug and refactor and architect and design and analyze and optimize and implement and review and audit and migration",
-	}
-	assert.GreaterOrEqual(t, routing.ComplexityScore(req), 0.4)
+func TestComplexityScore_MediumTokensWithToolsNotComplex(t *testing.T) {
+	// 4k–10k + HasTools was +0.35 before the fix, enough to cross 0.4 with one keyword.
+	// After the fix it must stay below the threshold.
+	req := routing.Request{InputTokenEst: 8000, HasTools: true}
+	assert.Less(t, routing.ComplexityScore(req), 0.4)
 }
 
 // ── enrichDecision (via Decide with pricing) ─────────────────────────────────
