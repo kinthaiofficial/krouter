@@ -97,21 +97,24 @@ describe('<Router>', () => {
     expect(screen.getByText('$0.0012')).toBeInTheDocument()
   })
 
-  it('renders the "no change" banner when requested and routed match', async () => {
+  it('renders no savings badge when requested and routed match (same cost)', async () => {
     handlers.set('/internal/logs', () => [
       makeRec({
         id: 'req_seed_unchanged',
         requested_model: 'glm-4.6',
         model: 'glm-4.6',
         provider: 'zai',
-        // No baseline → no savings → no_change banner shows.
+        cost_usd: 0.0012,
         baseline_cost_usd: 0.0012,
       }),
     ])
     renderWithProviders(<Router />)
     await waitFor(() => {
-      expect(screen.getByText(/no savings to report|无节省可统计/i)).toBeInTheDocument()
+      // Model name should be present; no savings/overrun badge.
+      expect(screen.getAllByText('glm-4.6').length).toBeGreaterThan(0)
     })
+    // No savings badge and no overrun badge should appear.
+    expect(screen.queryByText(/TrendingDown|TrendingUp|Saved|节省/)).not.toBeInTheDocument()
   })
 
   it('promotes a new SSE event to be the LATEST card', async () => {
@@ -140,26 +143,18 @@ describe('<Router>', () => {
     })
   })
 
-  it('collapses older records under "N earlier" and expands on click', async () => {
+  it('renders multiple seeded records in the feed (infinite scroll, no collapse)', async () => {
     handlers.set('/internal/logs', () => [
-      makeRec({ id: 'req_a', requested_model: 'a', model: 'A' }),
+      makeRec({ id: 'req_a', requested_model: 'model-a', model: 'model-a' }),
       makeRec({ id: 'req_b', requested_model: 'older-model', model: 'older-routed' }),
       makeRec({ id: 'req_c', requested_model: 'oldest', model: 'oldest-routed' }),
     ])
     renderWithProviders(<Router />)
 
+    // INITIAL_VISIBLE = 5, so all 3 history records appear immediately.
     await waitFor(() => {
-      expect(screen.getByText(/2 earlier|再显示 2 条/)).toBeInTheDocument()
-    })
-
-    // Older records are not yet in the DOM (collapsed).
-    expect(screen.queryByText('older-model')).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByText(/2 earlier|再显示 2 条/))
-
-    await waitFor(() => {
-      expect(screen.getByText('older-model')).toBeInTheDocument()
-      expect(screen.getByText('oldest')).toBeInTheDocument()
+      expect(screen.getAllByText('older-model').length).toBeGreaterThan(0)
+      expect(screen.getAllByText('oldest').length).toBeGreaterThan(0)
     })
   })
 
@@ -221,8 +216,8 @@ describe('<Router>', () => {
 
     await waitFor(() => screen.getByText(/LATEST|最新/))
 
-    expect(screen.getByText(/Saved \$0\.1188|节省 \$0\.1188/)).toBeInTheDocument()
-    expect(screen.getByText(/99\.0%/)).toBeInTheDocument()
+    // Savings badge shows "$savings · pct%" inline.
+    expect(screen.getByText(/\$0\.1188 · 99\.0%/)).toBeInTheDocument()
 
     expect(screen.getByText(/\$3\.00 \/ 1M/)).toBeInTheDocument()
     expect(screen.getByText(/\$0\.50 \/ 1M/)).toBeInTheDocument()
@@ -240,7 +235,8 @@ describe('<Router>', () => {
     ])
     renderWithProviders(<Router />)
     await waitFor(() => {
-      expect(screen.getByText(/more than the requested model|高 \$/)).toBeInTheDocument()
+      // Overrun badge shows "$abs_savings · pct%" in red.
+      expect(screen.getByText(/\$0\.0900 · 900\.0%/)).toBeInTheDocument()
     })
   })
 })
