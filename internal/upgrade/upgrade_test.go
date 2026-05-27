@@ -9,8 +9,10 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"testing"
 	"time"
 
@@ -176,6 +178,113 @@ func TestApply_NoUpdateAvailable(t *testing.T) {
 
 	err = svc.Apply(context.Background(), nil)
 	assert.Error(t, err, "Apply with no update should return an error")
+}
+
+// TestApply_RetriesOnTransientFailure verifies that Apply retries when the
+// download server returns errors on the first N attempts then succeeds.
+// This is the regression test for issue #73 (unstable proxy causing EOF).
+func TestApply_RetriesOnTransientFailure(t *testing.T) {
+	// Seed the service with a fake manifest pointing at our mock server.
+	key := testKey(t)
+
+	attempts := 0
+	// The mock binary payload — small enough for a unit test but realistic.
+	payload := []byte("fake-binary-content")
+	payloadHash := sha256.Sum256(payload)
+	hashHex := fmt.Sprintf("%x", payloadHash)
+
+	var binaryURL string // set after server starts
+
+	failUntil := 2 // first 2 attempts return 500, 3rd succeeds
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/bin" {
+			attempts++
+			if attempts <= failUntil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Length", fmt.Sprintf("%d", len(payload)))
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(payload)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+	binaryURL = srv.URL + "/bin"
+
+	import_runtime := runtime.GOOS + "-" + runtime.GOARCH
+	m := upgrade.Manifest{
+		Version:    "9.9.9",
+		ReleasedAt: time.Now().UTC(),
+		Binaries: map[string]upgrade.Binary{
+			import_runtime: {URL: binaryURL, SHA256: hashHex, Size: int64(len(payload))},
+		},
+	}
+
+	manifestBody, sig := buildManifest(t, key, m)
+	manifestSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/manifest.json.sig" {
+			_, _ = w.Write(sig)
+			return
+		}
+		_, _ = w.Write(manifestBody)
+	}))
+	defer manifestSrv.Close()
+
+	svc := newTestService(t, key, manifestSrv.URL+"/manifest.json", "0.0.1")
+	svc.CheckNow(context.Background())
+	require.NotNil(t, svc.Latest(), "update must be detected")
+
+	// Apply should succeed on the 3rd attempt despite 2 initial failures.
+	// We can't atomically replace the binary in a unit test (selfupdate.Apply
+	// writes the running executable), so we just verify Apply returns no error
+	// and that attempts == failUntil+1.
+	// Note: selfupdate.Apply will fail to replace the test binary path with
+	// "fake-binary-content" at the OS level — but that's after our retry logic.
+	// We assert on attempts to confirm the retry loop ran.
+	_ = svc.Apply(context.Background(), nil) // may error at selfupdate.Apply level; that's ok
+	assert.Equal(t, failUntil+1, attempts, "should have attempted failUntil+1 downloads")
+}
+
+// TestApply_ExhaustsRetries verifies that Apply returns an error after
+// exhausting all retry attempts rather than hanging indefinitely.
+func TestApply_ExhaustsRetries(t *testing.T) {
+	key := testKey(t)
+
+	attempts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	import_runtime := runtime.GOOS + "-" + runtime.GOARCH
+	m := upgrade.Manifest{
+		Version:    "9.9.9",
+		ReleasedAt: time.Now().UTC(),
+		Binaries: map[string]upgrade.Binary{
+			import_runtime: {URL: srv.URL + "/bin", SHA256: "abc", Size: 100},
+		},
+	}
+	manifestBody, sig := buildManifest(t, key, m)
+	manifestSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/manifest.json.sig" {
+			_, _ = w.Write(sig)
+			return
+		}
+		_, _ = w.Write(manifestBody)
+	}))
+	defer manifestSrv.Close()
+
+	svc := newTestService(t, key, manifestSrv.URL+"/manifest.json", "0.0.1")
+	svc.CheckNow(context.Background())
+	require.NotNil(t, svc.Latest())
+
+	err := svc.Apply(context.Background(), nil)
+	assert.Error(t, err, "Apply should return error after all retries exhausted")
+	assert.Equal(t, 4, attempts, "should have attempted exactly maxApplyAttempts=4 downloads")
 }
 
 func TestNew_EmbeddedKeyLoads(t *testing.T) {

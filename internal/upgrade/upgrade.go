@@ -125,8 +125,23 @@ func (s *Service) Latest() *Manifest {
 	return s.latest
 }
 
+const (
+	maxApplyAttempts = 4
+	applyBaseDelay   = 2 * time.Second
+	// downloadTimeout caps a single download attempt. GitHub release assets
+	// are typically 25–40 MB; 10 minutes is generous even on a 1 Mbit link.
+	// The outer http.Client.Timeout (30 s) covers manifest fetches only —
+	// we override it per-attempt via context deadline.
+	downloadTimeout = 10 * time.Minute
+)
+
 // Apply downloads and atomically applies the update binary.
-// onProgress is called with percentage 0-100 during the download.
+// onProgress is called with percentage 0-100 during the download;
+// it is reset to 0 at the start of each retry attempt.
+//
+// Up to maxApplyAttempts are made with exponential backoff (2 s, 4 s, 8 s)
+// so that transient network failures (unexpected EOF, connection reset)
+// through an unstable proxy don't permanently block the upgrade.
 func (s *Service) Apply(ctx context.Context, onProgress func(pct int)) error {
 	s.mu.RLock()
 	m := s.latest
@@ -142,39 +157,65 @@ func (s *Service) Apply(ctx context.Context, onProgress func(pct int)) error {
 		return fmt.Errorf("upgrade: no binary for platform %s", platformKey)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, bin.URL, nil)
+	var lastErr error
+	for attempt := 0; attempt < maxApplyAttempts; attempt++ {
+		if attempt > 0 {
+			delay := applyBaseDelay * (1 << (attempt - 1)) // 2s, 4s, 8s
+			s.logger.Warn("upgrade: download failed, retrying",
+				"attempt", attempt, "of", maxApplyAttempts-1,
+				"delay", delay, "err", lastErr)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(delay):
+			}
+			if onProgress != nil {
+				onProgress(0) // reset UI progress bar for next attempt
+			}
+		}
+
+		lastErr = s.applyOnce(ctx, bin, onProgress)
+		if lastErr == nil {
+			s.logger.Info("upgrade: applied", "version", m.Version, "attempts", attempt+1)
+			s.mu.Lock()
+			s.latest = nil
+			s.mu.Unlock()
+			return nil
+		}
+	}
+	return fmt.Errorf("upgrade: apply failed after %d attempts: %w", maxApplyAttempts, lastErr)
+}
+
+// applyOnce performs a single download + apply attempt with its own deadline.
+func (s *Service) applyOnce(ctx context.Context, bin Binary, onProgress func(pct int)) error {
+	dlCtx, cancel := context.WithTimeout(ctx, downloadTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(dlCtx, http.MethodGet, bin.URL, nil)
 	if err != nil {
-		return fmt.Errorf("upgrade: build request: %w", err)
+		return fmt.Errorf("build request: %w", err)
 	}
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("upgrade: download binary: %w", err)
+		return fmt.Errorf("download binary: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("upgrade: unexpected status %d downloading binary", resp.StatusCode)
+		return fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
 
-	// Wrap the body in a progress reader and a SHA-256 hasher.
-	total := bin.Size
 	hasher := sha256.New()
-	pr := &progressReader{r: resp.Body, hasher: hasher, total: total, cb: onProgress}
+	pr := &progressReader{r: resp.Body, hasher: hasher, total: bin.Size, cb: onProgress}
 
 	if err := selfupdate.Apply(pr, selfupdate.Options{}); err != nil {
-		return fmt.Errorf("upgrade: apply binary: %w", err)
+		return fmt.Errorf("apply binary: %w", err)
 	}
 
-	// Verify hash after apply (selfupdate writes via a temp file; hash reflects what was read).
 	got := fmt.Sprintf("%x", hasher.Sum(nil))
 	if got != bin.SHA256 {
-		return fmt.Errorf("upgrade: sha256 mismatch: got %s want %s", got, bin.SHA256)
+		return fmt.Errorf("sha256 mismatch: got %s want %s", got, bin.SHA256)
 	}
-
-	s.logger.Info("upgrade: applied", "version", m.Version)
-	s.mu.Lock()
-	s.latest = nil
-	s.mu.Unlock()
 	return nil
 }
 
