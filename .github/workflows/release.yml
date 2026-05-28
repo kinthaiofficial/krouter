@@ -296,20 +296,19 @@ jobs:
             krouter-windows.exe \
             > checksums.txt
 
-      - name: Create or update GitHub release
+      - name: Create draft release with build artifacts
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=${{ github.ref_name }}
           ASSETS="dist/krouter_*.tar.gz dist/krouter_*.zip dist/krouter-*-macos.dmg dist/krouter-*-x86_64.AppImage dist/krouter-*-setup.exe dist/checksums.txt"
-          if gh release view ${VERSION} &>/dev/null; then
-            gh release upload ${VERSION} --clobber $ASSETS
-          else
-            gh release create ${VERSION} \
-              --title "krouter ${VERSION}" \
-              --notes "See [CHANGELOG](https://github.com/kinthaiofficial/krouter/blob/main/CHANGELOG.md) for details." \
-              $ASSETS
-          fi
+          # Always (re)create as draft — publishing happens only after manifest is ready.
+          gh release delete ${VERSION} --yes 2>/dev/null || true
+          gh release create ${VERSION} \
+            --title "krouter ${VERSION}" \
+            --notes "See [CHANGELOG](https://github.com/kinthaiofficial/krouter/blob/main/CHANGELOG.md) for details." \
+            --draft \
+            $ASSETS
 
       - name: Generate and sign manifest.json
         env:
@@ -324,12 +323,10 @@ jobs:
             -out=dist/manifest.json
           rm -f /tmp/signing_key.pem
 
-      - name: Upload manifest and bare binaries to release
+      - name: Upload manifest and bare binaries to draft release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # manifest.json + sig (for auto-updater signature verification)
-          # Bare binaries (manifest URLs point directly to these, not to archives)
           gh release upload ${{ github.ref_name }} --clobber \
             dist/manifest.json \
             dist/manifest.json.sig \
@@ -337,6 +334,14 @@ jobs:
             dist/krouter-linux-arm64 \
             dist/krouter-apple-macos \
             dist/krouter-windows.exe
+
+      - name: Publish release (draft → live)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # This is the single moment the release becomes visible to the world.
+          # manifest.json is already uploaded, so daemon and website are in sync.
+          gh release edit ${{ github.ref_name }} --draft=false
 
       - name: Trigger krouter-site rebuild
         uses: peter-evans/repository-dispatch@v4
