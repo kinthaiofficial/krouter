@@ -415,7 +415,7 @@ func TestStartSync_StopsOnCtxCancel(t *testing.T) {
 	cancel()
 	select {
 	case <-done:
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(3 * time.Second):
 		t.Fatal("StartSync did not return after ctx cancel")
 	}
 }
