@@ -13,6 +13,8 @@ import {
   type SupportedApp, type ConfiguredApp, type KeyHintChannel,
 } from '../api/client'
 import { PageHeader } from '../components/ui'
+import AppLogo from '../components/AppLogo'
+import ProviderLogo from '../components/ProviderLogo'
 
 interface AppStats {
   requests_today: number
@@ -319,8 +321,9 @@ function ProviderChip({ name }: { name: string }) {
   return (
     <Link
       to={`/providers#provider-${encodeURIComponent(name)}`}
-      className="inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded border border-gray-200 bg-white text-gray-700 hover:border-brand hover:text-brand-ink transition-colors"
+      className="inline-flex items-center gap-1.5 text-[11px] font-medium px-1.5 py-0.5 rounded border border-gray-200 bg-white text-gray-700 hover:border-brand hover:text-brand-ink transition-colors"
     >
+      <ProviderLogo name={name} size={14} />
       {name}
       <ExternalLink size={9} className="opacity-50" />
     </Link>
@@ -420,14 +423,8 @@ function UnifiedAgentCard({
 
         {/* Header row: avatar · name · badges · action buttons */}
         <div className="flex items-start gap-3">
-          {/* Avatar circle — green when connected, gray otherwise */}
-          <span
-            className={`shrink-0 mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-full text-white text-[11px] font-bold tracking-tight ${
-              connected ? 'bg-brand' : 'bg-gray-300'
-            }`}
-          >
-            {a.id.slice(0, 2).toUpperCase()}
-          </span>
+          {/* App logo / avatar */}
+          <AppLogo appId={a.id} size={32} connected={connected} className="mt-0.5" />
 
           <div className="flex-1 min-w-0">
             {/* Name + status badges */}
@@ -779,9 +776,7 @@ function AvailableAgentRow({
 
   return (
     <div className="flex items-center gap-3 px-3 py-2 bg-white rounded-lg border border-gray-200">
-      <span className="shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-full bg-gray-200 text-gray-500 text-[10px] font-bold">
-        {a.id.slice(0, 2).toUpperCase()}
-      </span>
+      <AppLogo appId={a.id} size={28} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-medium text-sm text-gray-900">{a.displayName}</span>

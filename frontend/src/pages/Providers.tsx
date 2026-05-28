@@ -13,6 +13,7 @@ import {
 } from '../api/client'
 import { statusCodeMeaning } from '../lib/statusCode'
 import { PageHeader } from '../components/ui'
+import ProviderLogo from '../components/ProviderLogo'
 
 export default function Providers() {
   const { t } = useTranslation()
@@ -151,6 +152,7 @@ function ProviderCard({
       >
         {open ? <ChevronDown size={14} className="text-gray-400 shrink-0" /> : <ChevronRight size={14} className="text-gray-400 shrink-0" />}
         {statusIcon}
+        <ProviderLogo name={p.name} size={22} className="opacity-80" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className={['font-medium text-sm', p.configured ? 'text-gray-900' : 'text-gray-500'].join(' ')}>
