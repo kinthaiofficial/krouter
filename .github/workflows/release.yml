@@ -351,6 +351,7 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.TENCENT_SECRET_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.TENCENT_SECRET_KEY }}
+          AWS_DEFAULT_REGION: ap-guangzhou
           BUCKET: ${{ secrets.TENCENT_COS_BUCKET }}
         run: |
           if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$BUCKET" ]; then
