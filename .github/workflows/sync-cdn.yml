@@ -1,22 +1,21 @@
-name: Sync release to Tencent CDN mirror
+name: Mirror a release to Tencent COS (manual backfill)
 
-# Mirrors published release assets to a Tencent COS bucket so daemons can fall
-# back to the mirror when GitHub is unreachable. The daemon downloads from the
-# bucket's default COS domain (no CDN/custom domain, so no ICP filing needed).
-# GitHub stays the primary source; this is fallback only.
+# Manual tool to (re)mirror a given release's assets to the Tencent COS bucket.
 #
-# Fires on release *publish* (after release.yml flips draft→false), so the
-# assets + manifest are guaranteed present before we mirror them.
+# Routine releases are mirrored automatically by the "Mirror to Tencent COS"
+# step inside release.yml — this workflow is only for backfilling an old release
+# or retrying after a failed mirror. (A release published via the default
+# GITHUB_TOKEN can't trigger on:release workflows, which is why mirroring lives
+# in release.yml and this is dispatch-only.)
 #
-# Required repo secrets:
-#   TENCENT_SECRET_ID    SecretId of a sub-account with COS write access
-#   TENCENT_SECRET_KEY   matching SecretKey
-#   TENCENT_COS_BUCKET   bucket name incl. APPID, e.g. krouter-releases-1300000000
-# Edit COS_REGION below to match the bucket's region.
+# Required repo secrets: TENCENT_SECRET_ID / TENCENT_SECRET_KEY / TENCENT_COS_BUCKET
 
 on:
-  release:
-    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release tag to mirror, e.g. v2.4.19'
+        required: true
 
 env:
   COS_REGION: ap-guangzhou
@@ -29,7 +28,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${{ github.event.inputs.version }}"
           mkdir -p dist
           gh release download "$VERSION" --repo "${{ github.repository }}" \
             --pattern "manifest.json" \
@@ -47,15 +46,15 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.TENCENT_SECRET_KEY }}
           BUCKET: ${{ secrets.TENCENT_COS_BUCKET }}
         run: |
-          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${{ github.event.inputs.version }}"
           ENDPOINT="https://cos.${COS_REGION}.myqcloud.com"
 
           # Versioned, immutable copy — manifest.json binary URLs point here.
           aws s3 sync dist/ "s3://${BUCKET}/krouter/${VERSION}/" \
             --endpoint-url "$ENDPOINT" --no-progress
 
-          # latest/ — overwritten each release; the daemon's fallback manifest
-          # URL is https://<bucket>.cos.<region>.myqcloud.com/krouter/latest/manifest.json
+          # latest/ — the daemon's fallback manifest URL is
+          # https://<bucket>.cos.<region>.myqcloud.com/krouter/latest/manifest.json
           aws s3 sync dist/ "s3://${BUCKET}/krouter/latest/" \
             --endpoint-url "$ENDPOINT" --no-progress
 

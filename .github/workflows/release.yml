@@ -343,6 +343,32 @@ jobs:
           # manifest.json is already uploaded, so daemon and website are in sync.
           gh release edit ${{ github.ref_name }} --draft=false
 
+      - name: Mirror to Tencent COS (China download fallback)
+        # Done inline (not a separate on:release workflow) because a release
+        # published via the default GITHUB_TOKEN does NOT trigger on:release
+        # workflows. dist/ already holds the manifest + bare binaries from the
+        # steps above, so we just push the daemon-relevant files to COS.
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.TENCENT_SECRET_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.TENCENT_SECRET_KEY }}
+          BUCKET: ${{ secrets.TENCENT_COS_BUCKET }}
+        run: |
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$BUCKET" ]; then
+            echo "COS secrets not set — skipping mirror (release itself is unaffected)."
+            exit 0
+          fi
+          VERSION=${{ github.ref_name }}
+          ENDPOINT="https://cos.ap-guangzhou.myqcloud.com"
+          for DEST in "krouter/${VERSION}" "krouter/latest"; do
+            aws s3 sync dist/ "s3://${BUCKET}/${DEST}/" \
+              --endpoint-url "$ENDPOINT" --no-progress \
+              --exclude "*" \
+              --include "manifest.json" --include "manifest.json.sig" \
+              --include "krouter-linux-amd64" --include "krouter-linux-arm64" \
+              --include "krouter-apple-macos" --include "krouter-windows.exe"
+          done
+          echo "Mirrored $VERSION to s3://${BUCKET}/krouter/{${VERSION},latest}/"
+
       - name: Trigger krouter-site rebuild
         uses: peter-evans/repository-dispatch@v4
         with:
