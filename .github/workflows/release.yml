@@ -359,7 +359,12 @@ jobs:
             exit 0
           fi
           VERSION=${{ github.ref_name }}
-          ENDPOINT="https://cos.ap-guangzhou.myqcloud.com"
+          # Global Acceleration endpoint: cross-border upload over Tencent's
+          # backbone. The plain cos.<region> domain rejects slow cross-border
+          # PUTs with UserNetworkTooSlow (GitHub runners are outside China).
+          # Requires the bucket's Global Acceleration to be enabled. Downloads
+          # by the daemon still use the plain regional domain (no accel cost).
+          ENDPOINT="https://cos.accelerate.myqcloud.com"
           # COS rejects path-style; force virtual-hosted (<bucket>.cos.<region>...).
           aws configure set s3.addressing_style virtual
           # COS multipart UploadPart needs Content-Length, which the aws CLI omits

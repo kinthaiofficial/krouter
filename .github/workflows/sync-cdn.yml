@@ -48,7 +48,9 @@ jobs:
           BUCKET: ${{ secrets.TENCENT_COS_BUCKET }}
         run: |
           VERSION="${{ github.event.inputs.version }}"
-          ENDPOINT="https://cos.${COS_REGION}.myqcloud.com"
+          # Global Acceleration endpoint — see release.yml for rationale
+          # (plain regional domain rejects slow cross-border PUTs).
+          ENDPOINT="https://cos.accelerate.myqcloud.com"
           # COS rejects path-style; force virtual-hosted (<bucket>.cos.<region>...).
           aws configure set s3.addressing_style virtual
           # COS multipart UploadPart needs Content-Length, which the aws CLI omits
