@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { CheckCircle2, ExternalLink, Loader2, RefreshCw } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ExternalLink, Loader2, RefreshCw } from 'lucide-react'
 import { api } from '../api/client'
 import { PageHeader } from '../components/ui'
 
@@ -40,19 +40,39 @@ export default function About() {
         .then((r) => r.json()),
   })
 
+  // applyError holds the error message broadcast by the daemon via SSE when
+  // download fails (e.g. network unreachable). Separate from applyUpdate.isError
+  // which only reflects the HTTP POST itself.
+  const [applyError, setApplyError] = useState<string | null>(null)
+
   // Fire the fresh check exactly once on mount.
   useEffect(() => {
     check.mutate()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // After apply succeeds, poll /internal/status every 1.5s until the version
-  // changes (daemon restarted) or 2 min timeout. Resets the mutation state so
-  // the UI reflects the new version instead of staying on "Restarting…".
+  // After apply is triggered, subscribe to SSE for real-time failure/success
+  // feedback AND poll /internal/status as a fallback for the restart case.
   const originalVersionRef = useRef<string | undefined>(undefined)
   useEffect(() => {
     if (!applyUpdate.isSuccess) return
+    setApplyError(null)
     originalVersionRef.current = status?.version
+
+    // SSE: catches update_apply_failed (network error etc.) and update_restarting.
+    const es = new EventSource('/internal/events', { withCredentials: true })
+    es.addEventListener('update_apply_failed', (e: MessageEvent) => {
+      try {
+        const payload = JSON.parse(e.data) as { error?: string }
+        setApplyError(payload.error ?? t('about.update_failed'))
+      } catch {
+        setApplyError(t('about.update_failed'))
+      }
+      applyUpdate.reset()
+      es.close()
+    })
+
+    // Polling fallback: detect version change after daemon restart.
     const deadline = Date.now() + 120_000
     const id = setInterval(async () => {
       if (Date.now() > deadline) {
@@ -64,6 +84,7 @@ export default function About() {
         const s: { version: string } = await fetch('/internal/status', { credentials: 'include' }).then((r) => r.json())
         if (s.version !== originalVersionRef.current) {
           clearInterval(id)
+          es.close()
           qc.invalidateQueries({ queryKey: ['status'] })
           applyUpdate.reset()
           check.mutate()
@@ -72,7 +93,11 @@ export default function About() {
         // daemon mid-restart; keep retrying
       }
     }, 1500)
-    return () => clearInterval(id)
+
+    return () => {
+      clearInterval(id)
+      es.close()
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applyUpdate.isSuccess])
 
@@ -133,10 +158,11 @@ export default function About() {
       <UpdateCheckCard
         loading={check.isPending}
         error={check.isError}
-        retry={() => check.mutate()}
+        retry={() => { setApplyError(null); check.mutate() }}
         data={data}
         hasUpdate={hasUpdate}
         applyUpdate={applyUpdate}
+        applyError={applyError}
         t={t}
       />
     </div>
@@ -150,10 +176,11 @@ interface UpdateCardProps {
   data: UpdateStatus | undefined
   hasUpdate: boolean
   applyUpdate: ReturnType<typeof useMutation<unknown>>
+  applyError: string | null
   t: ReturnType<typeof useTranslation>['t']
 }
 
-function UpdateCheckCard({ loading, error, retry, data, hasUpdate, applyUpdate, t }: UpdateCardProps) {
+function UpdateCheckCard({ loading, error, retry, data, hasUpdate, applyUpdate, applyError, t }: UpdateCardProps) {
   // 1. Loading — spinner.
   if (loading) {
     return (
@@ -226,7 +253,17 @@ function UpdateCheckCard({ loading, error, retry, data, hasUpdate, applyUpdate, 
           </a>
         )}
       </div>
-      {applyUpdate.isError && (
+      {applyError && (
+        <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
+          <AlertCircle size={14} className="text-red-500 shrink-0 mt-0.5" />
+          <div className="text-xs text-red-700 space-y-0.5">
+            <p className="font-medium">{t('about.update_failed')}</p>
+            <p className="font-mono break-all opacity-80">{applyError}</p>
+            <p className="opacity-70">{t('about.update_failed_hint')}</p>
+          </div>
+        </div>
+      )}
+      {!applyError && applyUpdate.isError && (
         <p className="text-xs text-red-500">{t('about.update_failed')}</p>
       )}
     </div>

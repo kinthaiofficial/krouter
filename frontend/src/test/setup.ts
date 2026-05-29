@@ -10,3 +10,13 @@ if (typeof IntersectionObserver === 'undefined') {
     disconnect() {}
   }
 }
+
+// jsdom does not implement EventSource (used by Dashboard and About for SSE).
+if (typeof EventSource === 'undefined') {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(globalThis as any).EventSource = class {
+    addEventListener() {}
+    removeEventListener() {}
+    close() {}
+  }
+}
