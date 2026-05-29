@@ -17,6 +17,8 @@ const PROVIDER_COLORS: Record<string, string> = {
   xai:        '#111827',
   fireworks:  '#7c3aed',
   together:   '#0ea5e9',
+  openrouter: '#6467f2',
+  gemini:     '#1a73e8',
 }
 
 interface Props {
