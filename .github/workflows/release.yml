@@ -365,14 +365,20 @@ jobs:
           # COS multipart UploadPart needs Content-Length, which the aws CLI omits
           # on chunked uploads. Raise the threshold so binaries go as single PUTs.
           aws configure set s3.multipart_threshold 1GB
-          for DEST in "krouter/${VERSION}" "krouter/latest"; do
-            aws s3 sync dist/ "s3://${BUCKET}/${DEST}/" \
-              --endpoint-url "$ENDPOINT" --no-progress \
-              --exclude "*" \
-              --include "manifest.json" --include "manifest.json.sig" \
-              --include "krouter-linux-amd64" --include "krouter-linux-arm64" \
-              --include "krouter-apple-macos" --include "krouter-windows.exe"
-          done
+          # Versioned dir: manifest + all binaries (manifest fallback_url points here).
+          aws s3 sync dist/ "s3://${BUCKET}/krouter/${VERSION}/" \
+            --endpoint-url "$ENDPOINT" --no-progress \
+            --exclude "*" \
+            --include "manifest.json" --include "manifest.json.sig" \
+            --include "krouter-linux-amd64" --include "krouter-linux-arm64" \
+            --include "krouter-apple-macos" --include "krouter-windows.exe"
+          # latest dir: only the manifest pair — daemon reads latest/manifest.json,
+          # whose binary fallback_url already points at the versioned dir above.
+          # (No binaries here, so we don't push the big files across the border twice.)
+          aws s3 sync dist/ "s3://${BUCKET}/krouter/latest/" \
+            --endpoint-url "$ENDPOINT" --no-progress \
+            --exclude "*" \
+            --include "manifest.json" --include "manifest.json.sig"
           echo "Mirrored $VERSION to s3://${BUCKET}/krouter/{${VERSION},latest}/"
 
       - name: Trigger krouter-site rebuild

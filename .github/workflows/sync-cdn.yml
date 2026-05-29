@@ -55,13 +55,16 @@ jobs:
           # on chunked uploads. Raise the threshold so binaries go as single PUTs.
           aws configure set s3.multipart_threshold 1GB
 
-          # Versioned, immutable copy — manifest.json binary URLs point here.
+          # Versioned, immutable copy — manifest fallback_url points here.
           aws s3 sync dist/ "s3://${BUCKET}/krouter/${VERSION}/" \
             --endpoint-url "$ENDPOINT" --no-progress
 
-          # latest/ — the daemon's fallback manifest URL is
-          # https://<bucket>.cos.<region>.myqcloud.com/krouter/latest/manifest.json
+          # latest/ — only the manifest pair (daemon reads latest/manifest.json,
+          # whose binary fallback_url points at the versioned dir above). No need
+          # to re-upload the big binaries across the border a second time.
           aws s3 sync dist/ "s3://${BUCKET}/krouter/latest/" \
-            --endpoint-url "$ENDPOINT" --no-progress
+            --endpoint-url "$ENDPOINT" --no-progress \
+            --exclude "*" \
+            --include "manifest.json" --include "manifest.json.sig"
 
           echo "Mirrored $VERSION to s3://${BUCKET}/krouter/{${VERSION},latest}/"
