@@ -287,6 +287,68 @@ func TestApply_ExhaustsRetries(t *testing.T) {
 	assert.Equal(t, 4, attempts, "should have attempted exactly maxApplyAttempts=4 downloads")
 }
 
+// TestApply_FallsBackToMirror verifies that when the primary (GitHub) binary
+// URL is unreachable, Apply downloads from the FallbackURL (CDN mirror) within
+// the same attempt — the China-network-restriction scenario.
+func TestApply_FallsBackToMirror(t *testing.T) {
+	key := testKey(t)
+
+	payload := []byte("fake-binary-content")
+	payloadHash := sha256.Sum256(payload)
+	hashHex := fmt.Sprintf("%x", payloadHash)
+
+	primaryHits, mirrorHits := 0, 0
+
+	// Primary always fails (simulates GitHub blocked / unreachable).
+	primarySrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		primaryHits++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer primarySrv.Close()
+
+	// Mirror serves the binary.
+	mirrorSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mirrorHits++
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(payload)))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(payload)
+	}))
+	defer mirrorSrv.Close()
+
+	import_runtime := runtime.GOOS + "-" + runtime.GOARCH
+	m := upgrade.Manifest{
+		Version:    "9.9.9",
+		ReleasedAt: time.Now().UTC(),
+		Binaries: map[string]upgrade.Binary{
+			import_runtime: {
+				URL:         primarySrv.URL + "/bin",
+				FallbackURL: mirrorSrv.URL + "/bin",
+				SHA256:      hashHex,
+				Size:        int64(len(payload)),
+			},
+		},
+	}
+	manifestBody, sig := buildManifest(t, key, m)
+	manifestSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/manifest.json.sig" {
+			_, _ = w.Write(sig)
+			return
+		}
+		_, _ = w.Write(manifestBody)
+	}))
+	defer manifestSrv.Close()
+
+	svc := newTestService(t, key, manifestSrv.URL+"/manifest.json", "0.0.1")
+	svc.CheckNow(context.Background())
+	require.NotNil(t, svc.Latest())
+
+	// selfupdate.Apply may fail to swap the test binary at the OS level, but the
+	// download routing runs before that. We assert the mirror was reached.
+	_ = svc.Apply(context.Background(), nil)
+	assert.GreaterOrEqual(t, primaryHits, 1, "primary should be tried first")
+	assert.GreaterOrEqual(t, mirrorHits, 1, "mirror should be used after primary fails")
+}
+
 func TestNew_EmbeddedKeyLoads(t *testing.T) {
 	// Verify that the embedded dev public key is valid.
 	svc, err := upgrade.New("0.0.1")

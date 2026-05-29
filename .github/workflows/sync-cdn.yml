@@ -1,0 +1,61 @@
+name: Sync release to Tencent CDN mirror
+
+# Mirrors published release assets to a Tencent COS bucket (fronted by CDN at
+# dl.kinthai.ai) so daemons can fall back to the mirror when GitHub is
+# unreachable. GitHub stays the primary source; this is fallback only.
+#
+# Fires on release *publish* (after release.yml flips draft→false), so the
+# assets + manifest are guaranteed present before we mirror them.
+#
+# Required repo secrets:
+#   TENCENT_SECRET_ID    SecretId of a sub-account with COS write access
+#   TENCENT_SECRET_KEY   matching SecretKey
+#   TENCENT_COS_BUCKET   bucket name incl. APPID, e.g. krouter-releases-1300000000
+# Edit COS_REGION below to match the bucket's region.
+
+on:
+  release:
+    types: [published]
+
+env:
+  COS_REGION: ap-guangzhou
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          mkdir -p dist
+          gh release download "$VERSION" --repo "${{ github.repository }}" \
+            --pattern "manifest.json" \
+            --pattern "manifest.json.sig" \
+            --pattern "krouter-linux-amd64" \
+            --pattern "krouter-linux-arm64" \
+            --pattern "krouter-apple-macos" \
+            --pattern "krouter-windows.exe" \
+            --dir dist/
+          ls -la dist/
+
+      - name: Upload to COS (S3-compatible API)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.TENCENT_SECRET_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.TENCENT_SECRET_KEY }}
+          BUCKET: ${{ secrets.TENCENT_COS_BUCKET }}
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          ENDPOINT="https://cos.${COS_REGION}.myqcloud.com"
+
+          # Versioned, immutable copy — manifest.json binary URLs point here.
+          aws s3 sync dist/ "s3://${BUCKET}/krouter/${VERSION}/" \
+            --endpoint-url "$ENDPOINT" --no-progress
+
+          # latest/ — overwritten each release; the daemon's fallback manifest
+          # URL is https://dl.kinthai.ai/krouter/latest/manifest.json
+          aws s3 sync dist/ "s3://${BUCKET}/krouter/latest/" \
+            --endpoint-url "$ENDPOINT" --no-progress
+
+          echo "Mirrored $VERSION to s3://${BUCKET}/krouter/{${VERSION},latest}/"

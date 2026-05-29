@@ -30,9 +30,17 @@ import (
 //go:embed public_key.pem
 var embeddedPublicKey []byte
 
-const defaultManifestURL = "https://github.com/kinthaiofficial/krouter/releases/latest/download/manifest.json"
+const (
+	// defaultManifestURL is the authoritative source: GitHub releases. Tried first,
+	// everywhere (D-013 keeps GitHub as the source of truth).
+	defaultManifestURL = "https://github.com/kinthaiofficial/krouter/releases/latest/download/manifest.json"
+	// defaultFallbackManifestURL is the Tencent CDN mirror, used only when GitHub
+	// is unreachable (e.g. network restrictions in mainland China). The mirror
+	// serves the same signed manifest, so the ECDSA check passes either way.
+	defaultFallbackManifestURL = "https://dl.kinthai.ai/krouter/latest/manifest.json"
+)
 
-// Manifest describes a release from the CDN.
+// Manifest describes a release.
 type Manifest struct {
 	Version            string            `json:"version"`
 	MinSupportedVersion string           `json:"min_supported_version"`
@@ -44,26 +52,34 @@ type Manifest struct {
 
 // Binary describes a single platform binary in the manifest.
 type Binary struct {
-	URL    string `json:"url"`
-	SHA256 string `json:"sha256"`
-	Size   int64  `json:"size"`
+	URL         string `json:"url"`                    // primary: GitHub release asset
+	FallbackURL string `json:"fallback_url,omitempty"` // mirror: CDN (used when URL unreachable)
+	SHA256      string `json:"sha256"`
+	Size        int64  `json:"size"`
 }
 
 // Service checks for updates and applies them on demand.
 type Service struct {
-	currentVersion string
-	manifestURL    string
-	publicKey      *ecdsa.PublicKey
-	httpClient     *http.Client
-	logger         *slog.Logger
+	currentVersion      string
+	manifestURL         string
+	fallbackManifestURL string // CDN mirror; "" disables fallback (tests)
+	publicKey           *ecdsa.PublicKey
+	httpClient          *http.Client
+	logger              *slog.Logger
 
 	mu     sync.RWMutex
 	latest *Manifest // nil when already up-to-date
 }
 
-// New creates a Service using the embedded public key and the default manifest URL.
+// New creates a Service using the embedded public key, the default GitHub
+// manifest URL, and the CDN mirror as fallback.
 func New(currentVersion string) (*Service, error) {
-	return NewWithManifestURL(currentVersion, defaultManifestURL)
+	s, err := NewWithManifestURL(currentVersion, defaultManifestURL)
+	if err != nil {
+		return nil, err
+	}
+	s.fallbackManifestURL = defaultFallbackManifestURL
+	return s, nil
 }
 
 // NewWithManifestURL creates a Service with a configurable manifest URL (for testing).
@@ -157,6 +173,12 @@ func (s *Service) Apply(ctx context.Context, onProgress func(pct int)) error {
 		return fmt.Errorf("upgrade: no binary for platform %s", platformKey)
 	}
 
+	// Download sources in priority order: GitHub first, CDN mirror as fallback.
+	urls := []string{bin.URL}
+	if bin.FallbackURL != "" {
+		urls = append(urls, bin.FallbackURL)
+	}
+
 	var lastErr error
 	for attempt := 0; attempt < maxApplyAttempts; attempt++ {
 		if attempt > 0 {
@@ -174,24 +196,37 @@ func (s *Service) Apply(ctx context.Context, onProgress func(pct int)) error {
 			}
 		}
 
-		lastErr = s.applyOnce(ctx, bin, onProgress)
-		if lastErr == nil {
-			s.logger.Info("upgrade: applied", "version", m.Version, "attempts", attempt+1)
-			s.mu.Lock()
-			s.latest = nil
-			s.mu.Unlock()
-			return nil
+		// Within each attempt, try GitHub then the mirror. The mirror serves the
+		// same binary, so the SHA-256 check (bin.SHA256) applies to both.
+		for i, url := range urls {
+			if i > 0 {
+				s.logger.Warn("upgrade: primary download unreachable, trying mirror",
+					"mirror", url, "err", lastErr)
+				if onProgress != nil {
+					onProgress(0)
+				}
+			}
+			lastErr = s.applyOnce(ctx, url, bin, onProgress)
+			if lastErr == nil {
+				s.logger.Info("upgrade: applied", "version", m.Version,
+					"attempt", attempt+1, "source", url)
+				s.mu.Lock()
+				s.latest = nil
+				s.mu.Unlock()
+				return nil
+			}
 		}
 	}
 	return fmt.Errorf("upgrade: apply failed after %d attempts: %w", maxApplyAttempts, lastErr)
 }
 
-// applyOnce performs a single download + apply attempt with its own deadline.
-func (s *Service) applyOnce(ctx context.Context, bin Binary, onProgress func(pct int)) error {
+// applyOnce performs a single download + apply attempt from url with its own
+// deadline. bin supplies the expected SHA-256 and size (same for any source).
+func (s *Service) applyOnce(ctx context.Context, url string, bin Binary, onProgress func(pct int)) error {
 	dlCtx, cancel := context.WithTimeout(ctx, downloadTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(dlCtx, http.MethodGet, bin.URL, nil)
+	req, err := http.NewRequestWithContext(dlCtx, http.MethodGet, url, nil)
 	if err != nil {
 		return fmt.Errorf("build request: %w", err)
 	}
@@ -244,12 +279,36 @@ func (s *Service) checkOnce(ctx context.Context) {
 }
 
 // fetchManifest downloads manifest.json and verifies its ECDSA signature.
+// It tries GitHub first, then the CDN mirror — each source is fetched as a
+// (manifest, sig) pair so a partial outage can't mix sources.
 func (s *Service) fetchManifest(ctx context.Context) (*Manifest, error) {
-	body, err := s.get(ctx, s.manifestURL)
+	sources := []string{s.manifestURL}
+	if s.fallbackManifestURL != "" {
+		sources = append(sources, s.fallbackManifestURL)
+	}
+
+	var lastErr error
+	for i, base := range sources {
+		m, err := s.fetchManifestFrom(ctx, base)
+		if err == nil {
+			return m, nil
+		}
+		lastErr = err
+		if i+1 < len(sources) {
+			s.logger.Warn("upgrade: manifest source unreachable, trying mirror",
+				"failed", base, "err", err)
+		}
+	}
+	return nil, lastErr
+}
+
+// fetchManifestFrom downloads + verifies the manifest from a single base URL.
+func (s *Service) fetchManifestFrom(ctx context.Context, manifestURL string) (*Manifest, error) {
+	body, err := s.get(ctx, manifestURL)
 	if err != nil {
 		return nil, fmt.Errorf("fetch manifest: %w", err)
 	}
-	sig, err := s.get(ctx, s.manifestURL+".sig")
+	sig, err := s.get(ctx, manifestURL+".sig")
 	if err != nil {
 		return nil, fmt.Errorf("fetch manifest sig: %w", err)
 	}

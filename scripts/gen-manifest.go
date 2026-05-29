@@ -38,9 +38,10 @@ type Manifest struct {
 }
 
 type Binary struct {
-	URL    string `json:"url"`
-	SHA256 string `json:"sha256"`
-	Size   int64  `json:"size"`
+	URL         string `json:"url"`
+	FallbackURL string `json:"fallback_url,omitempty"`
+	SHA256      string `json:"sha256"`
+	Size        int64  `json:"size"`
 }
 
 // platformBinaries maps platform key → local dist/ filename and GitHub release asset name.
@@ -61,6 +62,7 @@ func main() {
 	dist := flag.String("dist", "dist", "goreleaser dist directory")
 	keyFile := flag.String("key", "private_key.pem", "ECDSA P-256 private key PEM file")
 	repo := flag.String("repo", "kinthaiofficial/krouter", "GitHub repo (owner/name)")
+	cdn := flag.String("cdn", "https://dl.kinthai.ai/krouter", "CDN mirror base URL (per-version dir appended); fallback when GitHub is unreachable")
 	out := flag.String("out", "dist/manifest.json", "Output manifest.json path")
 	flag.Parse()
 
@@ -77,6 +79,8 @@ func main() {
 
 	baseURL := fmt.Sprintf("https://github.com/%s/releases/download/%s", *repo, tag)
 	releaseNotesURL := fmt.Sprintf("https://github.com/%s/releases/tag/%s", *repo, tag)
+	// CDN mirror: <cdn>/<tag>/<asset>, matching the sync-cdn.yml upload path.
+	cdnBase := strings.TrimRight(*cdn, "/") + "/" + tag
 
 	binaries := map[string]Binary{}
 	for _, pb := range platformBinaries {
@@ -95,9 +99,10 @@ func main() {
 		}
 
 		binaries[pb.key] = Binary{
-			URL:    baseURL + "/" + pb.assetName,
-			SHA256: sum,
-			Size:   size,
+			URL:         baseURL + "/" + pb.assetName,
+			FallbackURL: cdnBase + "/" + pb.assetName,
+			SHA256:      sum,
+			Size:        size,
 		}
 		fmt.Printf("gen-manifest: %s → %s (sha256=%s)\n", pb.key, pb.assetName, sum[:12]+"...")
 	}
