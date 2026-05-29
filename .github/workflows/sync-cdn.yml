@@ -48,6 +48,8 @@ jobs:
         run: |
           VERSION="${{ github.event.inputs.version }}"
           ENDPOINT="https://cos.${COS_REGION}.myqcloud.com"
+          # COS rejects path-style; force virtual-hosted (<bucket>.cos.<region>...).
+          aws configure set s3.addressing_style virtual
 
           # Versioned, immutable copy — manifest.json binary URLs point here.
           aws s3 sync dist/ "s3://${BUCKET}/krouter/${VERSION}/" \

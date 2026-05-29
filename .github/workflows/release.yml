@@ -359,6 +359,8 @@ jobs:
           fi
           VERSION=${{ github.ref_name }}
           ENDPOINT="https://cos.ap-guangzhou.myqcloud.com"
+          # COS rejects path-style; force virtual-hosted (<bucket>.cos.<region>...).
+          aws configure set s3.addressing_style virtual
           for DEST in "krouter/${VERSION}" "krouter/latest"; do
             aws s3 sync dist/ "s3://${BUCKET}/${DEST}/" \
               --endpoint-url "$ENDPOINT" --no-progress \
