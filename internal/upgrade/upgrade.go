@@ -34,10 +34,10 @@ const (
 	// defaultManifestURL is the authoritative source: GitHub releases. Tried first,
 	// everywhere (D-013 keeps GitHub as the source of truth).
 	defaultManifestURL = "https://github.com/kinthaiofficial/krouter/releases/latest/download/manifest.json"
-	// defaultFallbackManifestURL is the Tencent CDN mirror, used only when GitHub
+	// defaultFallbackManifestURL is the Tencent COS mirror, used only when GitHub
 	// is unreachable (e.g. network restrictions in mainland China). The mirror
 	// serves the same signed manifest, so the ECDSA check passes either way.
-	defaultFallbackManifestURL = "https://dl.kinthai.ai/krouter/latest/manifest.json"
+	defaultFallbackManifestURL = "https://krouter-1302979455.cos.ap-guangzhou.myqcloud.com/krouter/latest/manifest.json"
 )
 
 // Manifest describes a release.

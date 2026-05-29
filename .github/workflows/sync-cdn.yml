@@ -1,8 +1,9 @@
 name: Sync release to Tencent CDN mirror
 
-# Mirrors published release assets to a Tencent COS bucket (fronted by CDN at
-# dl.kinthai.ai) so daemons can fall back to the mirror when GitHub is
-# unreachable. GitHub stays the primary source; this is fallback only.
+# Mirrors published release assets to a Tencent COS bucket so daemons can fall
+# back to the mirror when GitHub is unreachable. The daemon downloads from the
+# bucket's default COS domain (no CDN/custom domain, so no ICP filing needed).
+# GitHub stays the primary source; this is fallback only.
 #
 # Fires on release *publish* (after release.yml flips draft→false), so the
 # assets + manifest are guaranteed present before we mirror them.
@@ -54,7 +55,7 @@ jobs:
             --endpoint-url "$ENDPOINT" --no-progress
 
           # latest/ — overwritten each release; the daemon's fallback manifest
-          # URL is https://dl.kinthai.ai/krouter/latest/manifest.json
+          # URL is https://<bucket>.cos.<region>.myqcloud.com/krouter/latest/manifest.json
           aws s3 sync dist/ "s3://${BUCKET}/krouter/latest/" \
             --endpoint-url "$ENDPOINT" --no-progress
 

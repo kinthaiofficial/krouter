@@ -62,7 +62,7 @@ func main() {
 	dist := flag.String("dist", "dist", "goreleaser dist directory")
 	keyFile := flag.String("key", "private_key.pem", "ECDSA P-256 private key PEM file")
 	repo := flag.String("repo", "kinthaiofficial/krouter", "GitHub repo (owner/name)")
-	cdn := flag.String("cdn", "https://dl.kinthai.ai/krouter", "CDN mirror base URL (per-version dir appended); fallback when GitHub is unreachable")
+	cdn := flag.String("cdn", "https://krouter-1302979455.cos.ap-guangzhou.myqcloud.com/krouter", "COS mirror base URL (per-version dir appended); fallback when GitHub is unreachable")
 	out := flag.String("out", "dist/manifest.json", "Output manifest.json path")
 	flag.Parse()
 
