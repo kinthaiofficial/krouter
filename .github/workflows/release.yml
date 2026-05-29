@@ -362,6 +362,9 @@ jobs:
           ENDPOINT="https://cos.ap-guangzhou.myqcloud.com"
           # COS rejects path-style; force virtual-hosted (<bucket>.cos.<region>...).
           aws configure set s3.addressing_style virtual
+          # COS multipart UploadPart needs Content-Length, which the aws CLI omits
+          # on chunked uploads. Raise the threshold so binaries go as single PUTs.
+          aws configure set s3.multipart_threshold 1GB
           for DEST in "krouter/${VERSION}" "krouter/latest"; do
             aws s3 sync dist/ "s3://${BUCKET}/${DEST}/" \
               --endpoint-url "$ENDPOINT" --no-progress \
