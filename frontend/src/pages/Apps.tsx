@@ -748,6 +748,10 @@ function AvailableAgentRow({
   const qc = useQueryClient()
   const [pendingDiff, setPendingDiff] = useState<AppDiff | null>(null)
   const [showDiff, setShowDiff] = useState(false)
+  const [editPath, setEditPath] = useState(false)
+  const [pathDraft, setPathDraft] = useState(
+    a.config?.config_path ?? a.supported?.default_path ?? ''
+  )
 
   const connectMutation = useMutation({
     mutationFn: () =>
@@ -763,63 +767,109 @@ function AvailableAgentRow({
     onSuccess: (diff) => { setPendingDiff(diff); setShowDiff(true) },
   })
   const rescanMutation = useMutation({
-    mutationFn: () => api.appRescan(a.id),
+    mutationFn: (path?: string) => api.appRescan(a.id, path),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['apps'] })
       qc.invalidateQueries({ queryKey: ['apps-configured'] })
+      setEditPath(false)
     },
   })
 
   const configPath = a.config?.config_path ?? a.supported?.default_path ?? a.status?.config_path
-  const detected = !!a.status   // appears in /internal/apps — binary on PATH
+  const detected = !!a.status
   const isBusy = connectMutation.isPending || getDiff.isPending || rescanMutation.isPending
 
   return (
-    <div className="flex items-center gap-3 px-3 py-2 bg-white rounded-lg border border-gray-200">
-      <AppLogo appId={a.id} size={28} />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-medium text-sm text-gray-900">{a.displayName}</span>
-          {!detected && (
-            <span className="text-[10px] uppercase tracking-wider text-gray-400 border border-gray-200 rounded px-1.5 py-0.5">
-              {t('apps.not_installed')}
-            </span>
+    <div className="bg-white rounded-lg border border-gray-200 px-3 py-2">
+      <div className="flex items-center gap-3">
+        <AppLogo appId={a.id} size={28} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium text-sm text-gray-900">{a.displayName}</span>
+            {!detected && (
+              <span className="text-[10px] uppercase tracking-wider text-gray-400 border border-gray-200 rounded px-1.5 py-0.5">
+                {t('apps.not_installed')}
+              </span>
+            )}
+          </div>
+          {!editPath && configPath && (
+            <div className="flex items-center gap-1 mt-0.5">
+              <p className="text-[11px] text-gray-400 font-mono truncate" title={configPath}>
+                {configPath}
+              </p>
+              <button
+                type="button"
+                onClick={() => { setPathDraft(configPath); setEditPath(true) }}
+                className="text-gray-300 hover:text-gray-500 shrink-0"
+                title={t('apps.edit_path')}
+              >
+                <Edit2 className="w-3 h-3" />
+              </button>
+            </div>
           )}
         </div>
-        {configPath && (
-          <p className="text-[11px] text-gray-400 font-mono truncate" title={configPath}>
-            {configPath}
-          </p>
+        <div className="flex items-center gap-2 shrink-0">
+          {!editPath && (
+            <>
+              <button
+                onClick={() => rescanMutation.mutate(undefined)}
+                disabled={isBusy}
+                className="text-xs px-2.5 py-1 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50 font-medium"
+              >
+                {rescanMutation.isPending ? t('inheritance.scanning') : t('inheritance.rescan')}
+              </button>
+              {detected && (
+                <button
+                  onClick={() => {
+                    if (a.id === 'openclaw') getDiff.mutate()
+                    else connectMutation.mutate()
+                  }}
+                  disabled={isBusy}
+                  className="text-xs px-2.5 py-1 rounded-md bg-brand-light text-brand hover:bg-green-100 disabled:opacity-50 font-medium"
+                >
+                  {getDiff.isPending ? t('apps.loading')
+                    : connectMutation.isPending ? t('apps.connecting')
+                    : t('apps.connect')}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+        {connectMutation.error && (
+          <span className="text-[11px] text-red-500 ml-2">
+            {(connectMutation.error as Error).message}
+          </span>
         )}
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <button
-          onClick={() => rescanMutation.mutate()}
-          disabled={isBusy}
-          className="text-xs px-2.5 py-1 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50 font-medium"
-        >
-          {rescanMutation.isPending ? t('inheritance.scanning') : t('inheritance.rescan')}
-        </button>
-        {detected && (
+
+      {/* Editable path row */}
+      {editPath && (
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            type="text"
+            value={pathDraft}
+            onChange={(e) => setPathDraft(e.target.value)}
+            placeholder={a.supported?.default_path ?? t('apps.path_placeholder')}
+            className="flex-1 text-xs font-mono px-2 py-1 border border-gray-300 rounded focus:outline-none focus:border-brand"
+          />
           <button
-            onClick={() => {
-              if (a.id === 'openclaw') getDiff.mutate()
-              else connectMutation.mutate()
-            }}
+            type="button"
+            onClick={() => rescanMutation.mutate(pathDraft.trim() || undefined)}
             disabled={isBusy}
-            className="text-xs px-2.5 py-1 rounded-md bg-brand-light text-brand hover:bg-green-100 disabled:opacity-50 font-medium"
+            className="text-xs px-2.5 py-1 rounded-md bg-brand text-white hover:bg-brand-dark disabled:opacity-50 font-medium shrink-0"
           >
-            {getDiff.isPending ? t('apps.loading')
-              : connectMutation.isPending ? t('apps.connecting')
-              : t('apps.connect')}
+            {rescanMutation.isPending ? t('inheritance.scanning') : t('inheritance.save_rescan')}
           </button>
-        )}
-      </div>
-      {connectMutation.error && (
-        <span className="text-[11px] text-red-500 ml-2">
-          {(connectMutation.error as Error).message}
-        </span>
+          <button
+            type="button"
+            onClick={() => setEditPath(false)}
+            className="text-xs px-2 py-1 text-gray-400 hover:text-gray-600"
+          >
+            {t('common.cancel')}
+          </button>
+        </div>
       )}
+
       {showDiff && pendingDiff && (
         <DiffModal
           diff={pendingDiff}
