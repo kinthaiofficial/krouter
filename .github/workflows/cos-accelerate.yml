@@ -1,0 +1,38 @@
+name: COS — toggle Global Acceleration
+
+# One-off helper to enable/suspend Global Acceleration on the release-mirror
+# bucket, using the COS write credentials already in repo secrets. COS's
+# "PUT Bucket accelerate" REST API is S3-compatible, so the aws CLI's
+# put-bucket-accelerate-configuration works against the COS endpoint.
+
+on:
+  workflow_dispatch:
+    inputs:
+      status:
+        description: Enabled or Suspended
+        required: true
+        default: Enabled
+
+jobs:
+  toggle:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set bucket accelerate configuration
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.TENCENT_SECRET_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.TENCENT_SECRET_KEY }}
+          AWS_DEFAULT_REGION: ap-guangzhou
+          BUCKET: ${{ secrets.TENCENT_COS_BUCKET }}
+        run: |
+          aws configure set s3.addressing_style virtual
+          ENDPOINT="https://cos.ap-guangzhou.myqcloud.com"
+          echo "=== current state ==="
+          aws s3api get-bucket-accelerate-configuration \
+            --bucket "$BUCKET" --endpoint-url "$ENDPOINT" || echo "(not set yet)"
+          echo "=== setting to ${{ github.event.inputs.status }} ==="
+          aws s3api put-bucket-accelerate-configuration \
+            --bucket "$BUCKET" --endpoint-url "$ENDPOINT" \
+            --accelerate-configuration Status=${{ github.event.inputs.status }}
+          echo "=== new state ==="
+          aws s3api get-bucket-accelerate-configuration \
+            --bucket "$BUCKET" --endpoint-url "$ENDPOINT"
