@@ -343,48 +343,22 @@ jobs:
           # manifest.json is already uploaded, so daemon and website are in sync.
           gh release edit ${{ github.ref_name }} --draft=false
 
-      - name: Mirror to Tencent COS (China download fallback)
-        # Done inline (not a separate on:release workflow) because a release
-        # published via the default GITHUB_TOKEN does NOT trigger on:release
-        # workflows. dist/ already holds the manifest + bare binaries from the
-        # steps above, so we just push the daemon-relevant files to COS.
+      - name: Notify krouter.kinthai.ai to mirror the release
+        # Same server-pull pattern as sync-pricing.yml: we just send a signed
+        # ping; the krouter.kinthai.ai server pulls the just-published release
+        # assets from GitHub and serves them under /release/ as the China
+        # download fallback. Sent AFTER publish so the server's "latest release"
+        # lookup resolves to this version.
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.TENCENT_SECRET_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.TENCENT_SECRET_KEY }}
-          AWS_DEFAULT_REGION: ap-guangzhou
-          BUCKET: ${{ secrets.TENCENT_COS_BUCKET }}
+          PAYLOAD: '{"repo":"krouter","event":"release","tag":"${{ github.ref_name }}"}'
+          SECRET: ${{ secrets.WEBHOOK_SECRET }}
         run: |
-          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$BUCKET" ]; then
-            echo "COS secrets not set — skipping mirror (release itself is unaffected)."
-            exit 0
-          fi
-          VERSION=${{ github.ref_name }}
-          # Global Acceleration endpoint: cross-border upload over Tencent's
-          # backbone. The plain cos.<region> domain rejects slow cross-border
-          # PUTs with UserNetworkTooSlow (GitHub runners are outside China).
-          # Requires the bucket's Global Acceleration to be enabled. Downloads
-          # by the daemon still use the plain regional domain (no accel cost).
-          ENDPOINT="https://cos.accelerate.myqcloud.com"
-          # COS rejects path-style; force virtual-hosted (<bucket>.cos.<region>...).
-          aws configure set s3.addressing_style virtual
-          # COS multipart UploadPart needs Content-Length, which the aws CLI omits
-          # on chunked uploads. Raise the threshold so binaries go as single PUTs.
-          aws configure set s3.multipart_threshold 1GB
-          # Versioned dir: manifest + all binaries (manifest fallback_url points here).
-          aws s3 sync dist/ "s3://${BUCKET}/krouter/${VERSION}/" \
-            --endpoint-url "$ENDPOINT" --no-progress \
-            --exclude "*" \
-            --include "manifest.json" --include "manifest.json.sig" \
-            --include "krouter-linux-amd64" --include "krouter-linux-arm64" \
-            --include "krouter-apple-macos" --include "krouter-windows.exe"
-          # latest dir: only the manifest pair — daemon reads latest/manifest.json,
-          # whose binary fallback_url already points at the versioned dir above.
-          # (No binaries here, so we don't push the big files across the border twice.)
-          aws s3 sync dist/ "s3://${BUCKET}/krouter/latest/" \
-            --endpoint-url "$ENDPOINT" --no-progress \
-            --exclude "*" \
-            --include "manifest.json" --include "manifest.json.sig"
-          echo "Mirrored $VERSION to s3://${BUCKET}/krouter/{${VERSION},latest}/"
+          SIG="sha256=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')"
+          curl -sf --max-time 20 \
+            -X POST https://krouter.kinthai.ai:9001/webhook/krouter-release \
+            -H "Content-Type: application/json" \
+            -H "X-Hub-Signature-256: $SIG" \
+            -d "$PAYLOAD"
 
       - name: Trigger krouter-site rebuild
         uses: peter-evans/repository-dispatch@v4
