@@ -353,12 +353,15 @@ jobs:
           PAYLOAD: '{"repo":"krouter","event":"release","tag":"${{ github.ref_name }}"}'
           SECRET: ${{ secrets.WEBHOOK_SECRET }}
         run: |
+          # NOTE: the krouter.kinthai.ai server-pull link is not wired yet
+          # (no krouter-release handler on the server, and WEBHOOK_SECRET may be
+          # absent). Best-effort: a missing mirror must never fail the release.
           SIG="sha256=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')"
           curl -sf --max-time 20 \
             -X POST https://krouter.kinthai.ai:9001/webhook/krouter-release \
             -H "Content-Type: application/json" \
             -H "X-Hub-Signature-256: $SIG" \
-            -d "$PAYLOAD"
+            -d "$PAYLOAD" || echo "mirror webhook not delivered (non-fatal)"
 
       - name: Trigger krouter-site rebuild
         uses: peter-evans/repository-dispatch@v4
