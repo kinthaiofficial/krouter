@@ -79,7 +79,8 @@ func main() {
 
 	baseURL := fmt.Sprintf("https://github.com/%s/releases/download/%s", *repo, tag)
 	releaseNotesURL := fmt.Sprintf("https://github.com/%s/releases/tag/%s", *repo, tag)
-	// CDN mirror: <cdn>/<tag>/<asset>, matching the sync-cdn.yml upload path.
+	// CDN mirror: <cdn>/<tag>/<asset>, served by krouter.kinthai.ai/release
+	// (the China upgrade fallback; server-pulled from GitHub on release).
 	cdnBase := strings.TrimRight(*cdn, "/") + "/" + tag
 
 	binaries := map[string]Binary{}
