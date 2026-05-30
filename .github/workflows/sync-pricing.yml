@@ -19,7 +19,7 @@ jobs:
         run: |
           SIG="sha256=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')"
           curl -sf --max-time 15 \
-            -X POST https://krouter.kinthai.ai:9001/webhook/krouter-pricing \
+            -X POST https://krouter.kinthai.ai/webhook/krouter-pricing \
             -H "Content-Type: application/json" \
             -H "X-Hub-Signature-256: $SIG" \
             -d "$PAYLOAD"

@@ -21,10 +21,31 @@ jobs:
         run: go run scripts/update_prices.go
 
       - name: Commit if changed
+        id: commit
         run: |
           git config user.name  "krouter-bot"
           git config user.email "bot@kinthai.ai"
           git add data/token_prices.json
-          git diff --cached --quiet && echo "no changes" && exit 0
+          if git diff --cached --quiet; then
+            echo "no changes"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           git commit -m "chore(data): sync LiteLLM token prices $(date -u +%Y-%m-%d)"
           git push
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      # 由 GITHUB_TOKEN push 的 commit 不会触发 sync-pricing.yml（GitHub 防递归），
+      # 所以这里直接内联发 webhook，让服务器拉取最新数据。
+      - name: Trigger server pull
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          PAYLOAD: '{"repo":"krouter","event":"pricing-update"}'
+          SECRET: ${{ secrets.WEBHOOK_SECRET }}
+        run: |
+          SIG="sha256=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')"
+          curl -sf --max-time 15 \
+            -X POST https://krouter.kinthai.ai/webhook/krouter-pricing \
+            -H "Content-Type: application/json" \
+            -H "X-Hub-Signature-256: $SIG" \
+            -d "$PAYLOAD"
