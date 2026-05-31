@@ -443,7 +443,8 @@ function UnifiedAgentCard({
               )}
             </div>
 
-            {/* Config path (editable) */}
+            {/* Config path (click to edit — agents may be installed off the
+                default path, so the path is always an editable affordance). */}
             {configPath && (
               <div className="flex items-center gap-1.5 mt-1">
                 {editPath ? (
@@ -453,20 +454,25 @@ function UnifiedAgentCard({
                     onChange={(e) => setPathDraft(e.target.value)}
                     className="flex-1 text-xs font-mono px-2 py-0.5 border border-gray-200 rounded"
                   />
+                ) : a.supported ? (
+                  <button
+                    type="button"
+                    onClick={() => { setPathDraft(configPath); setEditPath(true) }}
+                    className="group flex items-center gap-1.5 min-w-0 flex-1 text-left"
+                    title={t('apps.edit_path')}
+                  >
+                    <span className="text-xs text-gray-500 font-mono truncate group-hover:text-gray-700 group-hover:underline decoration-dotted underline-offset-2">
+                      {configPath}
+                    </span>
+                    <span className="inline-flex items-center gap-0.5 text-[11px] text-gray-400 group-hover:text-brand shrink-0">
+                      <Edit2 className="w-3 h-3" />
+                      {t('apps.edit')}
+                    </span>
+                  </button>
                 ) : (
                   <p className="text-xs text-gray-500 font-mono truncate flex-1" title={configPath}>
                     {configPath}
                   </p>
-                )}
-                {a.supported && (
-                  <button
-                    type="button"
-                    onClick={() => setEditPath((v) => !v)}
-                    className="text-gray-400 hover:text-gray-700 shrink-0"
-                    aria-label={editPath ? 'Cancel' : 'Edit path'}
-                  >
-                    <Edit2 className="w-3 h-3" />
-                  </button>
                 )}
               </div>
             )}
@@ -793,19 +799,20 @@ function AvailableAgentRow({
             )}
           </div>
           {!editPath && configPath && (
-            <div className="flex items-center gap-1 mt-0.5">
-              <p className="text-[11px] text-gray-400 font-mono truncate" title={configPath}>
+            <button
+              type="button"
+              onClick={() => { setPathDraft(configPath); setEditPath(true) }}
+              className="group flex items-center gap-1 mt-0.5 min-w-0 max-w-full text-left"
+              title={t('apps.edit_path')}
+            >
+              <span className="text-[11px] text-gray-400 font-mono truncate group-hover:text-gray-600 group-hover:underline decoration-dotted underline-offset-2">
                 {configPath}
-              </p>
-              <button
-                type="button"
-                onClick={() => { setPathDraft(configPath); setEditPath(true) }}
-                className="text-gray-300 hover:text-gray-500 shrink-0"
-                title={t('apps.edit_path')}
-              >
+              </span>
+              <span className="inline-flex items-center gap-0.5 text-[11px] text-gray-400 group-hover:text-brand shrink-0">
                 <Edit2 className="w-3 h-3" />
-              </button>
-            </div>
+                {t('apps.edit')}
+              </span>
+            </button>
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">

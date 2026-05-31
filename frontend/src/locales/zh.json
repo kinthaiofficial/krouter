@@ -110,6 +110,7 @@
     "before": "变更前",
     "after": "变更后",
     "confirm_connect": "确认连接",
+    "edit": "修改",
     "edit_path": "编辑配置文件路径",
     "path_placeholder": "输入配置文件路径…",
     "preset_label": "路由模式",
