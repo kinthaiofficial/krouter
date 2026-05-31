@@ -110,6 +110,7 @@
     "before": "Before",
     "after": "After",
     "confirm_connect": "Confirm Connect",
+    "edit": "Edit",
     "edit_path": "Edit config path",
     "path_placeholder": "Enter config file path…",
     "preset_label": "Routing",
