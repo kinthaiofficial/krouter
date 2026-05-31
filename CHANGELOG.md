@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Editable config paths are now discoverable in the Apps page**: each app's scanned config path (e.g. `~/.pi/agent/models.json`) is a clickable control with an always-visible "Edit" label and a hover affordance, instead of a faint 12px pencil icon that was easy to miss. Users whose agent isn't installed at the default location can click the path, correct it, and hit "Save & rescan" — no hunting required.
+
+### Fixed
+- **Cold-start `500 database error` on the management API**: the SQLite DSN used mattn/go-sqlite3-style parameters (`_journal_mode`, `_busy_timeout`) that the actual driver (`modernc.org/sqlite`) silently ignores, so the database ran with `journal_mode=delete` (writers block readers) and `busy_timeout=0` (no wait on contention) instead of the intended WAL + 5s timeout. During the first few seconds after startup — while the embedded pricing seed (2745 models) is written — concurrent reads/writes hit `SQLITE_BUSY`, so endpoints like `/internal/logs`, `/internal/models`, and `/internal/apps/configured` briefly returned `500`. The DSN now uses modernc's `_pragma=` syntax so WAL and the busy timeout actually take effect; a cold-start stress test that previously produced 52 `500`s now produces zero.
+
+### For contributors
+- Integration auth tests were updated to the Origin-based CSRF model (foreign Origin → 403, valid token bypasses the guard), replacing the obsolete token-required assertions. The wine/linux integration suites now live under `tests/` in the repo (previously workspace-local); `tests/wine/run_tests.sh` was brought up to date with the current auth model, UI path, and preset endpoint, and two `set -e` bugs that aborted the suite early were fixed.
+
 ## [2.4.10] - 2026-05-27
 
 ### Changed
