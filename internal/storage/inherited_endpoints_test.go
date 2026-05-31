@@ -48,6 +48,39 @@ func TestInheritedEndpoints_ReplaceAtomic(t *testing.T) {
 	assert.Equal(t, "deepseek", got[0].Provider)
 }
 
+// TestFindInheritedEndpointsByProvider_CanonicalAlias guards the provider-name
+// aliasing fix: an agent (e.g. OpenClaw) may name a vendor by its natural name
+// ("dashscope") while krouter's adapter is registered under a different
+// canonical name ("qwen"). A lookup by the krouter name must still find the
+// inherited key, otherwise the provider shows configured:false and routing
+// can't resolve its key — even though the user has the credential.
+func TestFindInheritedEndpointsByProvider_CanonicalAlias(t *testing.T) {
+	s := openMigratedStore(t)
+	ctx := context.Background()
+	setupAgent(t, s, "openclaw", true)
+
+	now := time.Now().UnixMilli()
+	require.NoError(t, s.ReplaceInheritedEndpoints(ctx, "openclaw", []storage.InheritedEndpoint{
+		{Provider: "dashscope", EndpointURL: "https://dashscope.aliyuncs.com", APIKey: "sk-dash", CapturedAt: now},
+	}))
+
+	// Lookup by krouter's canonical adapter name must resolve the aliased row.
+	got, err := s.FindInheritedEndpointsByProvider(ctx, "qwen")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "sk-dash", got[0].APIKey)
+
+	// Lookup by the literal stored name still works too.
+	got, err = s.FindInheritedEndpointsByProvider(ctx, "dashscope")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+
+	// A non-aliased, unrelated name must not match.
+	got, err = s.FindInheritedEndpointsByProvider(ctx, "openai")
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
+
 func TestInheritedEndpoints_ReplaceWithEmptyDeletesAll(t *testing.T) {
 	s := openMigratedStore(t)
 	ctx := context.Background()
