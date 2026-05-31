@@ -97,6 +97,28 @@ func post(t *testing.T, baseURL, path, token, body string) *http.Response {
 	return resp
 }
 
+// getWithOrigin issues a GET carrying an explicit Origin header (and optional
+// Bearer token), mimicking a browser request. The management API's CSRF guard
+// keys off Origin, so this is how we exercise the cross-origin code paths.
+func getWithOrigin(t *testing.T, baseURL, path, token, origin string) *http.Response {
+	t.Helper()
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, baseURL+path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if origin != "" {
+		req.Header.Set("Origin", origin)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp
+}
+
 func readJSON(t *testing.T, r io.Reader) map[string]any {
 	t.Helper()
 	var m map[string]any
@@ -123,23 +145,51 @@ func TestIntegration_Status(t *testing.T) {
 	}
 }
 
-func TestIntegration_AuthRequired(t *testing.T) {
+// dashboardOrigin mirrors the allowedOrigin const in internal/api/auth.go: the
+// single browser origin the management API's CSRF guard permits. It is a fixed
+// value, independent of the actual management port the daemon listens on.
+const dashboardOrigin = "http://127.0.0.1:8403"
+
+// TestIntegration_CrossOriginRejected exercises the CSRF guard. The management
+// API replaced its old token-required scheme with an Origin check (see
+// internal/api/auth.go): a browser request from a foreign Origin is rejected
+// with 403, while the dashboard's own Origin is allowed without any token.
+func TestIntegration_CrossOriginRejected(t *testing.T) {
 	baseURL, _ := startServer(t)
 
-	resp := get(t, baseURL, "/internal/status", "")
+	// Foreign Origin → blocked, even on a plain readable GET.
+	resp := getWithOrigin(t, baseURL, "/internal/status", "", "https://evil.example")
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Errorf("status = %d, want 401", resp.StatusCode)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("foreign-origin status = %d, want 403", resp.StatusCode)
+	}
+
+	// The dashboard's own Origin → allowed without a token.
+	resp2 := getWithOrigin(t, baseURL, "/internal/status", "", dashboardOrigin)
+	defer resp2.Body.Close()
+	if resp2.StatusCode != http.StatusOK {
+		t.Errorf("same-origin status = %d, want 200", resp2.StatusCode)
 	}
 }
 
-func TestIntegration_WrongToken(t *testing.T) {
-	baseURL, _ := startServer(t)
+// TestIntegration_BearerTokenBypassesOrigin verifies auth.go's decision order: a
+// valid Bearer token authorizes a request unconditionally (even from a foreign
+// Origin), and a no-Origin request (curl / CLI) is allowed without any token.
+func TestIntegration_BearerTokenBypassesOrigin(t *testing.T) {
+	baseURL, token := startServer(t)
 
-	resp := get(t, baseURL, "/internal/status", "wrong-token")
+	// Valid token + foreign Origin → allowed (token overrides the CSRF guard).
+	resp := getWithOrigin(t, baseURL, "/internal/status", token, "https://evil.example")
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Errorf("status = %d, want 401", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("token+foreign-origin status = %d, want 200", resp.StatusCode)
+	}
+
+	// No Origin, no token (curl / CLI) → allowed.
+	resp2 := get(t, baseURL, "/internal/status", "")
+	defer resp2.Body.Close()
+	if resp2.StatusCode != http.StatusOK {
+		t.Errorf("no-origin no-token status = %d, want 200", resp2.StatusCode)
 	}
 }
 
