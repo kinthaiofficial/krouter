@@ -37,8 +37,13 @@ type Store struct {
 func Open(path string) (*Store, error) {
 	dsn := path
 	if path != ":memory:" {
+		// modernc.org/sqlite takes connection pragmas via repeated _pragma=
+		// query params — NOT the mattn/go-sqlite3 _journal_mode= / _busy_timeout=
+		// keys, which it silently ignores (leaving journal_mode=delete and
+		// busy_timeout=0, so concurrent access during the cold-start pricing
+		// seed write fails immediately with SQLITE_BUSY).
 		dsn = fmt.Sprintf(
-			"file:%s?_journal_mode=WAL&_synchronous=NORMAL&_busy_timeout=5000",
+			"file:%s?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)",
 			path,
 		)
 	}
