@@ -101,19 +101,35 @@ func (s *Store) ListInheritedEndpointsByApp(ctx context.Context, appID string) (
 // FindInheritedEndpointsByProvider returns endpoints for a given provider name
 // across any enabled app. Routing engine uses this to discover candidate
 // upstream URLs for routing decisions.
+//
+// Matching is on the canonical provider name (see canonicalProviderName), so a
+// lookup by krouter's adapter name ("qwen") also resolves rows the agent stored
+// under a vendor alias ("dashscope"). The DB keeps the original name as scanned;
+// only the comparison is alias-aware.
 func (s *Store) FindInheritedEndpointsByProvider(ctx context.Context, provider string) ([]InheritedEndpoint, error) {
 	const q = `SELECT i.app_id, i.provider, i.endpoint_url, i.protocol_hint,
 	                  i.api_key, i.extras_json, i.captured_at
 	           FROM inherited_endpoints AS i
 	           JOIN app_settings AS a ON a.app_id = i.app_id
-	           WHERE i.provider = ? AND a.enabled = 1
+	           WHERE a.enabled = 1
 	           ORDER BY i.app_id`
-	rows, err := s.db.QueryContext(ctx, q, provider)
+	rows, err := s.db.QueryContext(ctx, q)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	return scanInheritedEndpoints(rows)
+	all, err := scanInheritedEndpoints(rows)
+	if err != nil {
+		return nil, err
+	}
+	target := canonicalProviderName(provider)
+	out := make([]InheritedEndpoint, 0, len(all))
+	for _, ep := range all {
+		if canonicalProviderName(ep.Provider) == target {
+			out = append(out, ep)
+		}
+	}
+	return out, nil
 }
 
 func scanInheritedEndpoints(rows *sql.Rows) ([]InheritedEndpoint, error) {
