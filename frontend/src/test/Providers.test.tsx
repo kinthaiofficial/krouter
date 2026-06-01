@@ -101,6 +101,22 @@ describe('Providers page', () => {
     expect(screen.getByText('DeepSeek')).toBeInTheDocument()
   })
 
+  it('shows the protocol badge only for configured providers', async () => {
+    providers = [
+      makeProvider({ name: 'anthropic', display_name: 'Anthropic', protocol: 'anthropic', configured: true }),
+      makeProvider({
+        name: 'deepseek', display_name: 'DeepSeek', protocol: 'openai',
+        configured: false, available: false, base_url: 'https://api.deepseek.com',
+      }),
+    ]
+    renderWithProviders(<Providers />)
+    await waitFor(() => expect(screen.getByText('DeepSeek')).toBeInTheDocument())
+    // Configured provider shows its protocol badge (lowercase text node).
+    expect(screen.getByText('anthropic')).toBeInTheDocument()
+    // Unconfigured provider must NOT show a protocol badge.
+    expect(screen.queryByText('openai')).not.toBeInTheDocument()
+  })
+
   it('expanding a card surfaces endpoint details and the model price table', async () => {
     providers = [makeProvider({
       name: 'zai',

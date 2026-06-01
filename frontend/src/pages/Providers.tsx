@@ -158,7 +158,10 @@ function ProviderCard({
             <span className={['font-medium text-sm', p.configured ? 'text-gray-900' : 'text-gray-500'].join(' ')}>
               {p.display_name || p.name}
             </span>
-            <ProtocolBadge protocol={p.protocol} />
+            {/* Only show the protocol once configured — an unconfigured provider
+                isn't pinned to a single protocol from the user's point of view
+                (krouter routes by whatever protocol they end up configuring). */}
+            {p.configured && <ProtocolBadge protocol={p.protocol} />}
             {p.is_builtin && (
               <span className="text-[10px] uppercase tracking-wider text-gray-400 border border-gray-200 rounded px-1.5 py-0.5">
                 {t('providers.builtin')}
@@ -242,7 +245,7 @@ function CardDetails({
         <DetailRow label={t('providers.base_url')} value={p.base_url || '—'} mono />
         <DetailRow label={t('providers.path_prefix')} value={p.path_prefix || '—'} mono />
         <DetailRow label={t('providers.full_endpoint')} value={fullEndpoint || '—'} mono />
-        <DetailRow label={t('providers.protocol')} value={p.protocol} />
+        {p.configured && <DetailRow label={t('providers.protocol')} value={p.protocol} />}
       </DetailGrid>
 
       {/* Stats */}
