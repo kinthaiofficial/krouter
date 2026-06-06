@@ -34,6 +34,16 @@ Behind the scenes, krouter:
                                           (router decides at each request)
 ```
 
+## Screenshots
+
+**Live routing** — see exactly what each agent asked for and where krouter actually sent it, with the savings per request:
+
+![krouter Router page — a live routing decision: an Anthropic claude-haiku request routed to MiniMax, 76% cheaper](docs/screenshots/router.png)
+
+**Connected apps** — krouter auto-detects your AI agents and inherits their provider configs; no keys re-entered:
+
+![krouter Apps page — OpenClaw connected with 11 inherited providers](docs/screenshots/apps.png)
+
 ## Highlights
 
 - **Forever free, MIT licensed** — no paid tier, no subscription
