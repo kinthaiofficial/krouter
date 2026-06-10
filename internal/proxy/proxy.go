@@ -76,9 +76,9 @@ var hopByHopHeaders = map[string]bool{
 
 // openAIUsageRE extracts token counts from OpenAI SSE data.
 var (
-	promptTokensRE        = regexp.MustCompile(`"prompt_tokens"\s*:\s*(\d+)`)
-	completionTokensRE    = regexp.MustCompile(`"completion_tokens"\s*:\s*(\d+)`)
-	cachedTokensRE        = regexp.MustCompile(`"cached_tokens"\s*:\s*(\d+)`)
+	promptTokensRE         = regexp.MustCompile(`"prompt_tokens"\s*:\s*(\d+)`)
+	completionTokensRE     = regexp.MustCompile(`"completion_tokens"\s*:\s*(\d+)`)
+	cachedTokensRE         = regexp.MustCompile(`"cached_tokens"\s*:\s*(\d+)`)
 	promptCacheHitTokensRE = regexp.MustCompile(`"prompt_cache_hit_tokens"\s*:\s*(\d+)`)
 )
 
@@ -113,6 +113,11 @@ type Server struct {
 	// lastSSECaptureMu guards lastSSECapture for the debug endpoint.
 	lastSSECaptureMu sync.RWMutex
 	lastSSECapture   []byte
+
+	// logCh feeds the single writer goroutine that serialises all request-
+	// record SQLite writes. Started lazily by logRequest via logOnce.
+	logCh   chan storage.RequestRecord
+	logOnce sync.Once
 }
 
 // GetLastSSECapture returns a copy of the most recently captured Anthropic SSE
@@ -192,12 +197,16 @@ func New(opts ...Option) *Server {
 		logger:       logging.New("info"),
 		anthropicURL: "https://api.anthropic.com",
 		httpClient: &http.Client{
-			// No timeout — streaming responses can be arbitrarily long.
+			// No overall timeout — streaming responses can be arbitrarily
+			// long. ResponseHeaderTimeout only bounds the wait for response
+			// headers, so a hung upstream fails fast instead of holding the
+			// request open until the client gives up.
 			Transport: &http.Transport{
-				MaxIdleConns:        100,
-				MaxIdleConnsPerHost: 10,
-				IdleConnTimeout:     90 * time.Second,
-				ForceAttemptHTTP2:   true,
+				MaxIdleConns:          100,
+				MaxIdleConnsPerHost:   10,
+				IdleConnTimeout:       90 * time.Second,
+				ResponseHeaderTimeout: 60 * time.Second,
+				ForceAttemptHTTP2:     true,
 			},
 		},
 	}
@@ -359,12 +368,12 @@ func (s *Server) handleAnthropicWithRouting(
 	body []byte, requestedModel string, stream bool, hasTools bool,
 	start time.Time, preset string,
 ) {
-	hasImages, systemPrompt := extractAnthropicMeta(body)
+	hasImages, systemPrompt, imageBytes := extractAnthropicMeta(body)
 	sessionKey := computeSessionKey(r.Header, body)
 	req := routing.Request{
 		Protocol:       "anthropic",
 		RequestedModel: requestedModel,
-		InputTokenEst:  len(body) / 4,
+		InputTokenEst:  estimateTextTokens(len(body), imageBytes),
 		HasImages:      hasImages,
 		HasTools:       hasTools,
 		SystemPrompt:   systemPrompt,
@@ -380,7 +389,7 @@ func (s *Server) handleAnthropicWithRouting(
 			s.logRequest(r.Context(), storage.RequestRecord{
 				ID:             s.storeNewULID(),
 				Timestamp:      start,
-				App:          requestAppID(r),
+				App:            requestAppID(r),
 				Protocol:       "anthropic",
 				RequestedModel: req.RequestedModel,
 				StatusCode:     http.StatusTooManyRequests,
@@ -406,7 +415,7 @@ func (s *Server) handleAnthropicWithRouting(
 		s.logRequest(r.Context(), storage.RequestRecord{
 			ID:             s.storeNewULID(),
 			Timestamp:      start,
-			App:          requestAppID(r),
+			App:            requestAppID(r),
 			Protocol:       "anthropic",
 			RequestedModel: req.RequestedModel,
 			Provider:       dec.Provider,
@@ -467,7 +476,7 @@ func (s *Server) handleAnthropicWithRouting(
 			s.logRequest(r.Context(), storage.RequestRecord{
 				ID:               s.storeNewULID(),
 				Timestamp:        start,
-				App:            requestAppID(r),
+				App:              requestAppID(r),
 				Protocol:         "anthropic",
 				RequestedModel:   requestedModel,
 				Provider:         dec.Provider,
@@ -480,7 +489,7 @@ func (s *Server) handleAnthropicWithRouting(
 				LatencyMS:        time.Since(start).Milliseconds(),
 				StatusCode:       statusCode,
 				RoutingPreset:    preset,
-				KeyHint:        keyHint(r.Header),
+				KeyHint:          keyHint(r.Header),
 			})
 			s.updateSessionFromResponse(sessionKey, dec.Provider, dec.Model, in, out, cached, cacheWrite)
 		})
@@ -500,7 +509,7 @@ func (s *Server) handleAnthropicWithRouting(
 		s.logRequest(r.Context(), storage.RequestRecord{
 			ID:               s.storeNewULID(),
 			Timestamp:        start,
-			App:            requestAppID(r),
+			App:              requestAppID(r),
 			Protocol:         "anthropic",
 			RequestedModel:   requestedModel,
 			Provider:         dec.Provider,
@@ -513,9 +522,13 @@ func (s *Server) handleAnthropicWithRouting(
 			LatencyMS:        latencyMS,
 			StatusCode:       statusCode,
 			RoutingPreset:    preset,
-			KeyHint:        keyHint(r.Header),
+			KeyHint:          keyHint(r.Header),
 		})
-		s.updateSessionFromResponse(sessionKey, dec.Provider, dec.Model, in, out, cached, cacheWrite)
+		// Only successful responses update the session: a failed first request
+		// must not bind the session to the (provider, model) that failed.
+		if statusCode >= 200 && statusCode < 300 {
+			s.updateSessionFromResponse(sessionKey, dec.Provider, dec.Model, in, out, cached, cacheWrite)
+		}
 	}
 }
 
@@ -580,18 +593,22 @@ func (s *Server) tryWithFallback(
 			if ctx.Err() != nil {
 				return nil, dec, err
 			}
-			s.recordProviderHealth(dec.Provider, 0)
 			fb := s.engine.FallbackDecide(req, preset, tried)
 			if fb.Provider == "" {
+				// Final failure: the caller's logRequest records the health hit.
 				return nil, dec, fmt.Errorf("forward failed and no fallback available: %w", err)
 			}
+			// Moving on to a fallback: the final outcome will be logged for the
+			// fallback provider only, so record the abandoned provider's failure
+			// here — otherwise its circuit breaker never trips and every request
+			// keeps probing a known-bad provider first.
+			s.recordFailedAttempt(dec.Provider, 0)
 			dec = fb
 			continue
 		}
 
 		// 4xx: return immediately, no retry.
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
-			s.recordProviderHealth(dec.Provider, resp.StatusCode)
 			// Mark the provider exhausted for free-credit routing when
 			// the upstream rejects auth (401/403), reports the user has
 			// no remaining credit (402), or rate-limits (429). The
@@ -615,17 +632,18 @@ func (s *Server) tryWithFallback(
 			lastErrStatus = resp.StatusCode
 			lastErrBody, _ = io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 			_ = resp.Body.Close()
-			s.recordProviderHealth(dec.Provider, resp.StatusCode)
 			fb := s.engine.FallbackDecide(req, preset, tried)
 			if fb.Provider == "" {
-				break // no more fallbacks — return the last 5xx below
+				break // no more fallbacks — the caller's logRequest records the health hit
 			}
+			// See the network-error branch above: record the abandoned
+			// provider's failure so its circuit breaker still trips.
+			s.recordFailedAttempt(dec.Provider, resp.StatusCode)
 			dec = fb
 			continue
 		}
 
-		// 2xx/3xx: success.
-		s.recordProviderHealth(dec.Provider, resp.StatusCode)
+		// 2xx/3xx: success — health recorded by logRequest after the response completes.
 		return resp, dec, nil
 	}
 
@@ -751,15 +769,28 @@ func (s *Server) streamSSEWithCapture(
 	const maxTail = 4 * 1024
 	var headBuf bytes.Buffer
 	tailBuf := make([]byte, 0, maxTail)
+	total := 0 // total bytes streamed, for overlap trimming in flush
 
 	flush := func() {
-		// Concatenate head + tail, dropping the overlapping region when the stream
-		// is short enough to fit entirely in head.
+		// Stream fits entirely in head — tail would only duplicate it.
 		if headBuf.Len() < maxHead {
 			done(headBuf.Bytes())
 			return
 		}
-		done(append(headBuf.Bytes(), tailBuf...))
+		// Trim the head/tail overlap when the stream only slightly exceeded
+		// maxHead: tailBuf holds the last maxTail bytes of the whole stream,
+		// whose first bytes may still be inside headBuf. Without trimming,
+		// usage events in the overlap would be double-counted by the
+		// accumulating Anthropic SSE parser.
+		tail := tailBuf
+		if overlap := maxHead - (total - len(tailBuf)); overlap > 0 {
+			if overlap >= len(tail) {
+				tail = nil
+			} else {
+				tail = tail[overlap:]
+			}
+		}
+		done(append(headBuf.Bytes(), tail...))
 	}
 
 	buf := make([]byte, 4096)
@@ -767,6 +798,7 @@ func (s *Server) streamSSEWithCapture(
 		n, err := body.Read(buf)
 		if n > 0 {
 			chunk := buf[:n]
+			total += n
 			// Capture head (first maxHead bytes).
 			if headBuf.Len() < maxHead {
 				remaining := maxHead - headBuf.Len()
@@ -810,10 +842,22 @@ func (s *Server) streamSSEWithCapture(
 	flush()
 }
 
-// handleModels handles GET /v1/models by forwarding to the upstream provider.
+// handleModels handles GET /v1/models.
+//
+// The request only reaches Anthropic when it carries Anthropic-style
+// credentials (x-api-key header, or a Bearer token with the sk-ant- prefix).
+// All other requests — e.g. an OpenAI-protocol app listing models with a
+// DeepSeek key — are answered locally from the registry instead of being
+// forwarded: forwarding used to send arbitrary third-party API keys to
+// api.anthropic.com and returned the wrong protocol's model list anyway.
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.registry != nil && !hasAnthropicCredentials(r.Header) {
+		s.writeLocalModelList(w)
 		return
 	}
 
@@ -847,6 +891,49 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.Copy(w, resp.Body)
 }
 
+// hasAnthropicCredentials reports whether the request authenticates the
+// Anthropic way: an x-api-key header, or a Bearer token with Anthropic's
+// sk-ant- prefix (covers Claude Code OAuth tokens, sk-ant-oat...).
+func hasAnthropicCredentials(h http.Header) bool {
+	if h.Get("x-api-key") != "" {
+		return true
+	}
+	return strings.HasPrefix(strings.TrimPrefix(h.Get("Authorization"), "Bearer "), "sk-ant-")
+}
+
+// writeLocalModelList answers GET /v1/models from the registry: the union of
+// all OpenAI-protocol providers' supported models, in OpenAI list format.
+// Nothing is forwarded upstream, so no credentials can leak.
+func (s *Server) writeLocalModelList(w http.ResponseWriter) {
+	type modelEntry struct {
+		ID      string `json:"id"`
+		Object  string `json:"object"`
+		OwnedBy string `json:"owned_by"`
+	}
+	out := struct {
+		Object string       `json:"object"`
+		Data   []modelEntry `json:"data"`
+	}{Object: "list", Data: []modelEntry{}}
+
+	seen := make(map[string]bool)
+	for _, p := range s.registry.All() {
+		if p.Protocol() != providers.ProtocolOpenAI {
+			continue
+		}
+		for _, m := range p.SupportedModels() {
+			if seen[m] {
+				continue
+			}
+			seen[m] = true
+			out.Data = append(out.Data, modelEntry{ID: m, Object: "model", OwnedBy: p.Name()})
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(out)
+}
+
 // handleOpenAICompletions handles POST /v1/chat/completions.
 func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -876,12 +963,12 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 	start := time.Now()
 	preset := s.presetForApp(r.Context(), requestAppID(r))
 
-	hasImages, systemPrompt := extractOpenAIMeta(body)
+	hasImages, systemPrompt, imageBytes := extractOpenAIMeta(body)
 	sessionKey := computeSessionKey(r.Header, body)
 	req := routing.Request{
 		Protocol:       "openai",
 		RequestedModel: parsed.Model,
-		InputTokenEst:  len(body) / 4,
+		InputTokenEst:  estimateTextTokens(len(body), imageBytes),
 		HasImages:      hasImages,
 		HasTools:       len(parsed.Tools) > 0,
 		SystemPrompt:   systemPrompt,
@@ -896,7 +983,7 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 			s.logRequest(r.Context(), storage.RequestRecord{
 				ID:             s.storeNewULID(),
 				Timestamp:      start,
-				App:          requestAppID(r),
+				App:            requestAppID(r),
 				Protocol:       "openai",
 				RequestedModel: req.RequestedModel,
 				StatusCode:     http.StatusTooManyRequests,
@@ -918,7 +1005,7 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 		s.logRequest(r.Context(), storage.RequestRecord{
 			ID:             s.storeNewULID(),
 			Timestamp:      start,
-			App:          requestAppID(r),
+			App:            requestAppID(r),
 			Protocol:       "openai",
 			RequestedModel: req.RequestedModel,
 			Provider:       dec.Provider,
@@ -957,7 +1044,7 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 			s.logRequest(r.Context(), storage.RequestRecord{
 				ID:               s.storeNewULID(),
 				Timestamp:        start,
-				App:            requestAppID(r),
+				App:              requestAppID(r),
 				Protocol:         "openai",
 				RequestedModel:   parsed.Model,
 				Provider:         dec.Provider,
@@ -970,7 +1057,7 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 				LatencyMS:        time.Since(start).Milliseconds(),
 				StatusCode:       statusCode,
 				RoutingPreset:    preset,
-				KeyHint:        keyHint(r.Header),
+				KeyHint:          keyHint(r.Header),
 			})
 			s.updateSessionFromResponse(sessionKey, dec.Provider, dec.Model, in, out, cached, cacheWrite)
 		})
@@ -988,7 +1075,7 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 		s.logRequest(r.Context(), storage.RequestRecord{
 			ID:               s.storeNewULID(),
 			Timestamp:        start,
-			App:            requestAppID(r),
+			App:              requestAppID(r),
 			Protocol:         "openai",
 			RequestedModel:   parsed.Model,
 			Provider:         dec.Provider,
@@ -1001,9 +1088,12 @@ func (s *Server) handleOpenAICompletions(w http.ResponseWriter, r *http.Request)
 			LatencyMS:        latencyMS,
 			StatusCode:       statusCode,
 			RoutingPreset:    preset,
-			KeyHint:        keyHint(r.Header),
+			KeyHint:          keyHint(r.Header),
 		})
-		s.updateSessionFromResponse(sessionKey, dec.Provider, dec.Model, in, out, cached, cacheWrite)
+		// Only successful responses update the session (see Anthropic handler).
+		if statusCode >= 200 && statusCode < 300 {
+			s.updateSessionFromResponse(sessionKey, dec.Provider, dec.Model, in, out, cached, cacheWrite)
+		}
 	}
 }
 
@@ -1089,12 +1179,16 @@ func rewriteModel(body []byte, newModel string) []byte {
 	return out
 }
 
-// extractAnthropicMeta extracts HasImages and SystemPrompt from an Anthropic
-// Messages API request body. Both values are used for routing decisions.
+// extractAnthropicMeta extracts HasImages, SystemPrompt and the approximate
+// byte size of embedded image data from an Anthropic Messages API request
+// body. imageBytes lets the caller exclude base64 image payloads from the
+// text-token estimate — counting them as text inflated InputTokenEst by
+// ~330k "tokens" per MB of image and misclassified every image request as
+// complex.
 //
 // system field: may be a string or []{"type":"text","text":"..."}
 // messages[i].content: may be a string or []{"type":"image"|"text"|...}
-func extractAnthropicMeta(body []byte) (hasImages bool, systemPrompt string) {
+func extractAnthropicMeta(body []byte) (hasImages bool, systemPrompt string, imageBytes int) {
 	var req struct {
 		System   json.RawMessage `json:"system"`
 		Messages []struct {
@@ -1126,13 +1220,14 @@ func extractAnthropicMeta(body []byte) (hasImages bool, systemPrompt string) {
 		}
 	}
 
-	// Detect image content blocks in messages.
+	// Detect image content blocks in messages and total their payload size.
 	for _, msg := range req.Messages {
 		if len(msg.Content) == 0 {
 			continue
 		}
 		var blocks []struct {
-			Type string `json:"type"`
+			Type   string          `json:"type"`
+			Source json.RawMessage `json:"source"`
 		}
 		if err := json.Unmarshal(msg.Content, &blocks); err != nil {
 			continue
@@ -1140,19 +1235,20 @@ func extractAnthropicMeta(body []byte) (hasImages bool, systemPrompt string) {
 		for _, b := range blocks {
 			if b.Type == "image" {
 				hasImages = true
-				return
+				imageBytes += len(b.Source)
 			}
 		}
 	}
 	return
 }
 
-// extractOpenAIMeta extracts HasImages and SystemPrompt from an OpenAI Chat
-// Completions request body.
+// extractOpenAIMeta extracts HasImages, SystemPrompt and the approximate byte
+// size of embedded image data (data: URLs) from an OpenAI Chat Completions
+// request body. See extractAnthropicMeta for why imageBytes matters.
 //
 // role=="system" message → systemPrompt
 // content[].type=="image_url" → hasImages
-func extractOpenAIMeta(body []byte) (hasImages bool, systemPrompt string) {
+func extractOpenAIMeta(body []byte) (hasImages bool, systemPrompt string, imageBytes int) {
 	var req struct {
 		Messages []struct {
 			Role    string          `json:"role"`
@@ -1171,7 +1267,8 @@ func extractOpenAIMeta(body []byte) (hasImages bool, systemPrompt string) {
 			continue
 		}
 		var blocks []struct {
-			Type string `json:"type"`
+			Type     string          `json:"type"`
+			ImageURL json.RawMessage `json:"image_url"`
 		}
 		if err := json.Unmarshal(msg.Content, &blocks); err != nil {
 			continue
@@ -1179,10 +1276,22 @@ func extractOpenAIMeta(body []byte) (hasImages bool, systemPrompt string) {
 		for _, b := range blocks {
 			if b.Type == "image_url" {
 				hasImages = true
+				imageBytes += len(b.ImageURL)
 			}
 		}
 	}
 	return
+}
+
+// estimateTextTokens estimates input tokens from the request body size,
+// excluding embedded image payloads (base64 image data is not text and
+// would otherwise count as ~1 token per 4 bytes of encoding).
+func estimateTextTokens(bodyLen, imageBytes int) int {
+	textLen := bodyLen - imageBytes
+	if textLen < 0 {
+		textLen = 0
+	}
+	return textLen / 4
 }
 
 // truncate returns at most n runes from s.
@@ -1211,8 +1320,8 @@ func computeSessionKey(headers http.Header, body []byte) string {
 
 	// Extract structured fields from the body in a single unmarshal.
 	var req struct {
-		System   json.RawMessage `json:"system"`
-		Tools    []struct {
+		System json.RawMessage `json:"system"`
+		Tools  []struct {
 			Name string `json:"name"`
 		} `json:"tools"`
 		Messages []struct {
@@ -1442,63 +1551,85 @@ func (s *Server) storeNewULID() string {
 	return fmt.Sprintf("%d", time.Now().UnixNano())
 }
 
-// logRequest writes a request record, provider health update, and (for Anthropic)
-// quota increments to SQLite in a single goroutine to avoid write contention.
-// After the insert it calls onComplete (if set) so callers can broadcast SSE events.
+// logRequest queues a request record for the single writer goroutine, which
+// serialises all SQLite writes (request row, provider health, quota) so
+// concurrent requests don't contend on the database. The writer is started
+// lazily on first use and lives for the daemon's lifetime. If the queue is
+// full (sustained burst), the record is written from its own goroutine
+// rather than blocking the hot path.
 func (s *Server) logRequest(ctx context.Context, rec storage.RequestRecord) {
 	if s.store == nil && s.onComplete == nil {
 		return
 	}
-	go func() {
-		bg := context.Background()
-		if s.store != nil {
-			if err := s.store.InsertRequest(bg, rec); err != nil {
-				s.logger.Error("failed to log request", "err", err)
+	s.logOnce.Do(func() {
+		s.logCh = make(chan storage.RequestRecord, 1024)
+		go func() {
+			for r := range s.logCh {
+				s.writeRecord(r)
 			}
-			if rec.StatusCode >= 200 && rec.StatusCode < 300 {
-				_ = s.store.RecordSuccess(bg, rec.Provider)
-				if rec.Provider == "anthropic" {
-					// Count all token buckets against quota to match Anthropic's billing.
-					total := rec.InputTokens + rec.CachedTokens + rec.CacheWriteTokens + rec.OutputTokens
-					if total > 0 {
-						_ = s.store.IncrementQuota(bg, "5h", int64(total))
-						_ = s.store.IncrementQuota(bg, "weekly", int64(total))
-					}
-					if strings.HasPrefix(rec.Model, "claude-opus") && total > 0 {
-						_ = s.store.IncrementQuota(bg, "opus", int64(total))
-					}
-				}
-			} else if rec.StatusCode > 0 && rec.Provider != "" {
-				// Guard the empty provider: a fallback-exhaustion row (#52) may
-				// carry no provider when nothing was attempted; don't write a
-				// provider_status entry keyed by "".
-				_ = s.store.RecordFailure(bg, rec.Provider, rec.StatusCode)
-			}
-		}
-		if s.onComplete != nil {
-			s.onComplete(rec)
-		}
-	}()
+		}()
+	})
+	select {
+	case s.logCh <- rec:
+	default:
+		go s.writeRecord(rec)
+	}
 }
 
-// recordProviderHealth records a network-level failure (no HTTP response received).
-// For HTTP-level failures (4xx/5xx), health is recorded inside logRequest.
-func (s *Server) recordProviderHealth(providerName string, statusCode int) {
-	if s.store == nil || statusCode > 0 {
-		// HTTP responses are handled by logRequest; only handle network errors here.
+// writeRecord persists one request record: the requests row, provider health
+// update, (for Anthropic) quota increments, and the onComplete SSE callback.
+func (s *Server) writeRecord(rec storage.RequestRecord) {
+	bg := context.Background()
+	if s.store != nil {
+		if err := s.store.InsertRequest(bg, rec); err != nil {
+			s.logger.Error("failed to log request", "err", err)
+		}
+		if rec.StatusCode >= 200 && rec.StatusCode < 300 {
+			_ = s.store.RecordSuccess(bg, rec.Provider)
+			if rec.Provider == "anthropic" {
+				// Count all token buckets against quota to match Anthropic's billing.
+				total := rec.InputTokens + rec.CachedTokens + rec.CacheWriteTokens + rec.OutputTokens
+				if total > 0 {
+					_ = s.store.IncrementQuota(bg, "5h", int64(total))
+					_ = s.store.IncrementQuota(bg, "weekly", int64(total))
+				}
+				if strings.HasPrefix(rec.Model, "claude-opus") && total > 0 {
+					_ = s.store.IncrementQuota(bg, "opus", int64(total))
+				}
+			}
+		} else if rec.StatusCode > 0 && rec.Provider != "" {
+			// Guard the empty provider: a fallback-exhaustion row (#52) may
+			// carry no provider when nothing was attempted; don't write a
+			// provider_status entry keyed by "".
+			_ = s.store.RecordFailure(bg, rec.Provider, rec.StatusCode)
+		}
+	}
+	if s.onComplete != nil {
+		s.onComplete(rec)
+	}
+}
+
+// recordFailedAttempt records a provider failure for an attempt that was
+// abandoned mid-fallback-chain. The final attempt's outcome is recorded by
+// logRequest; intermediate failures must be recorded here or the abandoned
+// provider's consecutive-failure count never grows. statusCode 0 means a
+// network-level failure (no HTTP response received).
+func (s *Server) recordFailedAttempt(providerName string, statusCode int) {
+	if s.store == nil || providerName == "" {
 		return
 	}
 	go func() {
-		_ = s.store.RecordFailure(context.Background(), providerName, 0)
+		_ = s.store.RecordFailure(context.Background(), providerName, statusCode)
 	}()
 }
 
 // markIfThrottle records a provider_exhausted_until entry when the
 // upstream returned an auth / quota / rate-limit status. The routing
-// engine's free-first path consults this table and skips marked
-// providers until their TTL expires; for paid providers (the majority),
-// the row is written but never read, which is fine — a few extra rows
-// in a tiny table is cheaper than per-provider feature flags.
+// engine does NOT read this table (the free-first routing path that used
+// to consult it was removed — D-037); today the only consumer is the
+// dashboard's Free page, which surfaces "provider exhausted" badges.
+// Routing-level avoidance of failing providers is the circuit breaker's
+// job (consecutive-failure count in provider_status).
 //
 // Status-code → TTL map:
 //

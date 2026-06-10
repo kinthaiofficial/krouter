@@ -625,33 +625,33 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type row struct {
-		ID             string  `json:"id"`
-		Timestamp      string  `json:"ts"`
-		App            string  `json:"app,omitempty"`
-		Protocol       string  `json:"protocol"`
-		RequestedModel string  `json:"requested_model,omitempty"`
-		Provider       string  `json:"provider"`
-		Model          string  `json:"model"`
+		ID               string  `json:"id"`
+		Timestamp        string  `json:"ts"`
+		App              string  `json:"app,omitempty"`
+		Protocol         string  `json:"protocol"`
+		RequestedModel   string  `json:"requested_model,omitempty"`
+		Provider         string  `json:"provider"`
+		Model            string  `json:"model"`
 		InputTokens      int     `json:"input_tokens"`
 		OutputTokens     int     `json:"output_tokens"`
 		CachedTokens     int     `json:"cached_tokens"`
 		CacheWriteTokens int     `json:"cache_write_tokens"`
 		CostMicroUSD     int64   `json:"cost_micro_usd"`
-		CostUSD        float64 `json:"cost_usd"`
-		LatencyMS      int64   `json:"latency_ms"`
-		StatusCode     int     `json:"status_code"`
-		ErrorMessage   string  `json:"error_message,omitempty"`
+		CostUSD          float64 `json:"cost_usd"`
+		LatencyMS        int64   `json:"latency_ms"`
+		StatusCode       int     `json:"status_code"`
+		ErrorMessage     string  `json:"error_message,omitempty"`
 
 		// Routing-decision enrichment for the Router dashboard card.
 		// All optional / zero-valued for legacy daemons or unknown
 		// models — the UI falls back to "—" cleanly.
-		RequestedProvider          string  `json:"requested_provider,omitempty"`
-		RequestedInputPerMTok      float64 `json:"requested_input_per_mtok,omitempty"`
-		RequestedOutputPerMTok     float64 `json:"requested_output_per_mtok,omitempty"`
-		RequestedCacheReadPerMTok  float64 `json:"requested_cache_read_per_mtok,omitempty"`
-		RoutedInputPerMTok         float64 `json:"routed_input_per_mtok,omitempty"`
-		RoutedOutputPerMTok        float64 `json:"routed_output_per_mtok,omitempty"`
-		RoutedCacheReadPerMTok     float64 `json:"routed_cache_read_per_mtok,omitempty"`
+		RequestedProvider         string  `json:"requested_provider,omitempty"`
+		RequestedInputPerMTok     float64 `json:"requested_input_per_mtok,omitempty"`
+		RequestedOutputPerMTok    float64 `json:"requested_output_per_mtok,omitempty"`
+		RequestedCacheReadPerMTok float64 `json:"requested_cache_read_per_mtok,omitempty"`
+		RoutedInputPerMTok        float64 `json:"routed_input_per_mtok,omitempty"`
+		RoutedOutputPerMTok       float64 `json:"routed_output_per_mtok,omitempty"`
+		RoutedCacheReadPerMTok    float64 `json:"routed_cache_read_per_mtok,omitempty"`
 		// BaselineCostUSD = (requested model's rate) × (actual tokens used).
 		// What the user would have paid if krouter hadn't picked a
 		// cheaper provider/model. UI computes savings = baseline - actual.
@@ -662,23 +662,23 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	out := make([]row, 0, len(records))
 	for _, rec := range records {
 		r := row{
-			ID:             rec.ID,
-			Timestamp:      rec.Timestamp.Format(time.RFC3339),
-			App:          rec.App,
-			Protocol:       rec.Protocol,
-			RequestedModel: rec.RequestedModel,
-			Provider:       rec.Provider,
-			Model:          rec.Model,
+			ID:               rec.ID,
+			Timestamp:        rec.Timestamp.Format(time.RFC3339),
+			App:              rec.App,
+			Protocol:         rec.Protocol,
+			RequestedModel:   rec.RequestedModel,
+			Provider:         rec.Provider,
+			Model:            rec.Model,
 			InputTokens:      rec.InputTokens,
 			OutputTokens:     rec.OutputTokens,
 			CachedTokens:     rec.CachedTokens,
 			CacheWriteTokens: rec.CacheWriteTokens,
 			CostMicroUSD:     rec.CostMicroUSD,
-			CostUSD:        float64(rec.CostMicroUSD) / 1_000_000,
-			LatencyMS:      rec.LatencyMS,
-			StatusCode:     rec.StatusCode,
-			ErrorMessage:   rec.ErrorMessage,
-			RoutingPreset:  rec.RoutingPreset,
+			CostUSD:          float64(rec.CostMicroUSD) / 1_000_000,
+			LatencyMS:        rec.LatencyMS,
+			StatusCode:       rec.StatusCode,
+			ErrorMessage:     rec.ErrorMessage,
+			RoutingPreset:    rec.RoutingPreset,
 		}
 		if s.pricing != nil {
 			r.RequestedProvider = s.pricing.ProviderFor(rec.RequestedModel)
@@ -1146,6 +1146,12 @@ func (s *Server) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 	// dashboard shows "Restarting…", then exec the new binary in place of
 	// the current process (Unix) or spawn-and-exit (Windows).
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("upgrade: goroutine panicked", "panic", r)
+				s.Broadcast("update_apply_failed", map[string]string{"error": "internal error during upgrade"})
+			}
+		}()
 		if err := s.upgrade.Apply(context.Background(), nil); err != nil {
 			slog.Error("upgrade: apply failed", "err", err)
 			s.Broadcast("update_apply_failed", map[string]string{"error": err.Error()})
@@ -1184,9 +1190,9 @@ type providerInfoJSON struct {
 	// provider. Used by the Providers dashboard page to show "this
 	// provider has handled X requests for $Y" without the user having
 	// to filter the Logs page.
-	RequestsTotal     int     `json:"requests_total"`
-	InputTokensTotal  int64   `json:"input_tokens_total"`
-	OutputTokensTotal int64   `json:"output_tokens_total"`
+	RequestsTotal         int     `json:"requests_total"`
+	InputTokensTotal      int64   `json:"input_tokens_total"`
+	OutputTokensTotal     int64   `json:"output_tokens_total"`
 	CachedTokensTotal     int64   `json:"cached_tokens_total"`
 	CacheWriteTokensTotal int64   `json:"cache_write_tokens_total"`
 	CostTotalUSD          float64 `json:"cost_total_usd"`
@@ -1535,7 +1541,7 @@ func (s *Server) doAgentConnect(w http.ResponseWriter, r *http.Request, name str
 		"ok":            true,
 		"needs_restart": true,
 		"restart_kind":  restartKind,
-		"app":         name,
+		"app":           name,
 	})
 }
 
@@ -1606,9 +1612,12 @@ func (s *Server) doAppDiff(w http.ResponseWriter, r *http.Request, name string) 
 			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 			return
 		}
+		// The diff is raw app config — mask key/token/secret values before
+		// they leave the daemon (the response may traverse the LAN in
+		// remote mode and lands in browser devtools/log captures).
 		writeJSON(w, map[string]string{
-			"before": string(before),
-			"after":  string(after),
+			"before": string(redactConfigSecrets(before)),
+			"after":  string(redactConfigSecrets(after)),
 		})
 	default:
 		http.Error(w, `{"error":"diff not supported for this agent"}`, http.StatusBadRequest)
@@ -1742,7 +1751,7 @@ func (s *Server) handleDashboardStats(w http.ResponseWriter, r *http.Request) {
 	type response struct {
 		Weekly          weeklyStats    `json:"weekly"`
 		Providers       []providerDist `json:"providers"`
-		AppsConnected int            `json:"apps_connected"`
+		AppsConnected   int            `json:"apps_connected"`
 		PresetBreakdown []presetStat   `json:"preset_breakdown"`
 	}
 
@@ -2026,13 +2035,13 @@ func (s *Server) handleProviderModels(w http.ResponseWriter, r *http.Request, pr
 	}
 
 	type row struct {
-		ModelID                string  `json:"model_id"`
-		InputPerMTok           float64 `json:"input_per_mtok"`
-		OutputPerMTok          float64 `json:"output_per_mtok"`
-		CachedInputPerMTok     float64 `json:"cached_input_per_mtok"`
-		CacheWritePerMTok      float64 `json:"cache_write_per_mtok,omitempty"`
-		CacheWrite1hrPerMTok   float64 `json:"cache_write_1hr_per_mtok,omitempty"`
-		MaxTokens              int     `json:"max_tokens"`
+		ModelID              string  `json:"model_id"`
+		InputPerMTok         float64 `json:"input_per_mtok"`
+		OutputPerMTok        float64 `json:"output_per_mtok"`
+		CachedInputPerMTok   float64 `json:"cached_input_per_mtok"`
+		CacheWritePerMTok    float64 `json:"cache_write_per_mtok,omitempty"`
+		CacheWrite1hrPerMTok float64 `json:"cache_write_1hr_per_mtok,omitempty"`
+		MaxTokens            int     `json:"max_tokens"`
 	}
 	out := make([]row, 0)
 	for _, e := range prices {

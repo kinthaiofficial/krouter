@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -104,7 +105,11 @@ The daemon listens on two ports:
 				MaxIdleConns:        100,
 				MaxIdleConnsPerHost: 10,
 				IdleConnTimeout:     90 * time.Second,
-				Proxy:               proxymgr.ProxyFunc(),
+				// Bound the wait for response headers only — streaming bodies
+				// stay unbounded. Without this a hung upstream holds the
+				// request open forever and never triggers fallback.
+				ResponseHeaderTimeout: 60 * time.Second,
+				Proxy:                 proxymgr.ProxyFunc(),
 			}
 			sharedClient := &http.Client{Transport: transport}
 
@@ -363,23 +368,23 @@ The daemon listens on two ports:
 			// projection so the savings banner renders without UI-side computation.
 			proxySrv.SetOnComplete(func(rec storage.RequestRecord) {
 				payload := map[string]any{
-					"id":              rec.ID,
-					"ts":              rec.Timestamp.UTC().Format(time.RFC3339),
-					"app":             rec.App,
-					"protocol":        rec.Protocol,
-					"requested_model": rec.RequestedModel,
-					"provider":        rec.Provider,
-					"model":           rec.Model,
+					"id":                 rec.ID,
+					"ts":                 rec.Timestamp.UTC().Format(time.RFC3339),
+					"app":                rec.App,
+					"protocol":           rec.Protocol,
+					"requested_model":    rec.RequestedModel,
+					"provider":           rec.Provider,
+					"model":              rec.Model,
 					"input_tokens":       rec.InputTokens,
 					"output_tokens":      rec.OutputTokens,
 					"cached_tokens":      rec.CachedTokens,
 					"cache_write_tokens": rec.CacheWriteTokens,
-					"cost_micro_usd":  rec.CostMicroUSD,
-					"cost_usd":        float64(rec.CostMicroUSD) / 1_000_000,
-					"latency_ms":      rec.LatencyMS,
-					"status_code":     rec.StatusCode,
-					"error_message":   rec.ErrorMessage,
-				"routing_preset":  rec.RoutingPreset,
+					"cost_micro_usd":     rec.CostMicroUSD,
+					"cost_usd":           float64(rec.CostMicroUSD) / 1_000_000,
+					"latency_ms":         rec.LatencyMS,
+					"status_code":        rec.StatusCode,
+					"error_message":      rec.ErrorMessage,
+					"routing_preset":     rec.RoutingPreset,
 				}
 				if pricingSvc != nil {
 					payload["requested_provider"] = pricingSvc.ProviderFor(rec.RequestedModel)
@@ -510,11 +515,23 @@ func waitPortFree(addr string, timeout, interval time.Duration) bool {
 	return false
 }
 
+// quotaCacheTTL bounds how often CurrentQuota recomputes its cost-aggregation
+// SQL. The routing engine consults quota on every request; budget thresholds
+// move slowly (monitorBudget itself only polls every 60s), so a few seconds
+// of staleness is invisible to the user but removes per-request DB scans
+// from the hot path.
+const quotaCacheTTL = 3 * time.Second
+
 // quotaSource implements routing.QuotaSource by reading quota_state from DB
-// and comparing against budget limits in settings.
+// and comparing against budget limits in settings. Results are cached for
+// quotaCacheTTL.
 type quotaSource struct {
 	store    *storage.Store
 	settings *config.Manager
+
+	mu       sync.Mutex
+	cached   routing.QuotaState
+	cachedAt time.Time
 }
 
 func newQuotaSource(store *storage.Store, settings *config.Manager) *quotaSource {
@@ -522,6 +539,24 @@ func newQuotaSource(store *storage.Store, settings *config.Manager) *quotaSource
 }
 
 func (q *quotaSource) CurrentQuota(ctx context.Context) routing.QuotaState {
+	q.mu.Lock()
+	if !q.cachedAt.IsZero() && time.Since(q.cachedAt) < quotaCacheTTL {
+		state := q.cached
+		q.mu.Unlock()
+		return state
+	}
+	q.mu.Unlock()
+
+	state := q.computeQuota(ctx)
+
+	q.mu.Lock()
+	q.cached = state
+	q.cachedAt = time.Now()
+	q.mu.Unlock()
+	return state
+}
+
+func (q *quotaSource) computeQuota(ctx context.Context) routing.QuotaState {
 	s := q.settings.Get()
 
 	dailyLimitUSD := s.BudgetWarnings["daily"]

@@ -37,6 +37,9 @@ wire_api = "chat"
 		t.Fatal(err)
 	}
 
+	// Even when the referenced env var is set in the daemon's environment,
+	// the scanner must not resolve it — krouter never reads env vars for
+	// credentials.
 	t.Setenv("OPENAI_API_KEY", "sk-openai-test-key")
 
 	eps, err := CodexScanner{}.Scan(context.Background(), configPath)
@@ -56,8 +59,8 @@ wire_api = "chat"
 	if ep.ProtocolHint != "openai-chat" {
 		t.Errorf("ProtocolHint = %q", ep.ProtocolHint)
 	}
-	if ep.APIKey != "sk-openai-test-key" {
-		t.Errorf("APIKey = %q, want key from env", ep.APIKey)
+	if ep.APIKey != "" {
+		t.Errorf("APIKey = %q, want empty (env_key must not be resolved)", ep.APIKey)
 	}
 }
 

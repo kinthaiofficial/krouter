@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	anthropicAdapter "github.com/kinthaiofficial/krouter/internal/providers/anthropic"
 )
@@ -26,11 +27,19 @@ var supportedModels = []string{
 	"MiniMax-M2.7-highspeed",
 }
 
+// cachedTokenTTL bounds how long an observed OAuth token stays usable by the
+// quota poller. This in-memory retention is a documented exception to D-003
+// (see DECISIONS.md): the poller cannot call token_plan/remains without it.
+// The TTL keeps a rotated/stale token from being replayed indefinitely —
+// any new MiniMax request refreshes the cache.
+const cachedTokenTTL = 30 * time.Minute
+
 // tokenCache holds the most recently seen OAuth Bearer token for MiniMax.
 // Used by QuotaPoller to call token_plan/remains. Never persisted to disk.
 var tokenCache struct {
-	mu    sync.RWMutex
-	token string
+	mu       sync.RWMutex
+	token    string
+	cachedAt time.Time
 }
 
 // CacheOAuthToken stores the most recently observed MiniMax OAuth token in memory.
@@ -43,14 +52,27 @@ func CacheOAuthToken(authHeader string) {
 	}
 	tokenCache.mu.Lock()
 	tokenCache.token = token
+	tokenCache.cachedAt = time.Now()
 	tokenCache.mu.Unlock()
 }
 
-// GetCachedToken returns the most recently cached OAuth token, or "" if none seen yet.
+// GetCachedToken returns the most recently cached OAuth token, or "" when
+// none was seen yet or the cached one is older than cachedTokenTTL.
 func GetCachedToken() string {
 	tokenCache.mu.RLock()
 	defer tokenCache.mu.RUnlock()
+	if tokenCache.token == "" || time.Since(tokenCache.cachedAt) > cachedTokenTTL {
+		return ""
+	}
 	return tokenCache.token
+}
+
+// ResetCachedToken clears the in-memory OAuth token. Used by tests.
+func ResetCachedToken() {
+	tokenCache.mu.Lock()
+	tokenCache.token = ""
+	tokenCache.cachedAt = time.Time{}
+	tokenCache.mu.Unlock()
 }
 
 // New creates a MiniMax provider adapter that transparently proxies requests,

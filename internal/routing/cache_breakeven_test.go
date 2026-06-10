@@ -24,9 +24,9 @@ func TestCacheHitBreakeven_KnownPairs(t *testing.T) {
 	)
 
 	tests := []struct {
-		name      string
-		bound     float64
-		candidate float64
+		name       string
+		bound      float64
+		candidate  float64
 		wantApprox float64 // expected breakeven; -1 means "unknown"
 	}{
 		// p* = (1 - 1.25 × 3/15) / 0.9 = (1 - 0.25) / 0.9 = 0.75/0.9 ≈ 0.833
@@ -48,10 +48,14 @@ func TestCacheHitBreakeven_KnownPairs(t *testing.T) {
 }
 
 func TestCacheHitBreakeven_ZeroPrice(t *testing.T) {
-	// Unknown prices return -1.
-	assert.Equal(t, -1.0, routing.CacheHitBreakevenExport(0, 0.000003))
-	assert.Equal(t, -1.0, routing.CacheHitBreakevenExport(0.000015, 0))
-	assert.Equal(t, -1.0, routing.CacheHitBreakevenExport(0, 0))
+	// A price of 0 means genuinely free (unknown prices are handled by the
+	// caller via the PricingSource ok flag and never reach this function).
+	// Free bound model: nothing can be cheaper → no incentive to switch.
+	assert.Equal(t, 0.0, routing.CacheHitBreakevenExport(0, 0.000003))
+	// Free candidate: even a 100% hit rate can't save the bound model.
+	assert.Equal(t, 1.0, routing.CacheHitBreakevenExport(0.000015, 0))
+	// Both free: equal price → no incentive to switch.
+	assert.Equal(t, 0.0, routing.CacheHitBreakevenExport(0, 0))
 }
 
 func TestCacheHitBreakeven_SamePrice(t *testing.T) {

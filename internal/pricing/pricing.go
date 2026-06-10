@@ -51,13 +51,13 @@ var LiteLLMToKrouterProvider = map[string]string{
 
 // PriceEntry holds per-token costs for a model.
 type PriceEntry struct {
-	Provider                     string
-	InputCostPerToken            float64 // cost per single token in USD
-	OutputCostPerToken           float64
-	CachedInputCostPerToken      float64 // cache_read: billed at ~10% of input
-	CacheWriteInputCostPerToken  float64 // cache_creation (standard 5-min TTL): typically 1.25× input for Anthropic
+	Provider                       string
+	InputCostPerToken              float64 // cost per single token in USD
+	OutputCostPerToken             float64
+	CachedInputCostPerToken        float64 // cache_read: billed at ~10% of input
+	CacheWriteInputCostPerToken    float64 // cache_creation (standard 5-min TTL): typically 1.25× input for Anthropic
 	CacheWriteInputCostPerToken1hr float64 // cache_creation for TTL > 1 hr (Anthropic extended caching)
-	MaxTokens                    int
+	MaxTokens                      int
 }
 
 // staticPrices is the Layer-1 fallback bundled at compile time.
@@ -166,9 +166,8 @@ func (s *Service) CostFor(provider, model string, inputTokens, outputTokens, cac
 		return 0
 	}
 
-	if inputTokens < 0 {
-		inputTokens = 0
-	}
+	inputTokens, outputTokens, cachedTokens, cacheWriteTokens =
+		clampTokens(inputTokens, outputTokens, cachedTokens, cacheWriteTokens)
 
 	// Use the model's actual cache-write rate from the pricing table.
 	// Falls back to 0 for providers that don't support prompt caching
@@ -238,13 +237,13 @@ func (s *Service) loadFromDB(ctx context.Context) error {
 	defer s.mu.Unlock()
 	for _, e := range entries {
 		s.prices[e.ModelID] = PriceEntry{
-			Provider:                     e.Provider,
-			InputCostPerToken:            e.InputCostPerToken,
-			OutputCostPerToken:           e.OutputCostPerToken,
-			CachedInputCostPerToken:      e.CachedInputCostPerToken,
-			CacheWriteInputCostPerToken:  e.CacheWriteInputCostPerToken,
+			Provider:                       e.Provider,
+			InputCostPerToken:              e.InputCostPerToken,
+			OutputCostPerToken:             e.OutputCostPerToken,
+			CachedInputCostPerToken:        e.CachedInputCostPerToken,
+			CacheWriteInputCostPerToken:    e.CacheWriteInputCostPerToken,
 			CacheWriteInputCostPerToken1hr: e.CacheWriteInputCostPerToken1hr,
-			MaxTokens:                    e.MaxTokens,
+			MaxTokens:                      e.MaxTokens,
 		}
 	}
 	s.logger.Info("pricing: loaded from SQLite cache", "models", len(entries))
@@ -431,17 +430,19 @@ func (s *Service) loadFromSeed(seedJSON []byte) error {
 	return nil
 }
 
-// InputCostPerToken returns the input cost per token in USD for the given model.
-// Returns 0 if the model is not in the pricing table. Used by the routing engine
-// to rank models by cost without constructing a full request record.
-func (s *Service) InputCostPerToken(model string) float64 {
+// InputCostPerToken returns the input cost per token in USD for the given
+// model and whether the model is in the pricing table. ok=false means the
+// price is unknown; (0, true) means the model is genuinely free — the routing
+// engine needs the distinction so free models win cheapest-model scans
+// (D-037) while unpriced ones stay unranked.
+func (s *Service) InputCostPerToken(model string) (float64, bool) {
 	s.mu.RLock()
 	e, ok := s.prices[model]
 	s.mu.RUnlock()
 	if !ok {
-		return 0
+		return 0, false
 	}
-	return e.InputCostPerToken
+	return e.InputCostPerToken, true
 }
 
 // ProviderForModel returns the krouter provider/adapter name associated with a
@@ -531,10 +532,30 @@ func (s *Service) BaselineCostFor(requestedModel string, inputTokens, outputToke
 	if !ok {
 		return 0
 	}
+	inputTokens, outputTokens, cachedTokens, cacheWriteTokens =
+		clampTokens(inputTokens, outputTokens, cachedTokens, cacheWriteTokens)
 	cacheWriteRate := entry.CacheWriteInputCostPerToken
 	cost := float64(inputTokens)*entry.InputCostPerToken +
 		float64(cachedTokens)*entry.CachedInputCostPerToken +
 		float64(cacheWriteTokens)*cacheWriteRate +
 		float64(outputTokens)*entry.OutputCostPerToken
 	return int64(cost * 1_000_000)
+}
+
+// clampTokens floors all token buckets at 0 so malformed upstream usage data
+// can never produce a negative cost.
+func clampTokens(in, out, cached, cacheWrite int) (int, int, int, int) {
+	if in < 0 {
+		in = 0
+	}
+	if out < 0 {
+		out = 0
+	}
+	if cached < 0 {
+		cached = 0
+	}
+	if cacheWrite < 0 {
+		cacheWrite = 0
+	}
+	return in, out, cached, cacheWrite
 }
