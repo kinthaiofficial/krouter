@@ -93,6 +93,17 @@ The daemon listens on two ports:
 			}
 			logger.Info("storage ready", "path", dbPath)
 
+			// In-memory credential store — the ONLY place inherited API keys
+			// and OAuth tokens live (D-003: keys never touch SQLite; the
+			// api_key column was dropped in migration 022). Populated
+			// synchronously here so routing has credentials before the proxy
+			// accepts its first request, and refreshed by the periodic
+			// rescan. ImportPending first: wizard selections may enable apps
+			// whose configs the scan then reads.
+			creds := agentscan.NewCredStore()
+			agentscan.ImportPending(ctx, store, creds, logger)
+			agentscan.RunAll(ctx, store, creds, logger, true /* force: store starts empty */)
+
 			// Settings manager — must be created before the provider registry so
 			// providers can read keys from settings at request time.
 			configPath, _ := cmd.Flags().GetString("config")
@@ -120,17 +131,17 @@ The daemon listens on two ports:
 			// MiniMax: inject its OAuth Bearer so requests the engine re-routes
 			// here (e.g. an OpenClaw claude sub-agent sending an Anthropic
 			// x-api-key) authenticate against MiniMax instead of 401ing (#63).
-			// Token source mirrors the quota poller: inherited_endpoints
-			// (scanned from auth-profiles.json) → in-memory request cache.
+			// Token source mirrors the quota poller: in-memory credential
+			// store (scanned from auth-profiles.json) → request-header cache.
 			mmAdapter := minimaxadapter.New(sharedClient)
 			mmAdapter.SetAuthResolver(func() string {
-				if t := readMinimaxOAuthFromInheritedEndpoints(context.Background(), store); t != "" {
+				if t := readMinimaxOAuthFromCreds(creds); t != "" {
 					return t
 				}
 				return minimaxadapter.GetCachedToken()
 			})
 			reg.Register(mmAdapter)
-			loadProvidersFromDB(ctx, store, reg, sharedClient)
+			loadProvidersFromDB(ctx, store, creds, reg, sharedClient)
 
 			// Routing engine.
 			engine := routing.New(reg)
@@ -226,7 +237,7 @@ The daemon listens on two ports:
 			minimaxPoller := minimaxadapter.NewQuotaPoller(store, &http.Client{
 				Timeout: 15 * time.Second, Transport: bgTransport,
 			}).WithTokenResolver(func(ctx context.Context) string {
-				if t := readMinimaxOAuthFromInheritedEndpoints(ctx, store); t != "" {
+				if t := readMinimaxOAuthFromCreds(creds); t != "" {
 					return t
 				}
 				return minimaxadapter.GetCachedToken()
@@ -256,6 +267,7 @@ The daemon listens on two ports:
 
 			// Management API server.
 			apiSrv := api.New(store, Version, proxyPort, mgmtPort)
+			apiSrv.SetCredStore(creds)
 			apiSrv.SetBuildTime(BuildTime)
 			apiSrv.SetPricing(pricingSvc)
 			if upgradeSvc != nil {
@@ -284,7 +296,7 @@ The daemon listens on two ports:
 			// the background gets picked up; the SSE event lets the user
 			// know to re-login if the rescan doesn't help.
 			minimaxPoller.WithUnauthorizedCallback(func() {
-				agentscan.RunAll(ctx, store, logger)
+				agentscan.RunAll(ctx, store, creds, logger, true)
 				apiSrv.Broadcast("subscription_unauthorized", map[string]any{
 					"provider": "minimax",
 				})
@@ -302,23 +314,9 @@ The daemon listens on two ports:
 			})
 			apiSrv.SetSSEDebug(proxySrv.GetLastSSECapture)
 
-			// Agent inheritance — refresh inherited_endpoints from each enabled
-			// AI agent's config file. Runs early so model discovery and the
-			// MiniMax quota poller can rely on freshly-extracted API keys and
-			// OAuth tokens.
-			//
-			// Before RunAll, ImportPending picks up wizard selections (see
-			// spec/04 §4) the installer wrote to pending-agents.json.
-			go func() {
-				timer := time.NewTimer(2 * time.Second)
-				defer timer.Stop()
-				select {
-				case <-timer.C:
-					agentscan.ImportPending(ctx, store, logger)
-					agentscan.RunAll(ctx, store, logger)
-				case <-ctx.Done():
-				}
-			}()
+			// Agent inheritance initial scan already ran synchronously right
+			// after storage init (the in-memory credential store must be
+			// populated before the proxy serves its first request).
 
 			// Periodic rescan — picks up config changes the user made to
 			// their agent files between daemon restarts (spec/04 §14
@@ -327,7 +325,7 @@ The daemon listens on two ports:
 			// (see configUnchangedSince), so the poll is near-free when idle.
 			// SSE broadcast lets the dashboard react before its own
 			// refetchInterval fires.
-			go agentscan.StartPeriodicRescan(ctx, store, logger, 1*time.Minute, func() {
+			go agentscan.StartPeriodicRescan(ctx, store, creds, logger, 1*time.Minute, func() {
 				apiSrv.Broadcast("agents_changed", map[string]any{
 					"source": "periodic_rescan",
 				})
@@ -764,7 +762,7 @@ func (s *subscriptionSource) GetSubscriptionInfo(ctx context.Context, provider s
 // loadProvidersFromDB reads provider_config rows and registers an OpenAI adapter for
 // each openai-protocol entry. Anthropic and MiniMax are skipped — they are always
 // registered separately with custom protocol logic above.
-func loadProvidersFromDB(ctx context.Context, store *storage.Store, reg *providers.Registry, sharedClient *http.Client) {
+func loadProvidersFromDB(ctx context.Context, store *storage.Store, creds *agentscan.CredStore, reg *providers.Registry, sharedClient *http.Client) {
 	cfgs, err := store.GetProviderConfigs(ctx)
 	if err != nil {
 		return
@@ -776,7 +774,7 @@ func loadProvidersFromDB(ctx context.Context, store *storage.Store, reg *provide
 		}
 		name := cfg.Name
 		keyFn := func() string {
-			return resolveProviderKeyForRouting(store, name)
+			return resolveProviderKeyForRouting(creds, name)
 		}
 		reg.Register(openaiadapter.NewWithPathReplaceAndKeyFn(name, cfg.BaseURL, cfg.PathPrefix, keyFn, nil, sharedClient))
 	}

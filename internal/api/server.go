@@ -84,6 +84,7 @@ type sseEvent struct {
 type Server struct {
 	token         string
 	store         *storage.Store
+	creds         *agentscan.CredStore // in-memory inherited credentials (never persisted)
 	pricing       *pricing.Service
 	upgrade       *upgrade.Service
 	remote        *remote.Service
@@ -112,6 +113,11 @@ type Server struct {
 
 // New creates a management API server.
 // store may be nil (returns defaults for all store-backed endpoints).
+// SetCredStore attaches the in-memory credential store populated by the
+// agent scanner. All inherited-key lookups in the API layer go through it;
+// credentials are never read from (or written to) SQLite.
+func (s *Server) SetCredStore(c *agentscan.CredStore) { s.creds = c }
+
 func New(store *storage.Store, version string, proxyPort, mgmtPort int) *Server {
 	return &Server{
 		store:   store,
@@ -2393,10 +2399,9 @@ func (s *Server) discoverOpenClawMiniMax(configPath string) {
 }
 
 // discoverProviderModels runs model discovery for an OpenAI-compatible provider.
-// The API key is resolved from inherited_endpoints (preferred, populated by
-// agentscan from the user's AI agent config) or, failing that, from
-// settings.ProviderKeys (dashboard override). Only the DB is updated; no
-// agent config is written. Errors are silently ignored.
+// The API key is resolved from the in-memory credential store (populated by
+// agentscan from the user's AI agent config; never persisted). Only the DB is
+// updated; no agent config is written. Errors are silently ignored.
 func (s *Server) discoverProviderModels(ctx context.Context, providerName string) {
 	if s.store == nil || s.registry == nil {
 		return

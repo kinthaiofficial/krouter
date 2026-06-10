@@ -18,8 +18,8 @@ import (
 	"sync"
 	"time"
 
-	_ "modernc.org/sqlite" // SQLite driver (pure Go, no CGO)
 	"github.com/oklog/ulid/v2"
+	_ "modernc.org/sqlite" // SQLite driver (pure Go, no CGO)
 )
 
 //go:embed migrations/*.sql
@@ -137,6 +137,7 @@ func (s *Store) Migrate() error {
 		return entries[i].Name() < entries[j].Name()
 	})
 
+	var applied []int
 	for _, entry := range entries {
 		name := entry.Name()
 		if !strings.HasSuffix(name, ".sql") {
@@ -165,6 +166,25 @@ func (s *Store) Migrate() error {
 
 		if err := s.applyMigration(version, string(body)); err != nil {
 			return fmt.Errorf("migration %q failed: %w", name, err)
+		}
+		applied = append(applied, version)
+	}
+
+	// Migration 022 removes credentials (inherited_endpoints.api_key /
+	// oauth_token) from the schema, but SQLite leaves the old values in
+	// freed pages and the WAL until the file is rewritten. VACUUM cannot
+	// run inside a migration transaction, so do it here — once, right
+	// after 022 first applies — so the secret bytes are physically gone
+	// from the database file, not just logically deleted.
+	for _, v := range applied {
+		if v == 22 {
+			if _, err := s.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
+				return fmt.Errorf("post-022 wal checkpoint: %w", err)
+			}
+			if _, err := s.db.Exec(`VACUUM`); err != nil {
+				return fmt.Errorf("post-022 vacuum: %w", err)
+			}
+			break
 		}
 	}
 

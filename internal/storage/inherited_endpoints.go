@@ -12,12 +12,16 @@ import (
 // This struct is the storage-layer counterpart of
 // agentscan.InheritedEndpoint. We keep them as separate types to avoid an
 // import cycle (storage cannot depend on agentscan and vice versa).
+//
+// Credentials are deliberately absent: API keys and OAuth tokens scanned
+// from agent configs live ONLY in the in-memory agentscan.CredStore (D-003 —
+// keys never touch SQLite). The api_key column was dropped in migration 022;
+// ExtrasJSON is persisted with its oauth_token field stripped.
 type InheritedEndpoint struct {
 	AppID        string `json:"app_id"`
 	Provider     string `json:"provider"`
 	EndpointURL  string `json:"endpoint_url"`
 	ProtocolHint string `json:"protocol_hint,omitempty"`
-	APIKey       string `json:"api_key,omitempty"`
 	ExtrasJSON   string `json:"extras_json,omitempty"`
 	CapturedAt   int64  `json:"captured_at"`
 }
@@ -40,8 +44,8 @@ func (s *Store) ReplaceInheritedEndpoints(ctx context.Context, appID string, end
 	}
 
 	const ins = `INSERT INTO inherited_endpoints
-	             (app_id, provider, endpoint_url, protocol_hint, api_key, extras_json, captured_at)
-	             VALUES (?, ?, ?, ?, ?, ?, ?)`
+	             (app_id, provider, endpoint_url, protocol_hint, extras_json, captured_at)
+	             VALUES (?, ?, ?, ?, ?, ?)`
 	stmt, err := tx.PrepareContext(ctx, ins)
 	if err != nil {
 		return err
@@ -56,16 +60,12 @@ func (s *Store) ReplaceInheritedEndpoints(ctx context.Context, appID string, end
 		if ep.ProtocolHint != "" {
 			protocol = ep.ProtocolHint
 		}
-		var apiKey any
-		if ep.APIKey != "" {
-			apiKey = ep.APIKey
-		}
 		var extras any
 		if ep.ExtrasJSON != "" {
 			extras = ep.ExtrasJSON
 		}
 		if _, err := stmt.ExecContext(ctx,
-			appID, ep.Provider, ep.EndpointURL, protocol, apiKey, extras, ep.CapturedAt,
+			appID, ep.Provider, ep.EndpointURL, protocol, extras, ep.CapturedAt,
 		); err != nil {
 			return err
 		}
@@ -76,7 +76,7 @@ func (s *Store) ReplaceInheritedEndpoints(ctx context.Context, appID string, end
 // ListInheritedEndpoints returns every row across all apps, ordered by
 // (app_id, provider). Useful for the dashboard / SSE event payload.
 func (s *Store) ListInheritedEndpoints(ctx context.Context) ([]InheritedEndpoint, error) {
-	const q = `SELECT app_id, provider, endpoint_url, protocol_hint, api_key, extras_json, captured_at
+	const q = `SELECT app_id, provider, endpoint_url, protocol_hint, extras_json, captured_at
 	           FROM inherited_endpoints ORDER BY app_id, provider`
 	rows, err := s.db.QueryContext(ctx, q)
 	if err != nil {
@@ -88,7 +88,7 @@ func (s *Store) ListInheritedEndpoints(ctx context.Context) ([]InheritedEndpoint
 
 // ListInheritedEndpointsByApp returns inherited_endpoints scoped to one app.
 func (s *Store) ListInheritedEndpointsByApp(ctx context.Context, appID string) ([]InheritedEndpoint, error) {
-	const q = `SELECT app_id, provider, endpoint_url, protocol_hint, api_key, extras_json, captured_at
+	const q = `SELECT app_id, provider, endpoint_url, protocol_hint, extras_json, captured_at
 	           FROM inherited_endpoints WHERE app_id = ? ORDER BY provider`
 	rows, err := s.db.QueryContext(ctx, q, appID)
 	if err != nil {
@@ -108,7 +108,7 @@ func (s *Store) ListInheritedEndpointsByApp(ctx context.Context, appID string) (
 // only the comparison is alias-aware.
 func (s *Store) FindInheritedEndpointsByProvider(ctx context.Context, provider string) ([]InheritedEndpoint, error) {
 	const q = `SELECT i.app_id, i.provider, i.endpoint_url, i.protocol_hint,
-	                  i.api_key, i.extras_json, i.captured_at
+	                  i.extras_json, i.captured_at
 	           FROM inherited_endpoints AS i
 	           JOIN app_settings AS a ON a.app_id = i.app_id
 	           WHERE a.enabled = 1
@@ -138,20 +138,16 @@ func scanInheritedEndpoints(rows *sql.Rows) ([]InheritedEndpoint, error) {
 		var (
 			ep       InheritedEndpoint
 			protocol sql.NullString
-			apiKey   sql.NullString
 			extras   sql.NullString
 		)
 		if err := rows.Scan(
 			&ep.AppID, &ep.Provider, &ep.EndpointURL,
-			&protocol, &apiKey, &extras, &ep.CapturedAt,
+			&protocol, &extras, &ep.CapturedAt,
 		); err != nil {
 			return nil, err
 		}
 		if protocol.Valid {
 			ep.ProtocolHint = protocol.String
-		}
-		if apiKey.Valid {
-			ep.APIKey = apiKey.String
 		}
 		if extras.Valid {
 			ep.ExtrasJSON = extras.String

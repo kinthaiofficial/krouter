@@ -27,7 +27,7 @@ func TestInheritedEndpoints_ReplaceAtomic(t *testing.T) {
 	// Initial batch of 3 endpoints.
 	first := []storage.InheritedEndpoint{
 		{Provider: "anthropic", EndpointURL: "https://api.anthropic.com", CapturedAt: now},
-		{Provider: "minimax-portal", EndpointURL: "http://127.0.0.1:8402", APIKey: "sk-api-x", CapturedAt: now},
+		{Provider: "minimax-portal", EndpointURL: "http://127.0.0.1:8402", CapturedAt: now},
 		{Provider: "openrouter", EndpointURL: "https://openrouter.ai/api", ExtrasJSON: `{"k":"v"}`, CapturedAt: now},
 	}
 	require.NoError(t, s.ReplaceInheritedEndpoints(ctx, "openclaw", first))
@@ -38,7 +38,7 @@ func TestInheritedEndpoints_ReplaceAtomic(t *testing.T) {
 
 	// Replace with smaller batch — old rows must be gone.
 	second := []storage.InheritedEndpoint{
-		{Provider: "deepseek", EndpointURL: "https://api.deepseek.com", APIKey: "sk-foo", CapturedAt: now + 1},
+		{Provider: "deepseek", EndpointURL: "https://api.deepseek.com", CapturedAt: now + 1},
 	}
 	require.NoError(t, s.ReplaceInheritedEndpoints(ctx, "openclaw", second))
 
@@ -61,14 +61,14 @@ func TestFindInheritedEndpointsByProvider_CanonicalAlias(t *testing.T) {
 
 	now := time.Now().UnixMilli()
 	require.NoError(t, s.ReplaceInheritedEndpoints(ctx, "openclaw", []storage.InheritedEndpoint{
-		{Provider: "dashscope", EndpointURL: "https://dashscope.aliyuncs.com", APIKey: "sk-dash", CapturedAt: now},
+		{Provider: "dashscope", EndpointURL: "https://dashscope.aliyuncs.com", CapturedAt: now},
 	}))
 
 	// Lookup by krouter's canonical adapter name must resolve the aliased row.
 	got, err := s.FindInheritedEndpointsByProvider(ctx, "qwen")
 	require.NoError(t, err)
 	require.Len(t, got, 1)
-	assert.Equal(t, "sk-dash", got[0].APIKey)
+	assert.Equal(t, "dashscope", got[0].Provider)
 
 	// Lookup by the literal stored name still works too.
 	got, err = s.FindInheritedEndpointsByProvider(ctx, "dashscope")

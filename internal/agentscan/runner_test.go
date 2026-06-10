@@ -25,7 +25,7 @@ type fakeScanner struct {
 	err     error
 }
 
-func (f fakeScanner) AppID() string           { return f.id }
+func (f fakeScanner) AppID() string             { return f.id }
 func (f fakeScanner) DisplayName() string       { return f.name }
 func (f fakeScanner) DefaultConfigPath() string { return f.path }
 func (f fakeScanner) Scan(_ context.Context, _ string) ([]agentscan.InheritedEndpoint, error) {
@@ -64,7 +64,7 @@ func TestScanOne_Success(t *testing.T) {
 				APIKey: "sk-api-foo", ExtrasJSON: `{"k":"v"}`},
 		},
 	}
-	require.NoError(t, agentscan.ScanOne(ctx, s, scanner, "/tmp/x"))
+	require.NoError(t, agentscan.ScanOne(ctx, s, agentscan.NewCredStore(), scanner, "/tmp/x"))
 
 	endpoints, err := s.ListInheritedEndpointsByApp(ctx, "openclaw")
 	require.NoError(t, err)
@@ -83,7 +83,7 @@ func TestScanOne_ScannerErrorPersistsLastError(t *testing.T) {
 	}))
 
 	scanner := fakeScanner{id: "openclaw", err: errors.New("simulated parse failure")}
-	err := agentscan.ScanOne(ctx, s, scanner, "/tmp/x")
+	err := agentscan.ScanOne(ctx, s, agentscan.NewCredStore(), scanner, "/tmp/x")
 	require.Error(t, err)
 
 	got, _ := s.GetAppSetting(ctx, "openclaw")
@@ -101,7 +101,7 @@ func TestScanOne_OverwritesPreviousEndpoints(t *testing.T) {
 		AppID: "openclaw", Enabled: true, ConfigPath: "/x",
 	}))
 
-	require.NoError(t, agentscan.ScanOne(ctx, s, fakeScanner{
+	require.NoError(t, agentscan.ScanOne(ctx, s, agentscan.NewCredStore(), fakeScanner{
 		id: "openclaw",
 		results: []agentscan.InheritedEndpoint{
 			{Provider: "anthropic", EndpointURL: "u1"},
@@ -109,7 +109,7 @@ func TestScanOne_OverwritesPreviousEndpoints(t *testing.T) {
 		},
 	}, "/x"))
 
-	require.NoError(t, agentscan.ScanOne(ctx, s, fakeScanner{
+	require.NoError(t, agentscan.ScanOne(ctx, s, agentscan.NewCredStore(), fakeScanner{
 		id: "openclaw",
 		results: []agentscan.InheritedEndpoint{
 			{Provider: "anthropic", EndpointURL: "u1-new"},
@@ -144,7 +144,7 @@ func TestRunAll_SkipsDisabledAndUnknown(t *testing.T) {
 		AppID: "future-agent-xyz", Enabled: true, ConfigPath: "/z",
 	}))
 
-	agentscan.RunAll(ctx, s, logging.New("error"))
+	agentscan.RunAll(ctx, s, agentscan.NewCredStore(), logging.New("error"), true)
 
 	enabledEps, _ := s.ListInheritedEndpointsByApp(ctx, "openclaw")
 	assert.Len(t, enabledEps, 1)
@@ -176,7 +176,7 @@ func TestRunAll_OneFailureDoesNotAbortOthers(t *testing.T) {
 		AppID: "claude-code", Enabled: true, ConfigPath: "/y",
 	}))
 
-	agentscan.RunAll(ctx, s, logging.New("error"))
+	agentscan.RunAll(ctx, s, agentscan.NewCredStore(), logging.New("error"), true)
 
 	failed, _ := s.GetAppSetting(ctx, "openclaw")
 	assert.NotEmpty(t, failed.LastError)
@@ -190,7 +190,7 @@ func TestRunAll_OneFailureDoesNotAbortOthers(t *testing.T) {
 }
 
 func TestRunAll_NilStoreIsNoOp(t *testing.T) {
-	agentscan.RunAll(context.Background(), nil, logging.New("error"))
+	agentscan.RunAll(context.Background(), nil, agentscan.NewCredStore(), logging.New("error"), true)
 }
 
 func TestStartPeriodicRescan_TicksAndStopsOnCtxCancel(t *testing.T) {
@@ -212,7 +212,7 @@ func TestStartPeriodicRescan_TicksAndStopsOnCtxCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		agentscan.StartPeriodicRescan(ctx, s, logging.New("error"), 20*time.Millisecond, func() {
+		agentscan.StartPeriodicRescan(ctx, s, agentscan.NewCredStore(), logging.New("error"), 20*time.Millisecond, func() {
 			ticks++
 		})
 		close(done)
@@ -250,10 +250,10 @@ func TestRunAll_SkipsUnchangedConfigButRescansAfterChange(t *testing.T) {
 		AppID: "openclaw", Enabled: true, ConfigPath: cfgPath,
 	}))
 
-	agentscan.RunAll(ctx, s, logging.New("error"))
+	agentscan.RunAll(ctx, s, agentscan.NewCredStore(), logging.New("error"), false)
 	require.Equal(t, 1, calls, "first run always scans (no prior scan recorded)")
 
-	agentscan.RunAll(ctx, s, logging.New("error"))
+	agentscan.RunAll(ctx, s, agentscan.NewCredStore(), logging.New("error"), false)
 	require.Equal(t, 1, calls, "unchanged config must be skipped")
 
 	// Bump the config mtime into the future so it is strictly newer than the
@@ -261,7 +261,7 @@ func TestRunAll_SkipsUnchangedConfigButRescansAfterChange(t *testing.T) {
 	future := time.Now().Add(2 * time.Second)
 	require.NoError(t, os.Chtimes(cfgPath, future, future))
 
-	agentscan.RunAll(ctx, s, logging.New("error"))
+	agentscan.RunAll(ctx, s, agentscan.NewCredStore(), logging.New("error"), false)
 	require.Equal(t, 2, calls, "changed config must be rescanned")
 }
 
@@ -274,7 +274,7 @@ func TestStartPeriodicRescan_ZeroIntervalReturnsImmediately(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		agentscan.StartPeriodicRescan(
-			context.Background(), store, logging.New("error"),
+			context.Background(), store, agentscan.NewCredStore(), logging.New("error"),
 			0, func() {})
 		close(done)
 	}()
@@ -290,7 +290,7 @@ func TestStartPeriodicRescan_NilStoreReturnsImmediately(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		agentscan.StartPeriodicRescan(
-			context.Background(), nil, logging.New("error"),
+			context.Background(), nil, agentscan.NewCredStore(), logging.New("error"),
 			10*time.Millisecond, func() {})
 		close(done)
 	}()
@@ -312,7 +312,7 @@ func TestStartPeriodicRescan_NilOnTickDoesNotPanic(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		agentscan.StartPeriodicRescan(ctx, s, logging.New("error"), 20*time.Millisecond, nil)
+		agentscan.StartPeriodicRescan(ctx, s, agentscan.NewCredStore(), logging.New("error"), 20*time.Millisecond, nil)
 		close(done)
 	}()
 	time.Sleep(60 * time.Millisecond)
@@ -328,7 +328,7 @@ type callCountingScanner struct {
 	incr func()
 }
 
-func (s callCountingScanner) AppID() string           { return s.id }
+func (s callCountingScanner) AppID() string             { return s.id }
 func (s callCountingScanner) DisplayName() string       { return s.id }
 func (s callCountingScanner) DefaultConfigPath() string { return "/d" }
 func (s callCountingScanner) Scan(_ context.Context, _ string) ([]agentscan.InheritedEndpoint, error) {
@@ -336,4 +336,45 @@ func (s callCountingScanner) Scan(_ context.Context, _ string) ([]agentscan.Inhe
 		s.incr()
 	}
 	return nil, nil
+}
+
+// ScanOne must split scan output at the persistence boundary (D-003): API
+// keys and OAuth tokens go to the in-memory CredStore only; the SQLite rows
+// carry no credential — extras_json is persisted with oauth_token stripped.
+func TestScanOne_CredentialsNeverReachStorage(t *testing.T) {
+	s := newRunnerStore(t)
+	ctx := context.Background()
+	creds := agentscan.NewCredStore()
+
+	require.NoError(t, agentscan.ScanOne(ctx, s, creds, fakeScanner{
+		id: "openclaw",
+		results: []agentscan.InheritedEndpoint{
+			{Provider: "deepseek", EndpointURL: "u1", APIKey: "sk-secret"},
+			{
+				Provider:    "minimax-portal",
+				EndpointURL: "u2",
+				ExtrasJSON:  `{"oauth_token":"sk-cp-secret","purpose":"subscription_oauth"}`,
+			},
+		},
+	}, "/x"))
+
+	// Memory has both credentials.
+	assert.Equal(t, "sk-secret", creds.KeyFor("deepseek"))
+	assert.Equal(t, "sk-cp-secret", creds.OAuthTokenFor("minimax-portal"))
+
+	// Storage has neither: no APIKey field exists, and extras_json must not
+	// contain the token (other extras fields survive).
+	eps, err := s.ListInheritedEndpointsByApp(ctx, "openclaw")
+	require.NoError(t, err)
+	require.Len(t, eps, 2)
+	for _, ep := range eps {
+		assert.NotContains(t, ep.ExtrasJSON, "sk-cp-secret",
+			"oauth_token must be stripped before extras_json is persisted")
+	}
+	for _, ep := range eps {
+		if ep.Provider == "minimax-portal" {
+			assert.Contains(t, ep.ExtrasJSON, "subscription_oauth",
+				"non-credential extras fields must survive sanitization")
+		}
+	}
 }

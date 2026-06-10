@@ -44,6 +44,7 @@ func newTestServer(t *testing.T) (*Server, *storage.Store) {
 	t.Cleanup(func() { _ = s.Close() })
 	srv := New(s, "v0.test", 8402, 8403)
 	srv.SetTokenForTest("test-token")
+	srv.SetCredStore(agentscan.NewCredStore())
 	return srv, s
 }
 

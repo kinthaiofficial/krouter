@@ -38,7 +38,7 @@ Anthropic and OpenAI aren't the only candidates; future protocols (Gemini, Coher
 Scanners read **the agent's config file**. They do not read `~/.zshrc` to fish out `ANTHROPIC_API_KEY=`, do not read `~/.aws/credentials`, do not scrape `~/.config/gcloud`. The user has already declared what they want shared with krouter when they pointed an agent at it.
 
 ### B5. The user's API key is the request's responsibility
-For transparent proxy paths (Claude Code, MiniMax), the request body carries the key the user already had configured. krouter does not "store keys for the user" on its own initiative. The only exception is `settings.ProviderKeys`, which is an explicit dashboard override — and it loses to `inherited_endpoints.api_key` whenever both exist (spec/04 §9; see also `cmd/krouter/key_resolver.go::resolveProviderKeyForRouting`).
+For transparent proxy paths (Claude Code, MiniMax), the request carries the key the user already had configured. krouter does not "store keys for the user" — credentials scanned from agent configs live only in the daemon's memory (`agentscan.CredStore`, repopulated from the agent's own config files at startup and on every rescan) and are **never persisted to SQLite or any file**. The `inherited_endpoints` table keeps endpoint metadata only; its `api_key` column was dropped in migration 022. See `cmd/krouter/key_resolver.go::resolveProviderKeyForRouting`.
 
 ---
 

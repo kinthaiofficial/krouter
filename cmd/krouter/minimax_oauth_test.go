@@ -1,97 +1,51 @@
 package main
 
 import (
-	"context"
 	"testing"
 
-	"github.com/kinthaiofficial/krouter/internal/storage"
+	"github.com/kinthaiofficial/krouter/internal/agentscan"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-func openStore(t *testing.T) *storage.Store {
-	t.Helper()
-	s, err := storage.Open(":memory:")
-	require.NoError(t, err)
-	require.NoError(t, s.Migrate())
-	t.Cleanup(func() { _ = s.Close() })
-	return s
-}
+func TestReadMinimaxOAuth_FromScannedCreds(t *testing.T) {
+	creds := agentscan.NewCredStore()
+	creds.ReplaceApp("openclaw", []agentscan.Credential{
+		{AppID: "openclaw", Provider: "minimax-portal", OAuthToken: "sk-cp-FROM-AGENT"},
+	})
 
-func TestReadMinimaxOAuth_FromOpenClawExtras(t *testing.T) {
-	s := openStore(t)
-	ctx := context.Background()
-
-	require.NoError(t, s.UpsertAppSetting(ctx, storage.AppSetting{
-		AppID: "openclaw", Enabled: true, ConfigPath: "/x",
-	}))
-	require.NoError(t, s.ReplaceInheritedEndpoints(ctx, "openclaw", []storage.InheritedEndpoint{
-		{
-			Provider:    "minimax-portal",
-			EndpointURL: "http://127.0.0.1:8402",
-			ExtrasJSON:  `{"oauth_token":"sk-cp-FROM-AGENT","purpose":"subscription_oauth"}`,
-			CapturedAt:  1,
-		},
-	}))
-
-	assert.Equal(t, "sk-cp-FROM-AGENT", readMinimaxOAuthFromInheritedEndpoints(ctx, s))
+	assert.Equal(t, "sk-cp-FROM-AGENT", readMinimaxOAuthFromCreds(creds))
 }
 
 func TestReadMinimaxOAuth_FallbacksToAlternateProviderName(t *testing.T) {
-	s := openStore(t)
-	ctx := context.Background()
-
-	require.NoError(t, s.UpsertAppSetting(ctx, storage.AppSetting{
-		AppID: "openclaw", Enabled: true, ConfigPath: "/x",
-	}))
+	creds := agentscan.NewCredStore()
 	// Some agents may name the provider just "minimax" (no -portal).
-	require.NoError(t, s.ReplaceInheritedEndpoints(ctx, "openclaw", []storage.InheritedEndpoint{
-		{
-			Provider:    "minimax",
-			EndpointURL: "u",
-			ExtrasJSON:  `{"oauth_token":"sk-cp-ALT"}`,
-			CapturedAt:  1,
-		},
-	}))
+	creds.ReplaceApp("openclaw", []agentscan.Credential{
+		{AppID: "openclaw", Provider: "minimax", OAuthToken: "sk-cp-ALT"},
+	})
 
-	assert.Equal(t, "sk-cp-ALT", readMinimaxOAuthFromInheritedEndpoints(ctx, s))
+	assert.Equal(t, "sk-cp-ALT", readMinimaxOAuthFromCreds(creds))
 }
 
-func TestReadMinimaxOAuth_EmptyWhenNoExtras(t *testing.T) {
-	s := openStore(t)
-	ctx := context.Background()
+func TestReadMinimaxOAuth_EmptyWhenNoOAuthToken(t *testing.T) {
+	creds := agentscan.NewCredStore()
+	creds.ReplaceApp("openclaw", []agentscan.Credential{
+		{AppID: "openclaw", Provider: "minimax-portal", APIKey: "sk-static"},
+	})
 
-	require.NoError(t, s.UpsertAppSetting(ctx, storage.AppSetting{
-		AppID: "openclaw", Enabled: true, ConfigPath: "/x",
-	}))
-	require.NoError(t, s.ReplaceInheritedEndpoints(ctx, "openclaw", []storage.InheritedEndpoint{
-		{Provider: "minimax-portal", EndpointURL: "u", APIKey: "sk-static", CapturedAt: 1},
-	}))
-
-	assert.Empty(t, readMinimaxOAuthFromInheritedEndpoints(ctx, s),
-		"static-key-only endpoint should not yield an OAuth token")
+	assert.Empty(t, readMinimaxOAuthFromCreds(creds),
+		"static-key-only credential should not yield an OAuth token")
 }
 
-func TestReadMinimaxOAuth_RespectsEnabledFlag(t *testing.T) {
-	s := openStore(t)
-	ctx := context.Background()
+func TestReadMinimaxOAuth_RemovedAppTokenGone(t *testing.T) {
+	creds := agentscan.NewCredStore()
+	creds.ReplaceApp("openclaw", []agentscan.Credential{
+		{AppID: "openclaw", Provider: "minimax-portal", OAuthToken: "sk-cp-DISABLED"},
+	})
+	creds.RemoveApp("openclaw")
 
-	// Disabled agent → its OAuth token must not be returned.
-	require.NoError(t, s.UpsertAppSetting(ctx, storage.AppSetting{
-		AppID: "openclaw", Enabled: false, ConfigPath: "/x",
-	}))
-	require.NoError(t, s.ReplaceInheritedEndpoints(ctx, "openclaw", []storage.InheritedEndpoint{
-		{
-			Provider:    "minimax-portal",
-			EndpointURL: "u",
-			ExtrasJSON:  `{"oauth_token":"sk-cp-DISABLED"}`,
-			CapturedAt:  1,
-		},
-	}))
-
-	assert.Empty(t, readMinimaxOAuthFromInheritedEndpoints(ctx, s))
+	assert.Empty(t, readMinimaxOAuthFromCreds(creds))
 }
 
 func TestReadMinimaxOAuth_NilStoreSafe(t *testing.T) {
-	assert.Empty(t, readMinimaxOAuthFromInheritedEndpoints(context.Background(), nil))
+	assert.Empty(t, readMinimaxOAuthFromCreds(nil))
 }

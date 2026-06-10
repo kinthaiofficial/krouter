@@ -2,6 +2,7 @@ package agentscan
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
@@ -48,14 +49,20 @@ func configUnchangedSince(scanner Scanner, configPath string, lastScannedAt *int
 }
 
 // RunAll walks every enabled row in app_settings, invokes the corresponding
-// Scanner against the user-saved config_path, and writes the resulting
-// endpoints into inherited_endpoints. Errors per app are recorded in
-// app_settings.last_error and never propagated; one bad app must not
-// prevent the rest from running, and must never crash the daemon.
+// Scanner against the user-saved config_path, writes the resulting endpoint
+// metadata into inherited_endpoints, and loads the scanned credentials into
+// creds (memory only). Errors per app are recorded in app_settings.last_error
+// and never propagated; one bad app must not prevent the rest from running,
+// and must never crash the daemon.
 //
-// Called by serve.go on daemon start. The single-app variant ScanOne is
-// used when the user clicks "rescan" on one app in the dashboard.
-func RunAll(ctx context.Context, store *storage.Store, logger logging.Logger) {
+// force bypasses the configUnchangedSince mtime gate. Daemon startup MUST
+// pass force=true: the credential store starts empty after a restart, and an
+// unchanged config file would otherwise skip the scan that repopulates it.
+// The periodic rescan passes force=false to keep the 1-minute poll cheap.
+//
+// The single-app variant ScanOne is used when the user clicks "rescan" on
+// one app in the dashboard.
+func RunAll(ctx context.Context, store *storage.Store, creds *CredStore, logger logging.Logger, force bool) {
 	if store == nil {
 		return
 	}
@@ -66,6 +73,11 @@ func RunAll(ctx context.Context, store *storage.Store, logger logging.Logger) {
 	}
 	for _, setting := range settings {
 		if !setting.Enabled {
+			// Keep memory consistent with the enabled set even if the
+			// disable happened while the daemon wasn't looking.
+			if creds != nil {
+				creds.RemoveApp(setting.AppID)
+			}
 			continue
 		}
 		scanner := Get(setting.AppID)
@@ -77,10 +89,10 @@ func RunAll(ctx context.Context, store *storage.Store, logger logging.Logger) {
 		}
 		// Skip the parse + DB write + SSE broadcast when nothing this scanner
 		// reads has changed since the last scan. Keeps the 1-minute poll cheap.
-		if configUnchangedSince(scanner, setting.ConfigPath, setting.LastScannedAt) {
+		if !force && configUnchangedSince(scanner, setting.ConfigPath, setting.LastScannedAt) {
 			continue
 		}
-		if err := scanOneRecovered(ctx, store, scanner, setting.ConfigPath); err != nil {
+		if err := scanOneRecovered(ctx, store, creds, scanner, setting.ConfigPath); err != nil {
 			logger.Warn("app_inheritance: scan failed",
 				"app", setting.AppID, "err", err)
 			// ScanOne already recorded the error in app_settings.last_error.
@@ -91,13 +103,13 @@ func RunAll(ctx context.Context, store *storage.Store, logger logging.Logger) {
 // scanOneRecovered wraps ScanOne with a panic recovery so one misbehaving
 // scanner (malformed config triggering a parser panic, etc.) cannot take
 // down the periodic rescan loop or the daemon — failures must not spread.
-func scanOneRecovered(ctx context.Context, store *storage.Store, scanner Scanner, configPath string) (err error) {
+func scanOneRecovered(ctx context.Context, store *storage.Store, creds *CredStore, scanner Scanner, configPath string) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("scanner panicked: %v", r)
 		}
 	}()
-	return ScanOne(ctx, store, scanner, configPath)
+	return ScanOne(ctx, store, creds, scanner, configPath)
 }
 
 // StartPeriodicRescan runs RunAll on a fixed interval until ctx is cancelled.
@@ -115,6 +127,7 @@ func scanOneRecovered(ctx context.Context, store *storage.Store, scanner Scanner
 func StartPeriodicRescan(
 	ctx context.Context,
 	store *storage.Store,
+	creds *CredStore,
 	logger logging.Logger,
 	interval time.Duration,
 	onTick func(),
@@ -129,7 +142,7 @@ func StartPeriodicRescan(
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			RunAll(ctx, store, logger)
+			RunAll(ctx, store, creds, logger, false)
 			if onTick != nil {
 				// A panicking broadcast callback must not kill the rescan loop.
 				func() {
@@ -148,7 +161,13 @@ func StartPeriodicRescan(
 // ScanOne executes a single Scanner and persists the result. Returns the
 // underlying error so the API layer can surface it to the user; the
 // last_error column is always updated regardless of return value.
-func ScanOne(ctx context.Context, store *storage.Store, scanner Scanner, configPath string) error {
+//
+// Scan output is split at this boundary (D-003): credentials (api_key, and
+// the oauth_token field inside extras) go to the in-memory creds store only;
+// the rows written to SQLite carry endpoint metadata with all credentials
+// stripped. The memory store is updated FIRST so there is no window where
+// the DB row exists but its credential is unavailable.
+func ScanOne(ctx context.Context, store *storage.Store, creds *CredStore, scanner Scanner, configPath string) error {
 	now := time.Now().UTC().UnixMilli()
 
 	results, scanErr := scanner.Scan(ctx, configPath)
@@ -158,19 +177,32 @@ func ScanOne(ctx context.Context, store *storage.Store, scanner Scanner, configP
 	}
 
 	rows := make([]storage.InheritedEndpoint, 0, len(results))
+	var scanned []Credential
 	for _, r := range results {
 		if r.Provider == "" {
 			continue
+		}
+		oauthToken, sanitizedExtras := splitOAuthToken(r.ExtrasJSON)
+		if r.APIKey != "" || oauthToken != "" {
+			scanned = append(scanned, Credential{
+				AppID:      scanner.AppID(),
+				Provider:   r.Provider,
+				APIKey:     r.APIKey,
+				OAuthToken: oauthToken,
+			})
 		}
 		rows = append(rows, storage.InheritedEndpoint{
 			AppID:        scanner.AppID(),
 			Provider:     r.Provider,
 			EndpointURL:  r.EndpointURL,
 			ProtocolHint: r.ProtocolHint,
-			APIKey:       r.APIKey,
-			ExtrasJSON:   r.ExtrasJSON,
+			ExtrasJSON:   sanitizedExtras,
 			CapturedAt:   now,
 		})
+	}
+
+	if creds != nil {
+		creds.ReplaceApp(scanner.AppID(), scanned)
 	}
 
 	if err := store.ReplaceInheritedEndpoints(ctx, scanner.AppID(), rows); err != nil {
@@ -178,4 +210,30 @@ func ScanOne(ctx context.Context, store *storage.Store, scanner Scanner, configP
 		return err
 	}
 	return store.RecordAppScan(ctx, scanner.AppID(), now, "")
+}
+
+// splitOAuthToken extracts the oauth_token field from an extras JSON blob,
+// returning the token and the blob with the field removed (empty string when
+// nothing else remains). Non-JSON or token-free extras pass through unchanged.
+func splitOAuthToken(extrasJSON string) (token, sanitized string) {
+	if extrasJSON == "" {
+		return "", ""
+	}
+	var m map[string]any
+	if err := json.Unmarshal([]byte(extrasJSON), &m); err != nil {
+		return "", extrasJSON
+	}
+	t, ok := m["oauth_token"].(string)
+	if !ok || t == "" {
+		return "", extrasJSON
+	}
+	delete(m, "oauth_token")
+	if len(m) == 0 {
+		return t, ""
+	}
+	rest, err := json.Marshal(m)
+	if err != nil {
+		return t, ""
+	}
+	return t, string(rest)
 }
