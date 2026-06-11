@@ -24,3 +24,10 @@ func canonicalProviderName(name string) string {
 	}
 	return name
 }
+
+// CanonicalProviderName is the exported form of canonicalProviderName, used
+// by the in-memory credential store (agentscan.CredStore) so its lookups
+// collapse the same vendor aliases as the inherited_endpoints queries here.
+func CanonicalProviderName(name string) string {
+	return canonicalProviderName(name)
+}

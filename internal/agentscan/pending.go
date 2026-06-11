@@ -76,7 +76,7 @@ type pendingFile struct {
 // failure is logged but does not abort the import; the file is removed only
 // when the entire batch processed cleanly so a future daemon start can
 // retry on partial failure.
-func ImportPending(ctx context.Context, store *storage.Store, logger logging.Logger) {
+func ImportPending(ctx context.Context, store *storage.Store, creds *CredStore, logger logging.Logger) {
 	if store == nil {
 		return
 	}
@@ -109,7 +109,7 @@ func ImportPending(ctx context.Context, store *storage.Store, logger logging.Log
 		if p.AppID == "" {
 			continue
 		}
-		if err := applyPending(ctx, store, p); err != nil {
+		if err := applyPending(ctx, store, creds, p); err != nil {
 			allOK = false
 			logger.Warn("pending-agents: apply failed", "app", p.AppID, "err", err)
 		}
@@ -120,7 +120,7 @@ func ImportPending(ctx context.Context, store *storage.Store, logger logging.Log
 	}
 }
 
-func applyPending(ctx context.Context, store *storage.Store, p PendingAgent) error {
+func applyPending(ctx context.Context, store *storage.Store, creds *CredStore, p PendingAgent) error {
 	// Persisting the user's intent (app_settings row) must succeed for the
 	// pending file to be considered cleanly imported. Scan failure on a
 	// missing or malformed app config is *expected*: ScanOne records the
@@ -137,8 +137,11 @@ func applyPending(ctx context.Context, store *storage.Store, p PendingAgent) err
 		return fmt.Errorf("upsert: %w", err)
 	}
 	if !p.Enabled {
-		// User disabled the app — clear any stale inherited rows so routing
-		// stops considering them immediately.
+		// User disabled the app — clear any stale inherited rows (and the
+		// in-memory credentials) so routing stops considering them immediately.
+		if creds != nil {
+			creds.RemoveApp(p.AppID)
+		}
 		if err := store.ReplaceInheritedEndpoints(ctx, p.AppID, nil); err != nil {
 			return fmt.Errorf("clear inherited: %w", err)
 		}
@@ -155,7 +158,9 @@ func applyPending(ctx context.Context, store *storage.Store, p PendingAgent) err
 	// RecordAppScan. We swallow the return value here because the user's
 	// intent ("enable this app at this path") is already persisted; a
 	// failed scan is a recoverable runtime condition, not an import error.
-	_ = ScanOne(ctx, store, scanner, p.ConfigPath)
+	// The recovered variant matters here: ImportPending runs synchronously
+	// during daemon startup, so a scanner panic must not abort the launch.
+	_ = scanOneRecovered(ctx, store, creds, scanner, p.ConfigPath)
 	return nil
 }
 

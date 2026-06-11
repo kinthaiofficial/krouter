@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kinthaiofficial/krouter/internal/agentscan"
 	"github.com/kinthaiofficial/krouter/internal/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -124,13 +125,11 @@ func TestSubscriptionStatus_ReportsAuthSourceFromInheritedEndpoints(t *testing.T
 		AppID: "openclaw", Enabled: true, ConfigPath: "/x",
 	}))
 	require.NoError(t, store.ReplaceInheritedEndpoints(ctx, "openclaw", []storage.InheritedEndpoint{
-		{
-			Provider:    "minimax-portal",
-			EndpointURL: "u",
-			ExtrasJSON:  `{"oauth_token":"sk-cp-XXX"}`,
-			CapturedAt:  1,
-		},
+		{Provider: "minimax-portal", EndpointURL: "u", CapturedAt: 1},
 	}))
+	srv.creds.ReplaceApp("openclaw", []agentscan.Credential{
+		{AppID: "openclaw", Provider: "minimax-portal", OAuthToken: "sk-cp-XXX"},
+	})
 
 	now := time.Now().UTC()
 	require.NoError(t, store.UpsertSubscriptionQuota(ctx, storage.SubscriptionQuota{

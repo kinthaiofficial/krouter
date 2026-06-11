@@ -121,7 +121,7 @@ func (s *Server) doAppRescan(w http.ResponseWriter, r *http.Request, appID strin
 		return
 	}
 
-	if err := agentscan.ScanOne(ctx, s.store, scanner, configPath); err != nil {
+	if err := agentscan.ScanOne(ctx, s.store, s.creds, scanner, configPath); err != nil {
 		// scan error → still 200, the error is surfaced in the response body and
 		// last_error so the dashboard can show it as part of the app row.
 		writeJSON(w, map[string]any{
@@ -215,9 +215,13 @@ func (s *Server) setAppEnabled(w http.ResponseWriter, r *http.Request, appID str
 		return
 	}
 
-	// Disabling clears inherited rows so routing engine ignores them immediately.
+	// Disabling clears inherited rows and in-memory credentials so the
+	// routing engine ignores them immediately.
 	if !enabled {
 		_ = s.store.ReplaceInheritedEndpoints(ctx, appID, nil)
+		if s.creds != nil {
+			s.creds.RemoveApp(appID)
+		}
 	}
 
 	writeJSON(w, map[string]any{"ok": true, "app_id": appID, "enabled": enabled})
@@ -238,6 +242,9 @@ func (s *Server) doAppDelete(w http.ResponseWriter, r *http.Request, appID strin
 	if err := s.store.DeleteAppSetting(r.Context(), appID); err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
+	}
+	if s.creds != nil {
+		s.creds.RemoveApp(appID)
 	}
 	writeJSON(w, map[string]any{"ok": true, "app_id": appID})
 	s.Broadcast("apps_changed", map[string]any{"app_id": appID})
@@ -312,19 +319,13 @@ func (s *Server) doAppSetPreset(w http.ResponseWriter, r *http.Request, appID st
 }
 
 // resolveProviderKey returns the API key for providerName inherited from any
-// enabled AI app's config. Returning "" means "no credential available —
-// skip this provider".
-func (s *Server) resolveProviderKey(ctx context.Context, providerName string) string {
-	if s.store != nil {
-		if eps, err := s.store.FindInheritedEndpointsByProvider(ctx, providerName); err == nil {
-			for _, ep := range eps {
-				if ep.APIKey != "" {
-					return ep.APIKey
-				}
-			}
-		}
+// enabled AI app's config, via the in-memory credential store. Returning ""
+// means "no credential available — skip this provider".
+func (s *Server) resolveProviderKey(_ context.Context, providerName string) string {
+	if s.creds == nil {
+		return ""
 	}
-	return ""
+	return s.creds.KeyFor(providerName)
 }
 
 // providersWithCredentials returns the set of provider names for which an
@@ -332,13 +333,9 @@ func (s *Server) resolveProviderKey(ctx context.Context, providerName string) st
 // Used by RefreshModelsIfStale to decide what to discover.
 func (s *Server) providersWithCredentials(ctx context.Context) []string {
 	set := map[string]struct{}{}
-	if s.store != nil {
-		if eps, err := s.store.ListInheritedEndpoints(ctx); err == nil {
-			for _, ep := range eps {
-				if ep.APIKey != "" {
-					set[ep.Provider] = struct{}{}
-				}
-			}
+	if s.creds != nil {
+		for _, name := range s.creds.ProvidersWithKey() {
+			set[name] = struct{}{}
 		}
 	}
 	out := make([]string, 0, len(set))

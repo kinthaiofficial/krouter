@@ -1,56 +1,47 @@
 package main
 
 import (
-	"context"
 	"testing"
 
-	"github.com/kinthaiofficial/krouter/internal/storage"
+	"github.com/kinthaiofficial/krouter/internal/agentscan"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-func newKeyStore(t *testing.T) *storage.Store {
-	t.Helper()
-	s, err := storage.Open(":memory:")
-	require.NoError(t, err)
-	require.NoError(t, s.Migrate())
-	t.Cleanup(func() { _ = s.Close() })
-	return s
-}
-
-func TestResolveProviderKeyForRouting_InheritedFromEnabledAgent(t *testing.T) {
-	store := newKeyStore(t)
-
-	require.NoError(t, store.UpsertAppSetting(context.Background(), storage.AppSetting{
-		AppID: "openclaw", Enabled: true, ConfigPath: "/x",
-	}))
-	require.NoError(t, store.ReplaceInheritedEndpoints(context.Background(), "openclaw", []storage.InheritedEndpoint{
-		{Provider: "deepseek", EndpointURL: "u", APIKey: "sk-from-inherited", CapturedAt: 1},
-	}))
+func TestResolveProviderKeyForRouting_InheritedFromScannedApp(t *testing.T) {
+	creds := agentscan.NewCredStore()
+	creds.ReplaceApp("openclaw", []agentscan.Credential{
+		{AppID: "openclaw", Provider: "deepseek", APIKey: "sk-from-inherited"},
+	})
 
 	assert.Equal(t, "sk-from-inherited",
-		resolveProviderKeyForRouting(store, "deepseek"))
+		resolveProviderKeyForRouting(creds, "deepseek"))
+}
+
+func TestResolveProviderKeyForRouting_AliasAware(t *testing.T) {
+	creds := agentscan.NewCredStore()
+	creds.ReplaceApp("openclaw", []agentscan.Credential{
+		{AppID: "openclaw", Provider: "dashscope", APIKey: "sk-dashscope"},
+	})
+
+	assert.Equal(t, "sk-dashscope", resolveProviderKeyForRouting(creds, "qwen"),
+		"a key scanned under the vendor alias must resolve for krouter's adapter name")
 }
 
 func TestResolveProviderKeyForRouting_EmptyWhenNothingConfigured(t *testing.T) {
-	store := newKeyStore(t)
-	assert.Empty(t, resolveProviderKeyForRouting(store, "deepseek"))
+	assert.Empty(t, resolveProviderKeyForRouting(agentscan.NewCredStore(), "deepseek"))
 }
 
 func TestResolveProviderKeyForRouting_NilSafe(t *testing.T) {
 	assert.Empty(t, resolveProviderKeyForRouting(nil, "deepseek"))
 }
 
-func TestResolveProviderKeyForRouting_SkipsDisabledAgents(t *testing.T) {
-	store := newKeyStore(t)
+func TestResolveProviderKeyForRouting_RemovedAppKeyGone(t *testing.T) {
+	creds := agentscan.NewCredStore()
+	creds.ReplaceApp("cursor", []agentscan.Credential{
+		{AppID: "cursor", Provider: "deepseek", APIKey: "sk-disabled"},
+	})
+	creds.RemoveApp("cursor")
 
-	require.NoError(t, store.UpsertAppSetting(context.Background(), storage.AppSetting{
-		AppID: "cursor", Enabled: false, ConfigPath: "/y",
-	}))
-	require.NoError(t, store.ReplaceInheritedEndpoints(context.Background(), "cursor", []storage.InheritedEndpoint{
-		{Provider: "deepseek", EndpointURL: "u", APIKey: "sk-disabled", CapturedAt: 1},
-	}))
-
-	assert.Empty(t, resolveProviderKeyForRouting(store, "deepseek"),
-		"disabled agent's key must not be used by routing")
+	assert.Empty(t, resolveProviderKeyForRouting(creds, "deepseek"),
+		"a disabled/removed app's key must not be used by routing")
 }

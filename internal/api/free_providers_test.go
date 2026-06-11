@@ -81,7 +81,7 @@ func TestFreeProviders_JoinsInheritedState(t *testing.T) {
 		AppID: "openclaw", Enabled: true, ConfigPath: "/x",
 	}))
 	require.NoError(t, store.ReplaceInheritedEndpoints(ctx, "openclaw", []storage.InheritedEndpoint{
-		{Provider: "deepseek", EndpointURL: "u", APIKey: "sk-x", CapturedAt: 1},
+		{Provider: "deepseek", EndpointURL: "u", CapturedAt: 1},
 	}))
 
 	w := httptest.NewRecorder()

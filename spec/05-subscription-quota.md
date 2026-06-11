@@ -138,7 +138,7 @@ Scanner 抓 token 的方式 (在 OpenClawScanner.Scan 内):
 
 如果用户在 OpenClaw 里配的是 minimax-portal 的 **static API key**（`apiKey` 字段，不是 OAuth），:
 
-- Scanner 抓到 `inherited_endpoints.api_key` 而不是 `extras_json.oauth_token`
+- Scanner 抓到的是静态 API key 而不是 OAuth token(两者都只进内存 CredStore,不落盘)
 - QuotaPoller 检测到没有 OAuth → silent skip
 - UI 标灰：「当前 minimax 是 static key 模式，无套餐数据可显示」
 - routing 仍可正常用 minimax（透传 static key），只是没"订阅优先"加成
@@ -265,7 +265,7 @@ LookupSubscription: tier="MiniMax-M*", remaining=0
 fallback 到 cheapestProviderModel(protocol="anthropic", model="MiniMax-M2.7")
   ↓
 候选 endpoint:
-  - minimax static key (pay-per-token, 来自 inherited_endpoints.api_key)
+  - minimax static key (pay-per-token, 来自内存 CredStore 的扫描结果)
   - openrouter (如果用户也配过, OpenRouter 上的 anthropic 系列)
   - anthropic 直连 (如果 inherit 有 key)
   ↓
@@ -534,7 +534,7 @@ MiniMax-M*           1500 次/5h   ← 普通文本对话扣这个
 | --- | --- | --- |
 | OAuth token 来源 | 仅从 proxied 请求 header 捕获 | **优先从 `inherited_endpoints.extras_json` 读**（per spec/04），request header 捕获降为 fallback |
 | Effective cost 来源 | minimax/quota.go 硬编码 4 档 | 改用 `data/subscription_pricing.json`（10min ETag 同步） |
-| Static key 模式的 UI 提示 | 无 | 检测到 inherited_endpoints 是 `api_key`（非 OAuth）→ UI 标灰 + 文案 |
+| Static key 模式的 UI 提示 | 无 | 检测到 CredStore 里是静态 key（非 OAuth）→ UI 标灰 + 文案 |
 | SSE event `subscription_exhausted` | 未实装 | 加 broadcast，前端 toast |
 | 401 自动触发 rescan | 未实装 | poller 拿到 401 → 调用 `agentscan.Trigger("openclaw")` |
 

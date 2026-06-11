@@ -19,17 +19,17 @@ type subscriptionTierJSON struct {
 	Used                    int64   `json:"used"`
 	Remaining               int64   `json:"remaining"`
 	Highspeed               bool    `json:"highspeed"`
-	WindowStart             string  `json:"window_start"`              // RFC3339
-	WindowEnd               string  `json:"window_end"`                // RFC3339
-	SecondsToReset          int64   `json:"seconds_to_reset"`          // negative when window is past
+	WindowStart             string  `json:"window_start"`     // RFC3339
+	WindowEnd               string  `json:"window_end"`       // RFC3339
+	SecondsToReset          int64   `json:"seconds_to_reset"` // negative when window is past
 	EffectiveCostPerCallUSD float64 `json:"effective_cost_per_call_usd"`
-	MonthlyPriceCNY         float64 `json:"monthly_price_cny"`         // original sticker price on minimaxi.com
-	MonthlyPriceUSD         float64 `json:"monthly_price_usd"`         // CNY × fixed FX rate; for cross-vendor comparison
+	MonthlyPriceCNY         float64 `json:"monthly_price_cny"` // original sticker price on minimaxi.com
+	MonthlyPriceUSD         float64 `json:"monthly_price_usd"` // CNY × fixed FX rate; for cross-vendor comparison
 }
 
 type subscriptionProviderJSON struct {
 	Provider     string                 `json:"provider"`
-	SourceApp  string                 `json:"source_app,omitempty"`  // which agent supplied the OAuth/API key
+	SourceApp    string                 `json:"source_app,omitempty"` // which agent supplied the OAuth/API key
 	OAuthPresent bool                   `json:"oauth_present"`
 	LastPolledAt string                 `json:"last_polled_at,omitempty"` // RFC3339 of newest tier row
 	Tiers        []subscriptionTierJSON `json:"tiers"`
@@ -70,7 +70,7 @@ func (s *Server) writeSubscriptionStatus(w http.ResponseWriter, ctx context.Cont
 		sourceAgent, oauthPresent := s.subscriptionAuthSource(ctx, provider)
 		out = append(out, subscriptionProviderJSON{
 			Provider:     provider,
-			SourceApp:  sourceAgent,
+			SourceApp:    sourceAgent,
 			OAuthPresent: oauthPresent,
 			LastPolledAt: newestFetchedAt(tiers),
 			Tiers:        tiersToJSON(ctx, s.store, tiers),
@@ -187,8 +187,8 @@ func tiersToJSON(ctx context.Context, store *storage.Store, tiers []storage.Subs
 // endpoint for this provider, and whether that endpoint carries an OAuth
 // token. provider is the krouter-internal name; we try -portal first because
 // that's the OpenClaw convention.
-func (s *Server) subscriptionAuthSource(ctx context.Context, provider string) (agentID string, oauthPresent bool) {
-	if s.store == nil {
+func (s *Server) subscriptionAuthSource(_ context.Context, provider string) (agentID string, oauthPresent bool) {
+	if s.creds == nil {
 		return "", false
 	}
 	candidates := []string{provider}
@@ -197,19 +197,12 @@ func (s *Server) subscriptionAuthSource(ctx context.Context, provider string) (a
 		candidates = []string{"minimax-portal", "minimax"}
 	}
 	for _, p := range candidates {
-		eps, err := s.store.FindInheritedEndpointsByProvider(ctx, p)
-		if err != nil {
-			continue
-		}
-		for _, ep := range eps {
-			if ep.ExtrasJSON != "" {
-				var extras map[string]string
-				if json.Unmarshal([]byte(ep.ExtrasJSON), &extras) == nil && extras["oauth_token"] != "" {
-					return ep.AppID, true
-				}
+		for _, cr := range s.creds.CredentialsFor(p) {
+			if cr.OAuthToken != "" {
+				return cr.AppID, true
 			}
-			if ep.APIKey != "" && agentID == "" {
-				agentID = ep.AppID
+			if cr.APIKey != "" && agentID == "" {
+				agentID = cr.AppID
 			}
 		}
 	}

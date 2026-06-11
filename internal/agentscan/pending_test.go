@@ -111,7 +111,7 @@ func TestImportPending_NoFileIsNoOp(t *testing.T) {
 	s := newPendingStore(t)
 
 	// Must not panic, must not error visibly.
-	agentscan.ImportPending(context.Background(), s, logging.New("error"))
+	agentscan.ImportPending(context.Background(), s, agentscan.NewCredStore(), logging.New("error"))
 
 	all, _ := s.ListAppSettings(context.Background())
 	assert.Empty(t, all)
@@ -135,7 +135,7 @@ func TestImportPending_AppliesSelectionsAndRemovesFile(t *testing.T) {
 		{AppID: "openclaw", Enabled: true, ConfigPath: "/custom/path"},
 	}))
 
-	agentscan.ImportPending(context.Background(), s, logging.New("error"))
+	agentscan.ImportPending(context.Background(), s, agentscan.NewCredStore(), logging.New("error"))
 
 	// agent_settings row is present, enabled, with the path from the file.
 	row, err := s.GetAppSetting(context.Background(), "openclaw")
@@ -172,7 +172,7 @@ func TestImportPending_DisabledClearsInheritedRows(t *testing.T) {
 		{AppID: "openclaw", Enabled: false, ConfigPath: "/x"},
 	}))
 
-	agentscan.ImportPending(ctx, s, logging.New("error"))
+	agentscan.ImportPending(ctx, s, agentscan.NewCredStore(), logging.New("error"))
 
 	row, _ := s.GetAppSetting(ctx, "openclaw")
 	assert.False(t, row.Enabled)
@@ -198,7 +198,7 @@ func TestImportPending_ScanFailureStillRemovesFile(t *testing.T) {
 		{AppID: "openclaw", Enabled: true, ConfigPath: "/missing.json"},
 	}))
 
-	agentscan.ImportPending(context.Background(), s, logging.New("error"))
+	agentscan.ImportPending(context.Background(), s, agentscan.NewCredStore(), logging.New("error"))
 
 	// agent_settings row still recorded, last_error captures the scan failure.
 	row, _ := s.GetAppSetting(context.Background(), "openclaw")
@@ -225,7 +225,7 @@ func TestImportPending_MalformedFileGetsRenamed(t *testing.T) {
 		filepath.Join(dir, agentscan.PendingFileName),
 		[]byte("this is not JSON"), 0o644))
 
-	agentscan.ImportPending(context.Background(), s, logging.New("error"))
+	agentscan.ImportPending(context.Background(), s, agentscan.NewCredStore(), logging.New("error"))
 
 	// Original removed, .malformed sibling left for debugging.
 	_, err := os.Stat(filepath.Join(dir, agentscan.PendingFileName))
@@ -246,7 +246,7 @@ func TestImportPending_UnknownAgentDoesNotErrorOut(t *testing.T) {
 		{AppID: "future-agent", Enabled: true, ConfigPath: "/x"},
 	}))
 
-	agentscan.ImportPending(context.Background(), s, logging.New("error"))
+	agentscan.ImportPending(context.Background(), s, agentscan.NewCredStore(), logging.New("error"))
 
 	// Setting row is still recorded so a future upgrade picks it up.
 	row, _ := s.GetAppSetting(context.Background(), "future-agent")

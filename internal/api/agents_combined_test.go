@@ -72,7 +72,7 @@ func TestHandleAgents_OverlaysInheritanceState(t *testing.T) {
 	}))
 	require.NoError(t, store.ReplaceInheritedEndpoints(ctx, "openclaw", []storage.InheritedEndpoint{
 		{Provider: "anthropic", EndpointURL: "u", CapturedAt: 1},
-		{Provider: "minimax-portal", EndpointURL: "u", APIKey: "sk-x", CapturedAt: 1},
+		{Provider: "minimax-portal", EndpointURL: "u", CapturedAt: 1},
 	}))
 
 	w := httptest.NewRecorder()
