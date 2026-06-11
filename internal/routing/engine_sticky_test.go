@@ -362,3 +362,49 @@ func TestEnrichDecision_NoSession_FallsBackToBareSavings(t *testing.T) {
 	assert.Equal(t, "claude-haiku-4-5-20251001", dec.Model)
 	assert.NotEmpty(t, dec.Reason)
 }
+
+// The bound-provider liveness check must look the provider up by name. With
+// two providers both supporting the bound model, a session bound to the one
+// registered *second* must still stick — resolving through "first provider
+// supporting the model" broke stickiness purely by registration order
+// (review finding M-1).
+func TestSticky_BoundProviderNotFirstInRegistry(t *testing.T) {
+	reg := providers.New()
+	reg.Register(&fakeProvider{
+		name:     "anthropic",
+		protocol: providers.ProtocolAnthropic,
+		models:   []string{"claude-sonnet-4-6"},
+	})
+	reg.Register(&fakeProvider{
+		name:     "minimax",
+		protocol: providers.ProtocolAnthropic,
+		models:   []string{"claude-sonnet-4-6"},
+	})
+	engine := routing.New(reg)
+	engine.WithPricing(&fakePricing{prices: map[string]float64{
+		"claude-sonnet-4-6": 3.0 / 1e6,
+	}})
+	store := newFakeSessionStore()
+	engine.WithSession(store)
+
+	store.seed("sess-order", routing.SessionState{
+		BoundProvider:    "minimax", // registered second
+		BoundModel:       "claude-sonnet-4-6",
+		RequestCount:     3,
+		FreshInputTokens: 100,
+		CachedTokens:     900,
+		LastInputTokens:  100,
+		LastCacheRead:    900,
+	})
+
+	dec := engine.Decide(routing.Request{
+		Protocol:       "anthropic",
+		RequestedModel: "claude-sonnet-4-6",
+		SessionKey:     "sess-order",
+		InputTokenEst:  1000,
+	}, routing.PresetBalanced)
+
+	assert.Equal(t, "minimax", dec.Provider,
+		"must stick to the bound provider even when another provider precedes it in the registry")
+	assert.Contains(t, dec.Reason, "sticky")
+}

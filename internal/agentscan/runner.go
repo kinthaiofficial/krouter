@@ -2,6 +2,7 @@ package agentscan
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"time"
 
@@ -79,12 +80,24 @@ func RunAll(ctx context.Context, store *storage.Store, logger logging.Logger) {
 		if configUnchangedSince(scanner, setting.ConfigPath, setting.LastScannedAt) {
 			continue
 		}
-		if err := ScanOne(ctx, store, scanner, setting.ConfigPath); err != nil {
+		if err := scanOneRecovered(ctx, store, scanner, setting.ConfigPath); err != nil {
 			logger.Warn("app_inheritance: scan failed",
 				"app", setting.AppID, "err", err)
 			// ScanOne already recorded the error in app_settings.last_error.
 		}
 	}
+}
+
+// scanOneRecovered wraps ScanOne with a panic recovery so one misbehaving
+// scanner (malformed config triggering a parser panic, etc.) cannot take
+// down the periodic rescan loop or the daemon — failures must not spread.
+func scanOneRecovered(ctx context.Context, store *storage.Store, scanner Scanner, configPath string) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("scanner panicked: %v", r)
+		}
+	}()
+	return ScanOne(ctx, store, scanner, configPath)
 }
 
 // StartPeriodicRescan runs RunAll on a fixed interval until ctx is cancelled.
@@ -118,7 +131,15 @@ func StartPeriodicRescan(
 		case <-ticker.C:
 			RunAll(ctx, store, logger)
 			if onTick != nil {
-				onTick()
+				// A panicking broadcast callback must not kill the rescan loop.
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							logger.Warn("app_inheritance: onTick panicked", "panic", r)
+						}
+					}()
+					onTick()
+				}()
 			}
 		}
 	}

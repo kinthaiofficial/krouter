@@ -26,7 +26,7 @@ func TestQuotaPoller_DefaultResolverUsesRequestCache(t *testing.T) {
 	// Set the in-memory cache via the existing API, simulating that a real
 	// proxied request just went through.
 	CacheOAuthToken("Bearer sk-from-request-cache")
-	t.Cleanup(func() { CacheOAuthToken("") }) // reset between tests
+	t.Cleanup(ResetCachedToken)
 
 	poller := NewQuotaPoller(openTestStore(t), nil)
 	// We don't call PollOnce against a live network; we just confirm the
@@ -36,7 +36,7 @@ func TestQuotaPoller_DefaultResolverUsesRequestCache(t *testing.T) {
 
 func TestQuotaPoller_WithTokenResolverOverridesDefault(t *testing.T) {
 	CacheOAuthToken("Bearer sk-from-request-cache")
-	t.Cleanup(func() { CacheOAuthToken("") })
+	t.Cleanup(ResetCachedToken)
 
 	poller := NewQuotaPoller(openTestStore(t), nil).
 		WithTokenResolver(func(_ context.Context) string { return "sk-custom-INJECTED" })
@@ -47,7 +47,7 @@ func TestQuotaPoller_WithTokenResolverOverridesDefault(t *testing.T) {
 
 func TestQuotaPoller_WithTokenResolverNilKeepsDefault(t *testing.T) {
 	CacheOAuthToken("Bearer sk-original")
-	t.Cleanup(func() { CacheOAuthToken("") })
+	t.Cleanup(ResetCachedToken)
 
 	poller := NewQuotaPoller(openTestStore(t), nil).WithTokenResolver(nil)
 	assert.Equal(t, "sk-original", poller.resolver(context.Background()),
@@ -137,7 +137,7 @@ func TestQuotaPoller_WithExhaustCallback_Lifecycle(t *testing.T) {
 }
 
 func TestQuotaPoller_PollOnceSkipsWhenResolverReturnsEmpty(t *testing.T) {
-	CacheOAuthToken("") // ensure no cached token
+	ResetCachedToken() // ensure no cached token
 
 	poller := NewQuotaPoller(openTestStore(t), nil).
 		WithTokenResolver(func(_ context.Context) string { return "" })

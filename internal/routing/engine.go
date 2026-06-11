@@ -26,7 +26,8 @@ const healthRecoveryTTL = 5 * time.Minute
 // HTTP 429 so the agent sees a clear, actionable error instead of a 502.
 var ErrBudgetExceeded = errors.New("daily budget limit exceeded")
 
-// ComplexityScore returns a score in [0.0, 1.0] estimating request complexity.
+// ComplexityScore returns a score in [0.0, 0.8] estimating request complexity
+// (the clamp to 1.0 below is defensive — current signals max out at 0.8).
 // Scores >= 0.4 are treated as "complex" by the Quality preset.
 // Exported for testing; internal callers use the same function.
 //
@@ -120,9 +121,12 @@ type HealthChecker interface {
 // PricingSource returns per-model cost data used for tier-aware routing.
 // Implementations must be safe for concurrent use.
 type PricingSource interface {
-	// InputCostPerToken returns the input cost in USD per single token.
-	// Returns 0 for unknown models; callers treat 0 as "price unknown".
-	InputCostPerToken(model string) float64
+	// InputCostPerToken returns the input cost in USD per single token and
+	// whether the model has a known price. ok=false means the model is not
+	// in the pricing table. A (0, true) result means the model is genuinely
+	// free — free models must win cheapest-model scans (D-037), which is why
+	// "unknown" and "free" need to be distinguishable.
+	InputCostPerToken(model string) (cost float64, ok bool)
 }
 
 // QuotaState describes current budget consumption percentages (0.0–1.0).
@@ -228,7 +232,7 @@ func subscriptionDecision(provider string, info SubscriptionInfo) Decision {
 		Model:            info.Model,
 		EstimatedCostUSD: info.EffectiveCostUSD,
 		Reason: fmt.Sprintf(
-			"MiniMax 订阅（有效成本 $%.6f，配额剩余 %d/%d）",
+			"MiniMax subscription (effective cost $%.6f, quota %d/%d remaining)",
 			info.EffectiveCostUSD, info.Remaining, info.Total,
 		),
 	}
@@ -288,16 +292,22 @@ func (e *Engine) pickProviderForModel(proto providers.Protocol, model string) pr
 }
 
 // Decide returns the routing decision for the given request and preset.
-// preset must be one of "saver", "balanced", "quality" (case-sensitive).
-// An empty or unrecognised preset is treated as "balanced".
+// preset must be one of "saver", "balanced", "quality", "passthrough"
+// (case-sensitive). An empty or unrecognised preset is treated as "balanced".
 func (e *Engine) Decide(req Request, preset string) Decision {
+	// Read quota state once per decision — it is consulted by the hard stop,
+	// the downgrade step and the Opus cap, and each CurrentQuota call may hit
+	// the database (cost aggregation queries on the hot path).
+	var qs *QuotaState
+	if e.quota != nil {
+		state := e.quota.CurrentQuota(context.Background())
+		qs = &state
+	}
+
 	// Hard stop: block the request when the daily or weekly budget is exhausted.
 	// Per-agent overrides do NOT bypass this — budget is an absolute ceiling.
-	if e.quota != nil {
-		qs := e.quota.CurrentQuota(context.Background())
-		if qs.DailyPercent >= 1.0 || qs.WeeklyPercent >= 1.0 {
-			return Decision{BudgetExceeded: true, Reason: ErrBudgetExceeded.Error()}
-		}
+	if qs != nil && (qs.DailyPercent >= 1.0 || qs.WeeklyPercent >= 1.0) {
+		return Decision{BudgetExceeded: true, Reason: ErrBudgetExceeded.Error()}
 	}
 
 	// Per-agent override takes priority over preset and quota logic.
@@ -324,8 +334,7 @@ func (e *Engine) Decide(req Request, preset string) Decision {
 	// is mathematically cheaper than switching to a cheaper alternative.
 	// Only active for saver/balanced — quality users prioritise capability.
 	// Passthrough never does sticky routing — it always forwards the original model.
-	if preset != PresetPassthrough &&
-		e.session != nil && req.SessionKey != "" &&
+	if e.session != nil && req.SessionKey != "" &&
 		(preset == PresetSaver || preset == PresetBalanced || preset == "") {
 		if sess, ok := e.session.Get(req.SessionKey); ok && sess.RequestCount > 0 {
 			if dec, sticky := e.tryStickyRoute(req, sess); sticky {
@@ -335,13 +344,13 @@ func (e *Engine) Decide(req Request, preset string) Decision {
 		}
 	}
 
-	preset = e.applyQuotaDowngrade(preset)
+	preset = applyQuotaDowngrade(preset, qs)
 	var dec Decision
 	switch preset {
 	case PresetSaver:
 		dec = e.decideSaver(req)
 	case PresetQuality:
-		dec = e.decideQuality(req)
+		dec = e.decideQuality(req, qs)
 	case PresetPassthrough:
 		dec = e.decidePassthrough(req)
 	default:
@@ -378,7 +387,9 @@ func (e *Engine) fallbackAnthropic(_ Request, tried map[string]bool) Decision {
 		{"sonnet", "claude-haiku-4-5-20251001", "haiku"},
 	}
 
-	if _, ok := e.registry.Get("anthropic"); !ok || !e.isHealthy("anthropic") {
+	// Key check keeps the fallback consistent with regular selection (#47):
+	// downgrading a tier onto a keyless provider just trades a 5xx for a 401.
+	if _, ok := e.registry.Get("anthropic"); !ok || !e.isHealthy("anthropic") || !e.providerHasKey("anthropic") {
 		return Decision{}
 	}
 
@@ -454,17 +465,20 @@ func (e *Engine) enrichDecision(dec *Decision, req Request) {
 
 	// Fill EstimatedCostUSD if not already set (subscription decisions set it themselves).
 	if dec.EstimatedCostUSD == 0 && dec.Model != "" {
-		costPerToken := e.pricing.InputCostPerToken(dec.Model)
-		dec.EstimatedCostUSD = costPerToken * float64(req.InputTokenEst)
+		if costPerToken, ok := e.pricing.InputCostPerToken(dec.Model); ok {
+			dec.EstimatedCostUSD = costPerToken * float64(req.InputTokenEst)
+		}
 	}
 
 	if dec.Model == req.RequestedModel || req.RequestedModel == "" {
 		return
 	}
 
-	requestedPrice := e.pricing.InputCostPerToken(req.RequestedModel)
-	routedPrice := e.pricing.InputCostPerToken(dec.Model)
-	if requestedPrice == 0 || routedPrice == 0 {
+	requestedPrice, reqOK := e.pricing.InputCostPerToken(req.RequestedModel)
+	routedPrice, routedOK := e.pricing.InputCostPerToken(dec.Model)
+	// Skip the savings note when either price is unknown, or the requested
+	// model is free (nothing can be cheaper than free; avoids division by zero).
+	if !reqOK || !routedOK || requestedPrice <= 0 {
 		return
 	}
 
@@ -474,7 +488,7 @@ func (e *Engine) enrichDecision(dec *Decision, req Request) {
 	if e.session != nil && req.SessionKey != "" {
 		if sess, ok := e.session.Get(req.SessionKey); ok && sess.RequestCount > 0 {
 			hitRate := sess.ObservedHitRate()
-			keptCost := requestedPrice * tokens * (hitRate*0.1 + (1-hitRate))
+			keptCost := requestedPrice * tokens * (hitRate*0.1 + (1 - hitRate))
 			switchCost := routedPrice * tokens * 1.25
 			if switchCost < keptCost {
 				savings := (keptCost - switchCost) / keptCost * 100
@@ -514,9 +528,15 @@ func (e *Engine) tryStickyRoute(req Request, sess SessionState) (Decision, bool)
 
 	proto := providers.Protocol(req.Protocol)
 
-	// Rule 2: bound provider must still be online and healthy.
-	boundProv := e.pickProviderForModel(proto, sess.BoundModel)
-	if boundProv == nil || boundProv.Name() != sess.BoundProvider {
+	// Rule 2: bound provider must still be online, healthy, keyed and able to
+	// serve the bound model. Looked up directly by name — resolving it through
+	// pickProviderForModel would return the *first* registry entry supporting
+	// the model, falsely failing the check whenever another provider precedes
+	// the bound one in registration order.
+	boundProv, ok := e.registry.Get(sess.BoundProvider)
+	if !ok || boundProv.Protocol() != proto ||
+		!e.providerHasKey(sess.BoundProvider) || !e.isHealthy(sess.BoundProvider) ||
+		!modelSupported(boundProv.SupportedModels(), sess.BoundModel) {
 		return Decision{}, false
 	}
 
@@ -530,14 +550,14 @@ func (e *Engine) tryStickyRoute(req Request, sess SessionState) (Decision, bool)
 		return e.buildStickyDecision(sess), true
 	}
 
-	boundPrice := e.pricing.InputCostPerToken(sess.BoundModel)
-	candPrice := e.pricing.InputCostPerToken(candModel)
-	threshold := cacheHitBreakeven(boundPrice, candPrice)
+	boundPrice, boundOK := e.pricing.InputCostPerToken(sess.BoundModel)
+	candPrice, candOK := e.pricing.InputCostPerToken(candModel)
 
 	// Rule 4: price signal missing → stick conservatively.
-	if threshold < 0 {
+	if !boundOK || !candOK {
 		return e.buildStickyDecision(sess), true
 	}
+	threshold := cacheHitBreakeven(boundPrice, candPrice)
 	// Rule 5: candidate so cheap that cache can never save the bound model.
 	if threshold >= 1.0 {
 		return Decision{}, false
@@ -592,11 +612,11 @@ func (e *Engine) buildStickyDecisionWithThreshold(
 //
 // Passthrough is never downgraded — quota pressure does not override the user's
 // explicit intent to forward the original model unchanged.
-func (e *Engine) applyQuotaDowngrade(preset string) string {
-	if e.quota == nil || preset == PresetPassthrough {
+// qs is the quota state read once at the top of Decide; nil means no quota source.
+func applyQuotaDowngrade(preset string, qs *QuotaState) string {
+	if qs == nil || preset == PresetPassthrough {
 		return preset
 	}
-	qs := e.quota.CurrentQuota(context.Background())
 
 	if qs.DailyPercent >= 0.95 || qs.WeeklyPercent >= 0.95 {
 		return PresetSaver
@@ -610,14 +630,6 @@ func (e *Engine) applyQuotaDowngrade(preset string) string {
 		}
 	}
 	return preset
-}
-
-// isOpusBlocked returns true when the Opus 24h token cap (90%) has been reached.
-func (e *Engine) isOpusBlocked() bool {
-	if e.quota == nil {
-		return false
-	}
-	return e.quota.CurrentQuota(context.Background()).OpusPercent >= 0.90
 }
 
 // decidePassthrough forwards the request with the original model unchanged.
@@ -707,10 +719,20 @@ func (e *Engine) decideSaver(req Request) Decision {
 				Reason:   fmt.Sprintf("Saver: no provider for protocol %q", req.Protocol),
 			}
 		}
+		if proto == providers.ProtocolAnthropic {
+			return Decision{
+				Provider: provider.Name(),
+				Model:    "claude-sonnet-4-5",
+				Reason:   "Saver: multimodal request requires vision-capable model",
+			}
+		}
+		// Non-Anthropic protocols have no single portable vision model id —
+		// honor the requested model instead of leaking an Anthropic name
+		// across protocols (same-protocol invariant, D-013).
 		return Decision{
 			Provider: provider.Name(),
-			Model:    "claude-sonnet-4-5",
-			Reason:   "Saver: multimodal request requires vision-capable model",
+			Model:    req.RequestedModel,
+			Reason:   "Saver: multimodal request, honoring requested model",
 		}
 	}
 
@@ -735,13 +757,15 @@ func (e *Engine) decideSaver(req Request) Decision {
 			}
 		}
 		model := saverAnthropicModel
+		reason := fmt.Sprintf("Saver: routing to %s (cheapest Anthropic model)", saverAnthropicModel)
 		if !modelSupported(provider.SupportedModels(), model) {
 			model = req.RequestedModel
+			reason = fmt.Sprintf("Saver: %s not supported by %s, honoring requested model", saverAnthropicModel, provider.Name())
 		}
 		return Decision{
 			Provider: provider.Name(),
 			Model:    model,
-			Reason:   fmt.Sprintf("Saver: routing to %s (cheapest Anthropic model)", saverAnthropicModel),
+			Reason:   reason,
 		}
 
 	case providers.ProtocolOpenAI:
@@ -786,7 +810,8 @@ func (e *Engine) decideSaver(req Request) Decision {
 // decideQuality upgrades complex requests; otherwise honours the request.
 // Complexity is determined by complexityScore >= 0.4.
 // For simple requests, MiniMax subscription is preferred when available.
-func (e *Engine) decideQuality(req Request) Decision {
+// qs is the quota state read once in Decide (nil when no quota source).
+func (e *Engine) decideQuality(req Request, qs *QuotaState) Decision {
 	proto := providers.Protocol(req.Protocol)
 	isComplex := ComplexityScore(req) >= 0.4
 
@@ -812,8 +837,10 @@ func (e *Engine) decideQuality(req Request) Decision {
 	reason := fmt.Sprintf("Quality: honoring requested model %s via %s", model, provider.Name())
 
 	// Upgrade complex tasks to the highest-capability (most expensive) model,
-	// unless the Opus 24h cap has been reached.
-	opusBlocked := e.isOpusBlocked()
+	// unless the Opus 24h cap has been reached. Both branches are Anthropic-
+	// protocol only: the cap downgrade must not leak an Anthropic model name
+	// into an OpenAI-protocol request (same-protocol invariant, D-013).
+	opusBlocked := qs != nil && qs.OpusPercent >= 0.90
 	if isComplex && proto == providers.ProtocolAnthropic && !opusBlocked {
 		// With live pricing: pick the most expensive available model.
 		if expProv, expModel := e.mostExpensiveProviderModel(proto); expProv != nil {
@@ -826,9 +853,9 @@ func (e *Engine) decideQuality(req Request) Decision {
 		// Without pricing: fall back to hardcoded Opus.
 		model = "claude-opus-4-5"
 		reason = "Quality: upgrading complex request to claude-opus-4-5"
-	} else if isComplex && opusBlocked {
+	} else if isComplex && opusBlocked && proto == providers.ProtocolAnthropic {
 		model = "claude-sonnet-4-6"
-		reason = "Quality: Opus 24h 用量已达上限，降级到 sonnet"
+		reason = "Quality: Opus 24h usage cap reached, downgrading to sonnet"
 	} else if !modelSupported(provider.SupportedModels(), model) {
 		model = fallbackModelFor(proto)
 		reason = fmt.Sprintf("Quality: requested model %q not recognised, using %s", req.RequestedModel, model)
@@ -848,22 +875,25 @@ func (e *Engine) decideQuality(req Request) Decision {
 // filter silently excluded any user-configured free provider not on the
 // list (and routed at "paid" for catalogued ones the user hadn't actually
 // signed up for). The right signal for "this model is free" is the per-
-// token price itself: a model with `InputCostPerToken == 0` falls out as
-// the cheapest naturally, no special-case code path required.
+// token price itself: a model priced at $0 (with ok=true from the pricing
+// source) wins the scan naturally, no special-case code path required.
 func (e *Engine) cheapestProviderModel(proto providers.Protocol) (providers.Provider, string) {
 	if e.pricing == nil {
 		return nil, ""
 	}
 	var bestProv providers.Provider
 	var bestModel string
-	var bestCost float64 = -1
+	var bestCost float64
 	for _, p := range e.registry.All() {
 		if p.Protocol() != proto || !e.isHealthy(p.Name()) || !e.providerHasKey(p.Name()) {
 			continue
 		}
 		for _, m := range p.SupportedModels() {
-			c := e.pricing.InputCostPerToken(m)
-			if c > 0 && (bestCost < 0 || c < bestCost) {
+			c, ok := e.pricing.InputCostPerToken(m)
+			if !ok {
+				continue // unpriced model — no signal to rank it by
+			}
+			if bestProv == nil || c < bestCost {
 				bestCost = c
 				bestProv = p
 				bestModel = m
@@ -889,8 +919,11 @@ func (e *Engine) mostExpensiveProviderModel(proto providers.Protocol) (providers
 			continue
 		}
 		for _, m := range p.SupportedModels() {
-			c := e.pricing.InputCostPerToken(m)
-			if c > bestCost {
+			c, ok := e.pricing.InputCostPerToken(m)
+			if !ok {
+				continue // unpriced model — no signal to rank it by
+			}
+			if bestProv == nil || c > bestCost {
 				bestCost = c
 				bestProv = p
 				bestModel = m

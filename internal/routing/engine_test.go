@@ -18,9 +18,9 @@ type fakeProvider struct {
 	models   []string
 }
 
-func (f *fakeProvider) Name() string                    { return f.name }
-func (f *fakeProvider) Protocol() providers.Protocol    { return f.protocol }
-func (f *fakeProvider) SupportedModels() []string       { return f.models }
+func (f *fakeProvider) Name() string                 { return f.name }
+func (f *fakeProvider) Protocol() providers.Protocol { return f.protocol }
+func (f *fakeProvider) SupportedModels() []string    { return f.models }
 func (f *fakeProvider) Forward(_ context.Context, _ *http.Request) (*http.Response, error) {
 	return nil, nil
 }
@@ -293,12 +293,15 @@ func TestEngine_Saver_AnthropicDoesNotRouteToMiniMax(t *testing.T) {
 // ── Pricing-tier routing ──────────────────────────────────────────────────────
 
 // fakePricing implements routing.PricingSource for testing.
+// A model absent from the map is "unknown" (ok=false); a model present with
+// price 0 is genuinely free.
 type fakePricing struct {
 	prices map[string]float64 // model → input cost per token
 }
 
-func (f *fakePricing) InputCostPerToken(model string) float64 {
-	return f.prices[model]
+func (f *fakePricing) InputCostPerToken(model string) (float64, bool) {
+	c, ok := f.prices[model]
+	return c, ok
 }
 
 func TestEngine_Saver_LivePricingPicksCheapest(t *testing.T) {
@@ -379,8 +382,8 @@ func TestEngine_Saver_LivePricingCrossProtocol(t *testing.T) {
 	})
 	engine := routing.New(reg)
 	engine.WithPricing(&fakePricing{prices: map[string]float64{
-		"gpt-4o":       2.5 / 1e6,
-		"gpt-4o-mini":  0.15 / 1e6,
+		"gpt-4o":        2.5 / 1e6,
+		"gpt-4o-mini":   0.15 / 1e6,
 		"deepseek-chat": 0.14 / 1e6, // cheapest across all OpenAI providers
 	}})
 
@@ -506,4 +509,65 @@ func TestEngine_SkipsKeylessProvider(t *testing.T) {
 	}, routing.PresetBalanced)
 
 	assert.Equal(t, "deepseek", dec.Provider, "must skip keyless fireworks and pick the keyed provider")
+}
+
+// ── Regressions from the 2026-06 code review ─────────────────────────────────
+
+// A genuinely free model ($0 with ok=true from the pricing source) must win
+// the Saver cheapest-model scan — "free" and "unknown price" are distinct
+// (D-037; review finding H-1).
+func TestEngine_Saver_FreeModelWins(t *testing.T) {
+	reg := providers.New()
+	reg.Register(&fakeProvider{
+		name:     "anthropic",
+		protocol: providers.ProtocolAnthropic,
+		models:   []string{"claude-sonnet-4-5", "some-free-model"},
+	})
+	engine := routing.New(reg)
+	engine.WithPricing(&fakePricing{prices: map[string]float64{
+		"claude-sonnet-4-5": 3.0 / 1e6,
+		"some-free-model":   0, // present in the table at $0 → genuinely free
+	}})
+
+	dec := engine.Decide(routing.Request{
+		Protocol:       "anthropic",
+		RequestedModel: "claude-sonnet-4-5",
+	}, routing.PresetSaver)
+
+	assert.Equal(t, "some-free-model", dec.Model, "free model must beat any paid model")
+}
+
+// Saver's multimodal branch must not leak an Anthropic model name into an
+// OpenAI-protocol request (same-protocol invariant D-013; review finding H-2).
+func TestEngine_Saver_ImagesOpenAIProtocolHonorsRequestedModel(t *testing.T) {
+	reg := providers.New()
+	reg.Register(&fakeProvider{name: "deepseek", protocol: providers.ProtocolOpenAI, models: []string{"deepseek-chat"}})
+	engine := routing.New(reg)
+
+	dec := engine.Decide(routing.Request{
+		Protocol:       "openai",
+		RequestedModel: "deepseek-chat",
+		HasImages:      true,
+	}, routing.PresetSaver)
+
+	assert.Equal(t, "deepseek", dec.Provider)
+	assert.Equal(t, "deepseek-chat", dec.Model, "must not substitute an Anthropic model id")
+}
+
+// The Opus-cap downgrade must not rewrite an OpenAI-protocol request to a
+// Claude model (review finding H-3).
+func TestEngine_Quality_OpusCapDoesNotLeakAcrossProtocols(t *testing.T) {
+	reg := providers.New()
+	reg.Register(&fakeProvider{name: "deepseek", protocol: providers.ProtocolOpenAI, models: []string{"deepseek-chat"}})
+	engine := routing.New(reg)
+	engine.WithQuota(&stubQuota{state: routing.QuotaState{OpusPercent: 0.95}})
+
+	dec := engine.Decide(routing.Request{
+		Protocol:       "openai",
+		RequestedModel: "deepseek-chat",
+		InputTokenEst:  20000, // complex
+	}, routing.PresetQuality)
+
+	assert.Equal(t, "deepseek", dec.Provider)
+	assert.Equal(t, "deepseek-chat", dec.Model, "Opus cap must not rewrite an OpenAI request to claude-sonnet")
 }

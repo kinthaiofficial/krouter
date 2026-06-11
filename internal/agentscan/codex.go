@@ -13,13 +13,15 @@ import (
 // config file (typically ~/.codex/config.toml).
 //
 // Codex stores API keys by referencing environment variable names via the
-// env_key field rather than embedding them directly. The scanner resolves
-// env_key through os.Getenv; if the variable is not set in the daemon's
-// environment the APIKey field is left empty and the routing engine falls back
-// to the key forwarded in the request header.
+// env_key field rather than embedding them directly. The scanner deliberately
+// does NOT resolve env_key: krouter never reads environment variables for
+// credentials (privacy principle — and the daemon's service environment lacks
+// the user's shell exports anyway, so the lookup could only ever misfire).
+// The APIKey field stays empty and the key on the live request is forwarded
+// as-is.
 type CodexScanner struct{}
 
-func (CodexScanner) AppID() string     { return "codex" }
+func (CodexScanner) AppID() string       { return "codex" }
 func (CodexScanner) DisplayName() string { return "Codex" }
 
 func (CodexScanner) DefaultConfigPath() string {
@@ -66,15 +68,11 @@ func (s CodexScanner) Scan(_ context.Context, configPath string) ([]InheritedEnd
 		if id == "krouter" {
 			continue
 		}
-		apiKey := ""
-		if p.EnvKey != "" {
-			apiKey = os.Getenv(p.EnvKey)
-		}
+		// env_key intentionally unresolved — see the type comment.
 		out = append(out, InheritedEndpoint{
 			Provider:     "openai", // all Codex providers speak OpenAI-compatible protocol
 			EndpointURL:  p.BaseURL,
 			ProtocolHint: "openai-chat",
-			APIKey:       apiKey,
 		})
 	}
 
