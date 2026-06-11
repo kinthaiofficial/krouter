@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-06-11
+
 ### Added
 - **Editable config paths are now discoverable in the Apps page**: each app's scanned config path (e.g. `~/.pi/agent/models.json`) is a clickable control with an always-visible "Edit" label and a hover affordance, instead of a faint 12px pencil icon that was easy to miss. Users whose agent isn't installed at the default location can click the path, correct it, and hit "Save & rescan" — no hunting required.
 
