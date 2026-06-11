@@ -158,7 +158,9 @@ func applyPending(ctx context.Context, store *storage.Store, creds *CredStore, p
 	// RecordAppScan. We swallow the return value here because the user's
 	// intent ("enable this app at this path") is already persisted; a
 	// failed scan is a recoverable runtime condition, not an import error.
-	_ = ScanOne(ctx, store, creds, scanner, p.ConfigPath)
+	// The recovered variant matters here: ImportPending runs synchronously
+	// during daemon startup, so a scanner panic must not abort the launch.
+	_ = scanOneRecovered(ctx, store, creds, scanner, p.ConfigPath)
 	return nil
 }
 

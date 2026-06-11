@@ -609,20 +609,12 @@ func (s *Server) tryWithFallback(
 
 		// 4xx: return immediately, no retry.
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
-			// Mark the provider exhausted for free-credit routing when
-			// the upstream rejects auth (401/403), reports the user has
-			// no remaining credit (402), or rate-limits (429). The
-			// routing engine's free-first path will skip this provider
-			// until the TTL expires; expiry depends on status:
-			//   401/403 → 1 h  (often a stale key the user will fix)
-			//   402     → 24 h (credit usually resets monthly,
-			//                   but daily quotas reset overnight)
-			//   429     → 5 min (short-term burst)
-			//
-			// We mark all of these unconditionally — if the provider is
-			// NOT a free-credit one, the routing engine just doesn't
-			// consult provider_exhausted_until for it, so marking is a
-			// cheap no-op for paid providers.
+			// Record a provider_exhausted_until entry when the upstream
+			// rejects auth (401/403), reports no remaining credit (402),
+			// or rate-limits (429). The routing engine does NOT read that
+			// table (the free-first path was removed — D-037); the mark
+			// only drives the dashboard's Free-page badges. TTLs are
+			// documented on markIfThrottle.
 			s.markIfThrottle(dec.Provider, resp.StatusCode)
 			return resp, dec, nil
 		}

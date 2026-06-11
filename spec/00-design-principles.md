@@ -64,7 +64,7 @@ The set of "providers krouter supports" is the union of `provider_config` (built
 ## D. User experience
 
 ### D1. Don't ask the user for what they already declared
-If the user enabled OpenClaw and OpenClaw has DeepSeek configured with an API key, **never** show a "DeepSeek API key" input field in the dashboard's Settings page. Show that DeepSeek is configured via OpenClaw, with the agent name as the source. Manual override (`settings.ProviderKeys`) is still available, but it's a corner case, not the front-line UX.
+If the user enabled OpenClaw and OpenClaw has DeepSeek configured with an API key, **never** show a "DeepSeek API key" input field in the dashboard's Settings page. Show that DeepSeek is configured via OpenClaw, with the agent name as the source. There is no manual key-input path at all — credentials come exclusively from the agent's own config via the scanner (memory-only CredStore, see B5).
 
 ### D2. Don't auto-hunt unknown paths
 Each Scanner declares one default config path. If that path is wrong, show the user a "Path:" text field they can edit; do not try `~/.config/foo`, `~/Library/Application Support/foo`, `/opt/foo/etc` automatically. Auto-hunting hides ambiguity and creates support tickets when two of the candidates happen to exist.

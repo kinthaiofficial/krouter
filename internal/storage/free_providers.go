@@ -41,11 +41,12 @@ type FreeProvider struct {
 	// AdditionalProtocols carries dual-/multi-protocol vendors. When this
 	// catalog entry's primary `Protocol` is e.g. "openai" but the vendor
 	// also exposes an Anthropic-compatible endpoint (OpenRouter, GLM,
-	// Moonshot, …), the entry lists the alternate protocol(s) here so
-	// routing's free-first path can find a candidate for anthropic-
-	// protocol requests too. spec/00 §B2 (same-protocol routing) is
-	// preserved: each entry below has its own `Protocol` and is matched
-	// independently against the request's protocol.
+	// Moonshot, …), the entry lists the alternate protocol(s) here so the
+	// dashboard's Free page can show the vendor for both protocols. (The
+	// routing free-first path that once consumed this was removed — D-037;
+	// this catalog is discovery/signup UI only.) spec/00 §B2 (same-protocol
+	// routing) is preserved: each entry below has its own `Protocol` and is
+	// matched independently against the request's protocol.
 	//
 	// Empty slice means the provider speaks only the primary protocol.
 	AdditionalProtocols []FreeProviderProtocol
