@@ -27,6 +27,22 @@ func TestFormatLogRow(t *testing.T) {
 	assert.Contains(t, out, "200")
 }
 
+func TestFormatLogRow_SubThousandTokensShowRawCounts(t *testing.T) {
+	// Sub-1K counts used to render as "0K", hiding real traffic (and masking
+	// the MiniMax zero-usage bug in the 2026-07-05 field report).
+	row := map[string]any{
+		"ts":            "2026-07-05T14:23:01Z",
+		"provider":      "minimax",
+		"model":         "MiniMax-M3",
+		"input_tokens":  float64(37),
+		"output_tokens": float64(16),
+		"cost_usd":      0.0001,
+		"latency_ms":    float64(400),
+		"status_code":   float64(200),
+	}
+	assert.Contains(t, formatLogRow(row), "37 in / 16 out")
+}
+
 func TestScanSSE_DispatchesEventsAndSkipsHeartbeats(t *testing.T) {
 	stream := ": ping\n\n" +
 		"event: request_completed\n" +

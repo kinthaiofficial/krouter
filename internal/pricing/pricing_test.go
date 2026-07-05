@@ -160,3 +160,88 @@ func TestParseKrouterPrices_ValidJSON(t *testing.T) {
 	// 1000 * 0.000003 * 1e6 = 3000
 	assert.Equal(t, int64(3000), cost)
 }
+
+func TestCostFor_ProviderQualifiedFallback(t *testing.T) {
+	// LiteLLM catalogs non-flagship vendors under "<provider>/<model>"
+	// (e.g. "minimax/MiniMax-M3") while agents send the bare model id.
+	// The 2026-07-05 field report: MiniMax-M3 requests logged cost_usd=0
+	// because the bare id missed the exact-match lookup.
+	models := map[string]any{
+		"minimax/MiniMax-M3": map[string]any{
+			"input_cost_per_token":  0.0000003,
+			"output_cost_per_token": 0.0000012,
+			"litellm_provider":      "minimax",
+		},
+	}
+	for i := 0; i < 60; i++ { // padding: sync sanity threshold
+		models["pad-model-"+string(rune('a'+i%26))+"-"+string(rune('0'+i/26))] = map[string]any{
+			"input_cost_per_token":  0.000003,
+			"output_cost_per_token": 0.000015,
+			"litellm_provider":      "anthropic",
+		}
+	}
+	body, err := json.Marshal(map[string]any{
+		"schema_version": 1,
+		"generated_at":   "2026-01-01T00:00:00Z",
+		"source_sha256":  "abc123",
+		"models":         models,
+	})
+	require.NoError(t, err)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+
+	svc := pricing.NewWithSyncURL(nil, srv.URL)
+	svc.SyncOnceForTest(context.Background())
+
+	// Exact provider-qualified id still works.
+	qualified := svc.CostFor("minimax", "minimax/MiniMax-M3", 1000, 1000, 0, 0)
+	// 1000*0.3/1e6*1e6 + 1000*1.2/1e6*1e6 = 300 + 1200 (float truncation ±1)
+	require.InDelta(t, 1500, qualified, 1)
+
+	// Bare id + provider falls back to the qualified entry.
+	bare := svc.CostFor("minimax", "MiniMax-M3", 1000, 1000, 0, 0)
+	assert.Equal(t, qualified, bare, "bare model id must fall back to <provider>/<model> lookup")
+
+	// Wrong provider must not accidentally match.
+	assert.Equal(t, int64(0), svc.CostFor("deepseek", "MiniMax-M3", 1000, 1000, 0, 0))
+}
+
+func TestCostFor_ProviderQualifiedFallback_MappedProviderName(t *testing.T) {
+	// krouter adapter names differ from LiteLLM's for a few providers
+	// (fireworks → fireworks_ai); the fallback must translate.
+	models := map[string]any{
+		"fireworks_ai/minimax-m3": map[string]any{
+			"input_cost_per_token":  0.0000004,
+			"output_cost_per_token": 0.0000016,
+			"litellm_provider":      "fireworks_ai",
+		},
+	}
+	for i := 0; i < 60; i++ {
+		models["pad-model-"+string(rune('a'+i%26))+"-"+string(rune('0'+i/26))] = map[string]any{
+			"input_cost_per_token":  0.000003,
+			"output_cost_per_token": 0.000015,
+			"litellm_provider":      "anthropic",
+		}
+	}
+	body, err := json.Marshal(map[string]any{
+		"schema_version": 1,
+		"generated_at":   "2026-01-01T00:00:00Z",
+		"source_sha256":  "abc123",
+		"models":         models,
+	})
+	require.NoError(t, err)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+
+	svc := pricing.NewWithSyncURL(nil, srv.URL)
+	svc.SyncOnceForTest(context.Background())
+
+	cost := svc.CostFor("fireworks", "minimax-m3", 1000, 0, 0, 0)
+	assert.InDelta(t, 400, cost, 1, "krouter provider name must map to the LiteLLM prefix")
+}

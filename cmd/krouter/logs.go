@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -162,14 +163,23 @@ func formatLogRow(row map[string]any) string {
 	latMS := int64Val(row["latency_ms"])
 	status := int64Val(row["status_code"])
 
-	return fmt.Sprintf("[%s] %s/%s  (%dK in / %dK out / $%.4f / %dms / %d)",
+	return fmt.Sprintf("[%s] %s/%s  (%s in / %s out / $%.4f / %dms / %d)",
 		ts.Format("2006-01-02 15:04:05"),
 		provider, model,
-		inTok/1000, outTok/1000,
+		fmtTokens(inTok), fmtTokens(outTok),
 		costUSD,
 		latMS,
 		status,
 	)
+}
+
+// fmtTokens renders a token count: raw digits below 1K (so a 37-token request
+// doesn't display as "0K" and hide real traffic), whole K above.
+func fmtTokens(n int64) string {
+	if n < 1000 {
+		return strconv.FormatInt(n, 10)
+	}
+	return strconv.FormatInt(n/1000, 10) + "K"
 }
 
 func parseTime(v any) time.Time {
