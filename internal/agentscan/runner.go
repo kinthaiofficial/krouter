@@ -142,6 +142,11 @@ func StartPeriodicRescan(
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			// Wizard/CLI selections can land while the daemon is already
+			// running (the CLI installer writes pending-agents.json, and a
+			// re-run wizard does too); consume them here so app registration
+			// never waits for a daemon restart. Missing file is a no-op.
+			ImportPending(ctx, store, creds, logger)
 			RunAll(ctx, store, creds, logger, false)
 			if onTick != nil {
 				// A panicking broadcast callback must not kill the rescan loop.

@@ -378,3 +378,41 @@ func TestScanOne_CredentialsNeverReachStorage(t *testing.T) {
 		}
 	}
 }
+
+func TestStartPeriodicRescan_ConsumesPendingFile(t *testing.T) {
+	// The CLI installer (and a re-run GUI wizard) can write
+	// pending-agents.json while the daemon is already running; the rescan
+	// tick must import it so app registration doesn't wait for a daemon
+	// restart. enabled:false keeps the test free of scanner wiring — the
+	// app_settings row is the observable effect either way.
+	_ = pinPendingDir(t)
+	s := newPendingStore(t)
+	require.NoError(t, agentscan.WritePending([]agentscan.PendingAgent{
+		{AppID: "openclaw", Enabled: false, ConfigPath: "/x"},
+	}))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		agentscan.StartPeriodicRescan(ctx, s, agentscan.NewCredStore(), logging.New("error"), 10*time.Millisecond, nil)
+		close(done)
+	}()
+
+	deadline := time.After(2 * time.Second)
+	for {
+		row, err := s.GetAppSetting(context.Background(), "openclaw")
+		if err == nil && row != nil {
+			assert.False(t, row.Enabled)
+			assert.Equal(t, "/x", row.ConfigPath)
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("pending-agents.json was not imported by the rescan tick")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	cancel()
+	<-done
+}

@@ -254,8 +254,8 @@ func TestDisconnectOpenClaw_IgnoresMinimaxPortal_WhenBaseURLIsNotKrouter(t *test
 }
 
 func TestConnectOpenClaw_RedirectsOpenAIProvider_WithV1(t *testing.T) {
-	// An OpenAI-protocol provider must be redirected to the /v1 proxy base, with
-	// its original endpoint saved in the krouter sidecar. api / apiKey untouched.
+	// An OpenAI-protocol provider must be redirected to the /v1 proxy base,
+	// with no krouter-private field left in the config. api / apiKey untouched.
 	dir := t.TempDir()
 	cfg := filepath.Join(dir, "openclaw.json")
 	initial := `{"models":{"providers":{"anthropic":{"apiKey":"sk-real"},"deepseek":{"baseUrl":"https://api.deepseek.com/v1","api":"openai-responses","apiKey":"ds-key"}}}}`
@@ -272,7 +272,7 @@ func TestConnectOpenClaw_RedirectsOpenAIProvider_WithV1(t *testing.T) {
 	assert.Equal(t, "http://127.0.0.1:8402/a/openclaw/v1", ds["baseUrl"], "origin replaced, path (/v1) preserved")
 	assert.Equal(t, "openai-responses", ds["api"], "api must be left untouched")
 	assert.Equal(t, "ds-key", ds["apiKey"], "apiKey must be preserved")
-	assert.Equal(t, "https://api.deepseek.com/v1", ds["_krouterOriginalBaseUrl"], "original baseUrl must be saved in sidecar")
+	assert.NotContains(t, ds, "_krouterOriginalBaseUrl", "no sidecar — OpenClaw 2026.6.9 rejects unknown provider fields")
 
 	// Anthropic (no original base) synthesizes the bare /a/openclaw base.
 	anthropic := providers["anthropic"].(map[string]any)
@@ -293,8 +293,8 @@ func TestOpenClaw_OpenAIProvider_RoundTrip(t *testing.T) {
 	var root map[string]any
 	require.NoError(t, json.Unmarshal(data, &root))
 	ds := root["models"].(map[string]any)["providers"].(map[string]any)["deepseek"].(map[string]any)
-	assert.Equal(t, "https://api.deepseek.com", ds["baseUrl"], "baseUrl must be restored from sidecar")
-	assert.NotContains(t, ds, "_krouterOriginalBaseUrl", "sidecar must be removed after disconnect")
+	assert.Equal(t, "https://api.deepseek.com", ds["baseUrl"], "baseUrl must be restored from the restore file")
+	assert.NotContains(t, ds, "_krouterOriginalBaseUrl", "no sidecar may remain after disconnect")
 	assert.Equal(t, "ds-key", ds["apiKey"])
 }
 
@@ -317,7 +317,7 @@ func TestConnectOpenClaw_RedirectsSubAgentModelsJSON(t *testing.T) {
 	require.NoError(t, json.Unmarshal(data, &root))
 	ds := root["providers"].(map[string]any)["deepseek"].(map[string]any)
 	assert.Equal(t, "http://127.0.0.1:8402/a/openclaw/v1", ds["baseUrl"], "sub-agent provider redirected, path preserved")
-	assert.Equal(t, "https://api.deepseek.com/v1", ds["_krouterOriginalBaseUrl"])
+	assert.NotContains(t, ds, "_krouterOriginalBaseUrl", "original lives in the restore file, never in OpenClaw config")
 
 	require.NoError(t, config.DisconnectOpenClaw(cfg))
 
@@ -330,7 +330,9 @@ func TestConnectOpenClaw_RedirectsSubAgentModelsJSON(t *testing.T) {
 }
 
 func TestConnectOpenClaw_Idempotent(t *testing.T) {
-	// Connecting twice must not double-prefix the base or clobber the sidecar.
+	// Connecting twice must not double-prefix the base or lose the recorded original.
+	kinthaiDir := t.TempDir()
+	t.Setenv("KROUTER_CONFIG_DIR", kinthaiDir)
 	dir := t.TempDir()
 	cfg := filepath.Join(dir, "openclaw.json")
 	require.NoError(t, os.WriteFile(cfg, []byte(`{"models":{"providers":{"anthropic":{"apiKey":"sk"},"deepseek":{"baseUrl":"https://api.deepseek.com/v1","api":"openai-responses"}}}}`), 0644))
@@ -345,7 +347,10 @@ func TestConnectOpenClaw_Idempotent(t *testing.T) {
 
 	ds := providers["deepseek"].(map[string]any)
 	assert.Equal(t, "http://127.0.0.1:8402/a/openclaw/v1", ds["baseUrl"], "must not double-prefix on re-connect")
-	assert.Equal(t, "https://api.deepseek.com/v1", ds["_krouterOriginalBaseUrl"], "sidecar keeps the true original")
+
+	restore, err := os.ReadFile(filepath.Join(kinthaiDir, "openclaw-restore.json"))
+	require.NoError(t, err)
+	assert.Contains(t, string(restore), "https://api.deepseek.com/v1", "restore file keeps the true original across re-connects")
 
 	anthropic := providers["anthropic"].(map[string]any)
 	assert.Equal(t, "http://127.0.0.1:8402/a/openclaw", anthropic["baseUrl"])
