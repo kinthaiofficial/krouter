@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-07-05
+
 ### Changed
 - **`krouter logs` now reads like `tail`**: entries print oldest→newest so the latest request sits at the bottom (it used to be first), and the new `-f`/`--follow` flag streams requests live as they complete — snapshot first, then the daemon's SSE feed, subscribed before the snapshot fetch so nothing is missed and deduplicated by id so nothing prints twice. `-n`/`--lines` (default 50) is unchanged.
 
