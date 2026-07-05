@@ -17,10 +17,14 @@ const proxyBase = "http://127.0.0.1:8402"
 // URL already points at krouter.
 const krouterHost = "127.0.0.1:8402"
 
-// krouterOrigBaseURLKey is a krouter-managed sidecar field written next to a
-// provider's baseUrl so DisconnectOpenClaw can restore the user's original
-// upstream endpoint without hardcoding per-vendor URLs. OpenClaw ignores unknown
-// config fields, so this key is inert to it.
+// krouterOrigBaseURLKey is the LEGACY in-file sidecar written next to a
+// provider's baseUrl by krouter ≤v2.5.0 so DisconnectOpenClaw could restore the
+// original endpoint. The assumption "OpenClaw ignores unknown config fields"
+// broke in OpenClaw 2026.6.9: models.providers.* is strictly validated and an
+// unknown field fails the whole config ("Invalid input"), crash-looping the
+// gateway. Originals now live in openclaw-restore.json under ~/.kinthai (see
+// openclaw_restore.go); this key is only ever read — and stripped — for
+// migration and back-compat restore.
 const krouterOrigBaseURLKey = "_krouterOriginalBaseUrl"
 
 // placeholderAPIKey is the broken value written by old krouter versions.
@@ -46,8 +50,10 @@ var defaultOpenClawModels = []any{}
 // Anthropic. For each provider in models.providers the baseUrl is rewritten to
 // the krouter proxy appropriate for its wire protocol (anthropic-family → bare
 // base, openai-family → /v1); apiKey and all other fields are preserved. The
-// original baseUrl is saved in a krouter-managed sidecar so disconnect can
-// restore it. Per-agent models.json files are rewritten the same way.
+// original baseUrl is saved in krouter's own restore file (~/.kinthai) so
+// disconnect can restore it — never inside OpenClaw's config, which rejects
+// unknown provider fields since 2026.6.9. Per-agent models.json files are
+// rewritten the same way.
 //
 // Rationale: OpenClaw runs as a LaunchAgent and does not inherit shell env, so
 // a literal "${ANTHROPIC_API_KEY}" placeholder would never be expanded — the
@@ -68,7 +74,13 @@ func ConnectOpenClaw(configPath string) error {
 		return fmt.Errorf("openclaw: parse config: %w", err)
 	}
 
-	applyOpenClawConnectToRoot(root)
+	originals := applyOpenClawConnectToRoot(root)
+
+	// Persist the originals BEFORE rewriting the config: if this fails the
+	// config is left untouched and nothing is lost.
+	if err := recordOpenClawOriginals(configPath, originals); err != nil {
+		return fmt.Errorf("openclaw: save restore info: %w", err)
+	}
 
 	if err := writeJSON(configPath, root); err != nil {
 		return err
@@ -86,26 +98,22 @@ func ConnectOpenClaw(configPath string) error {
 // applyOpenClawConnectToRoot mutates a parsed openclaw.json root in place:
 // ensures models.providers.anthropic exists and points at krouter (OpenClaw's
 // default use is Claude), then redirects every other provider that has a
-// baseUrl to the krouter proxy for its protocol.
-func applyOpenClawConnectToRoot(root map[string]any) {
+// baseUrl to the krouter proxy for its protocol. Returns the provider →
+// original-baseUrl map the caller must persist to the restore file.
+func applyOpenClawConnectToRoot(root map[string]any) map[string]string {
+	originals := map[string]string{}
 	models := ensureMap(root, "models")
 	providers := ensureMap(models, "providers")
 
 	// Anthropic is always present and routed: krouter is fundamentally an
 	// anthropic-protocol proxy and OpenClaw without an explicit provider still
-	// talks Claude through it.
+	// talks Claude through it. An absent baseUrl redirects the same as the
+	// canonical https://api.anthropic.com (empty path either way), so no
+	// original is recorded when krouter introduces the route.
 	anthropic := ensureMap(providers, "anthropic")
-	curA, _ := anthropic["baseUrl"].(string)
-	if curA != "" && !isKrouterBase(curA) {
-		if _, has := anthropic[krouterOrigBaseURLKey]; !has {
-			anthropic[krouterOrigBaseURLKey] = curA
-		}
+	if orig := redirectProviderBaseURL(anthropic); orig != "" {
+		originals["anthropic"] = orig
 	}
-	baseA := curA
-	if baseA == "" {
-		baseA = "https://api.anthropic.com" // synthesize when krouter introduces the route
-	}
-	anthropic["baseUrl"] = krouterAppBaseURL("openclaw", baseA)
 	anthropic["api"] = "anthropic-messages"
 	// Ensure models is a non-nil array (OpenClaw schema requires it); preserve
 	// an existing user-configured list.
@@ -126,25 +134,35 @@ func applyOpenClawConnectToRoot(root map[string]any) {
 		if cur, _ := p["baseUrl"].(string); cur == "" {
 			continue
 		}
-		redirectProviderBaseURL(p)
-	}
-}
-
-// redirectProviderBaseURL points one provider object at the krouter proxy,
-// saving its original baseUrl in the krouter sidecar key. Only baseUrl (and the
-// sidecar) is written; apiKey / authHeader / models / api are left untouched.
-func redirectProviderBaseURL(p map[string]any) {
-	cur, _ := p["baseUrl"].(string)
-	if cur != "" && !isKrouterBase(cur) {
-		if _, has := p[krouterOrigBaseURLKey]; !has {
-			p[krouterOrigBaseURLKey] = cur
+		if orig := redirectProviderBaseURL(p); orig != "" {
+			originals[name] = orig
 		}
 	}
-	p["baseUrl"] = krouterAppBaseURL("openclaw", cur)
+	return originals
 }
 
-// restoreProviderBaseURL reverses redirectProviderBaseURL: restores baseUrl from
-// the sidecar and removes the sidecar. Returns true if a restore happened.
+// redirectProviderBaseURL points one provider object at the krouter proxy and
+// returns the original baseUrl to record in the restore file ("" when there is
+// nothing new to record, e.g. already redirected). A legacy in-file sidecar is
+// migrated: its value wins and the key is stripped, since OpenClaw ≥2026.6.9
+// rejects unknown provider fields. Only baseUrl (and the stripped sidecar) is
+// written; apiKey / authHeader / models / api are left untouched.
+func redirectProviderBaseURL(p map[string]any) string {
+	cur, _ := p["baseUrl"].(string)
+	orig := ""
+	if legacy, ok := p[krouterOrigBaseURLKey].(string); ok && legacy != "" {
+		orig = legacy
+	} else if cur != "" && !isKrouterBase(cur) {
+		orig = cur
+	}
+	delete(p, krouterOrigBaseURLKey)
+	p["baseUrl"] = krouterAppBaseURL("openclaw", cur)
+	return orig
+}
+
+// restoreProviderBaseURL restores baseUrl from the LEGACY in-file sidecar and
+// removes the sidecar (configs connected by krouter ≤v2.5.0). Returns true if
+// a restore happened.
 func restoreProviderBaseURL(p map[string]any) bool {
 	if orig, ok := p[krouterOrigBaseURLKey].(string); ok && orig != "" {
 		p["baseUrl"] = orig
@@ -152,6 +170,21 @@ func restoreProviderBaseURL(p map[string]any) bool {
 		return true
 	}
 	return false
+}
+
+// restoreProviderFromStore restores p's baseUrl from the original recorded in
+// the restore file, but only while the current value still points at krouter —
+// an endpoint the user has meanwhile pointed elsewhere by hand is not
+// clobbered. Returns true if a restore happened.
+func restoreProviderFromStore(p map[string]any, orig string) bool {
+	if orig == "" {
+		return false
+	}
+	if cur, _ := p["baseUrl"].(string); cur != "" && !isKrouterBase(cur) {
+		return false
+	}
+	p["baseUrl"] = orig
+	return true
 }
 
 // krouterAppBaseURL rewrites a provider base URL to route through the krouter
@@ -184,13 +217,14 @@ func isKrouterBase(s string) bool {
 // agents/<id>/agent/models.json under openclawDir to point at krouter, the same
 // way the global config is rewritten. Missing files / parse errors are skipped.
 func redirectOpenClawSubAgents(openclawDir string) {
-	forEachSubAgentModelsFile(openclawDir, func(root map[string]any) bool {
+	forEachSubAgentModelsFile(openclawDir, func(path string, root map[string]any) bool {
 		providers, ok := root["providers"].(map[string]any)
 		if !ok {
 			return false
 		}
+		originals := map[string]string{}
 		changed := false
-		for _, raw := range providers {
+		for name, raw := range providers {
 			p, ok := raw.(map[string]any)
 			if !ok {
 				continue
@@ -198,39 +232,55 @@ func redirectOpenClawSubAgents(openclawDir string) {
 			if cur, _ := p["baseUrl"].(string); cur == "" {
 				continue
 			}
-			redirectProviderBaseURL(p)
+			if orig := redirectProviderBaseURL(p); orig != "" {
+				originals[name] = orig
+			}
 			changed = true
 		}
-		return changed
+		if !changed {
+			return false
+		}
+		// Same ordering as the global config: don't rewrite this file if its
+		// restore info can't be saved.
+		if err := recordOpenClawOriginals(path, originals); err != nil {
+			return false
+		}
+		return true
 	})
 }
 
-// restoreOpenClawSubAgents reverses redirectOpenClawSubAgents on disconnect.
+// restoreOpenClawSubAgents reverses redirectOpenClawSubAgents on disconnect,
+// restoring each provider from the legacy in-file sidecar or the restore file.
 func restoreOpenClawSubAgents(openclawDir string) {
-	forEachSubAgentModelsFile(openclawDir, func(root map[string]any) bool {
+	forEachSubAgentModelsFile(openclawDir, func(path string, root map[string]any) bool {
 		providers, ok := root["providers"].(map[string]any)
 		if !ok {
 			return false
 		}
+		stored := openClawOriginalsFor(path)
 		changed := false
-		for _, raw := range providers {
+		for name, raw := range providers {
 			p, ok := raw.(map[string]any)
 			if !ok {
 				continue
 			}
-			if restoreProviderBaseURL(p) {
+			if restoreProviderBaseURL(p) || restoreProviderFromStore(p, stored[name]) {
 				changed = true
 			}
+		}
+		if len(stored) > 0 {
+			_ = clearOpenClawOriginals(path)
 		}
 		return changed
 	})
 }
 
 // forEachSubAgentModelsFile reads each agents/<id>/agent/models.json under
-// openclawDir, hands the parsed root to mutate, and rewrites the file (with a
-// backup) only when mutate reports a change. All I/O errors are ignored so a
-// single bad sub-agent never fails the connect/disconnect of the others.
-func forEachSubAgentModelsFile(openclawDir string, mutate func(root map[string]any) bool) {
+// openclawDir, hands the file path and parsed root to mutate, and rewrites the
+// file (with a backup) only when mutate reports a change. All I/O errors are
+// ignored so a single bad sub-agent never fails the connect/disconnect of the
+// others.
+func forEachSubAgentModelsFile(openclawDir string, mutate func(path string, root map[string]any) bool) {
 	entries, err := os.ReadDir(filepath.Join(openclawDir, "agents"))
 	if err != nil {
 		return
@@ -248,7 +298,7 @@ func forEachSubAgentModelsFile(openclawDir string, mutate func(root map[string]a
 		if err := json.Unmarshal(data, &root); err != nil {
 			continue
 		}
-		if !mutate(root) {
+		if !mutate(path, root) {
 			continue
 		}
 		_ = backupFile(path, data)
@@ -370,8 +420,10 @@ func PreviewOpenClawConnect(configPath string) (before, after []byte, err error)
 	}
 
 	// Preview reflects the global config diff only; per-agent models.json files
-	// are rewritten by ConnectOpenClaw but are not part of this preview.
-	applyOpenClawConnectToRoot(root)
+	// are rewritten by ConnectOpenClaw but are not part of this preview. The
+	// returned originals are discarded — a preview must not touch the restore
+	// file.
+	_ = applyOpenClawConnectToRoot(root)
 
 	after, err = json.MarshalIndent(root, "", "  ")
 	if err != nil {
@@ -381,9 +433,10 @@ func PreviewOpenClawConnect(configPath string) (before, after []byte, err error)
 }
 
 // DisconnectOpenClaw reverses ConnectOpenClaw: restores every provider's baseUrl
-// from the krouter sidecar (and clears the sidecar), and cleans up the
-// krouter-injected anthropic fields. Real user-supplied apiKeys are never
-// touched. Per-agent models.json files are restored the same way.
+// from the restore file (or the legacy in-file sidecar, which it also strips),
+// and cleans up the krouter-injected anthropic fields. Real user-supplied
+// apiKeys are never touched. Per-agent models.json files are restored the same
+// way.
 func DisconnectOpenClaw(configPath string) error {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -396,11 +449,13 @@ func DisconnectOpenClaw(configPath string) error {
 	}
 
 	providers := deepMap(root, "models", "providers")
+	stored := openClawOriginalsFor(configPath)
 
 	// Anthropic: krouter sets `api` and may have created the whole section.
 	if provider := deepMap(providers, "anthropic"); provider != nil {
 		delete(provider, "api")
-		restored := restoreProviderBaseURL(provider)
+		restored := restoreProviderBaseURL(provider) ||
+			restoreProviderFromStore(provider, stored["anthropic"])
 		if !restored {
 			delete(provider, "baseUrl")
 		}
@@ -419,7 +474,8 @@ func DisconnectOpenClaw(configPath string) error {
 		}
 	}
 
-	// Every other provider: restore baseUrl from its sidecar.
+	// Every other provider: restore baseUrl from the legacy sidecar or the
+	// restore file.
 	for name, raw := range providers {
 		if name == "anthropic" {
 			continue
@@ -428,12 +484,12 @@ func DisconnectOpenClaw(configPath string) error {
 		if !ok {
 			continue
 		}
-		if restoreProviderBaseURL(p) {
+		if restoreProviderBaseURL(p) || restoreProviderFromStore(p, stored[name]) {
 			continue
 		}
 		// Back-compat: configs connected by pre-sidecar krouter versions have no
-		// sidecar. The only non-anthropic provider those versions redirected was
-		// minimax-portal, whose original endpoint is known.
+		// recorded original. The only non-anthropic provider those versions
+		// redirected was minimax-portal, whose original endpoint is known.
 		if name == "minimax-portal" && p["baseUrl"] == proxyBase {
 			p["baseUrl"] = minimaxPortalOriginalBaseURL
 		}
@@ -442,6 +498,11 @@ func DisconnectOpenClaw(configPath string) error {
 	if err := writeJSON(configPath, root); err != nil {
 		return err
 	}
+
+	// The config is restored — its restore entry is spent. Best-effort: a
+	// leftover entry can't clobber anything because restoreProviderFromStore
+	// only ever touches baseUrls still pointing at krouter.
+	_ = clearOpenClawOriginals(configPath)
 
 	restoreOpenClawSubAgents(filepath.Dir(configPath))
 

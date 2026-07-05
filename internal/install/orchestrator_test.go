@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/kinthaiofficial/krouter/internal/agentscan"
 	"github.com/kinthaiofficial/krouter/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -35,6 +36,7 @@ func testOrchestrator(ui UI, opt Options) (*Orchestrator, *testHooks) {
 	o.connectClaudeCodeFn = h.connectClaudeCode
 	o.detectShellRCFn = func() string { return "/tmp/test_rc" }
 	o.markInstalledFn = h.markInstalled
+	o.writePendingFn = h.writePending
 	return o, h
 }
 
@@ -47,6 +49,11 @@ type testHooks struct {
 	connectOpenClawCalls   []string
 	connectClaudeCodeCalls []string
 	markInstalledCalled    bool
+	writePendingCalls      [][]agentscan.PendingAgent
+
+	// order records the sequence of side-effects that matter for the
+	// "registration must land before the daemon starts" invariant.
+	order []string
 
 	installDaemonErr  error
 	writeServiceErr   error
@@ -54,6 +61,7 @@ type testHooks struct {
 	writeShellRCErr   error
 	connectOpenClawErr  error
 	connectClaudeCodeErr error
+	writePendingErr   error
 }
 
 func (h *testHooks) installDaemon(src string) (string, error) {
@@ -73,6 +81,7 @@ func (h *testHooks) writeService(binPath string) (string, error) {
 }
 
 func (h *testHooks) enableService() error {
+	h.order = append(h.order, "enableService")
 	h.enableServiceCalled = true
 	return h.enableServiceErr
 }
@@ -99,6 +108,12 @@ func (h *testHooks) connectClaudeCode(rcPath string) error {
 func (h *testHooks) markInstalled() error {
 	h.markInstalledCalled = true
 	return nil
+}
+
+func (h *testHooks) writePending(agents []agentscan.PendingAgent) error {
+	h.order = append(h.order, "writePending")
+	h.writePendingCalls = append(h.writePendingCalls, agents)
+	return h.writePendingErr
 }
 
 func TestOrchestrator_FullFlow_NullUI(t *testing.T) {
@@ -305,4 +320,79 @@ func TestOrchestrator_DaemonAlreadyInstalled_MarkInstalledIdempotent(t *testing.
 
 	require.NoError(t, o.MarkInstalled())
 	assert.True(t, called)
+}
+
+// ─── App registration (pending-agents.json) ─────────────────────────────────
+//
+// Connecting an agent only rewrites its config file; without a matching
+// pending-agents.json entry the daemon's app_settings stays empty, no
+// endpoints are inherited, and every proxied request is misrouted. The GUI
+// wizard registers via /api/install/apps/select; the CLI must do the same.
+
+func TestOrchestrator_ConnectAgents_RegistersConnectedAgents(t *testing.T) {
+	o, h := testOrchestrator(NullUI{}, Options{})
+	h.detectAgentsResult = []config.AppInfo{
+		{Name: "openclaw", ConfigPath: "/home/u/.openclaw/openclaw.json"},
+		{Name: "claude-code"},
+	}
+
+	require.NoError(t, o.ConnectAgents())
+
+	require.Len(t, h.writePendingCalls, 1, "pending-agents.json must be written once")
+	assert.ElementsMatch(t, []agentscan.PendingAgent{
+		{AppID: "openclaw", Enabled: true, ConfigPath: "/home/u/.openclaw/openclaw.json"},
+		{AppID: "claude-code", Enabled: true, ConfigPath: "/tmp/test_rc"},
+	}, h.writePendingCalls[0])
+}
+
+func TestOrchestrator_ConnectAgents_FailedConnectNotRegistered(t *testing.T) {
+	ui := &recordingUI{}
+	o, h := testOrchestrator(ui, Options{})
+	h.detectAgentsResult = []config.AppInfo{
+		{Name: "openclaw", ConfigPath: "/path/to/openclaw.json"},
+	}
+	h.connectOpenClawErr = errors.New("config not writable")
+
+	require.NoError(t, o.ConnectAgents())
+	assert.Empty(t, h.writePendingCalls, "an agent that failed to connect must not be registered")
+}
+
+func TestOrchestrator_ConnectAgents_UnconnectedAgentsNotRegistered(t *testing.T) {
+	// Detected-but-not-connected apps (hermes, cursor, …) are not taken over
+	// by the CLI, so they must not appear in pending-agents.json either.
+	o, h := testOrchestrator(NullUI{}, Options{})
+	h.detectAgentsResult = []config.AppInfo{
+		{Name: "hermes", ConfigPath: "/home/u/.hermes/config.toml"},
+	}
+
+	require.NoError(t, o.ConnectAgents())
+	assert.Empty(t, h.writePendingCalls)
+}
+
+func TestOrchestrator_ConnectAgents_PendingWriteFailureIsFatal(t *testing.T) {
+	// A silent registration failure reproduces the P0 (connected but never
+	// scanned → all traffic misrouted), so it must fail the install step.
+	o, h := testOrchestrator(NullUI{}, Options{})
+	h.detectAgentsResult = []config.AppInfo{
+		{Name: "openclaw", ConfigPath: "/home/u/.openclaw/openclaw.json"},
+	}
+	h.writePendingErr = errors.New("disk full")
+
+	err := o.ConnectAgents()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "disk full")
+}
+
+func TestOrchestrator_Install_RegistrationLandsBeforeServiceStart(t *testing.T) {
+	// The daemon consumes pending-agents.json at startup; the CLI must write
+	// it before the service is enabled so a fresh install is correct from the
+	// first request, not after the next restart or rescan tick.
+	o, h := testOrchestrator(NullUI{}, Options{SrcBinary: "/tmp/krouter-src"})
+	h.detectAgentsResult = []config.AppInfo{
+		{Name: "openclaw", ConfigPath: "/home/u/.openclaw/openclaw.json"},
+	}
+
+	require.NoError(t, o.Install())
+	require.Equal(t, []string{"writePending", "enableService"}, h.order,
+		"pending-agents.json must exist before the daemon starts")
 }
