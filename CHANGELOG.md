@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.1] - 2026-07-05
+
 ### Fixed
 - **Streaming usage from MiniMax-style Anthropic-compatible endpoints is no longer lost**: the SSE usage parser read input/cache tokens only from `message_start` (the official Anthropic shape), but MiniMax sends placeholder zeros there and the real cumulative usage — including `input_tokens` and `cache_read_input_tokens` — in the final `message_delta`. Every streaming MiniMax request was therefore recorded as 0 input / $0, understating cost, budget and savings. Usage from `message_start` and `message_delta` is now merged per message with non-zero delta fields overriding; since `message_delta` usage is cumulative per the Anthropic spec, this also stops periodic-delta implementations from being double-counted.
 - **Cost lookup now finds provider-prefixed catalog entries**: agents send bare model ids (`MiniMax-M3`) but LiteLLM catalogs non-flagship vendors only under `<provider>/<model>` (`minimax/MiniMax-M3`), so the exact-match lookup priced such requests at $0 even when tokens were counted. `CostFor` now falls back to the provider-qualified key, translating krouter adapter names to LiteLLM's where they differ (fireworks → fireworks_ai).
