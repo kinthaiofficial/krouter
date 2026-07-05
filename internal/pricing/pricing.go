@@ -49,6 +49,16 @@ var LiteLLMToKrouterProvider = map[string]string{
 	// gemini, xai, mistral, perplexity, groq, moonshot, zai, openai, deepseek, anthropic
 }
 
+// krouterToLiteLLMProvider is the reverse of LiteLLMToKrouterProvider, for
+// building provider-qualified catalog keys from a krouter adapter name.
+var krouterToLiteLLMProvider = func() map[string]string {
+	m := make(map[string]string, len(LiteLLMToKrouterProvider))
+	for litellm, krouter := range LiteLLMToKrouterProvider {
+		m[krouter] = litellm
+	}
+	return m
+}()
+
 // PriceEntry holds per-token costs for a model.
 type PriceEntry struct {
 	Provider                       string
@@ -149,6 +159,30 @@ func (s *Service) SyncOnceForTest(ctx context.Context) {
 	s.syncOnce(ctx)
 }
 
+// lookupForProvider returns the price entry for model, falling back to the
+// provider-qualified LiteLLM key when the bare model id misses. Agents send
+// bare model ids ("MiniMax-M3") while LiteLLM catalogs non-flagship vendors
+// only under "<litellm_provider>/<model>" ("minimax/MiniMax-M3") — the exact
+// match alone recorded every MiniMax request at $0 (2026-07-05 field report).
+// The krouter adapter name is translated to LiteLLM's where they differ
+// (fireworks → fireworks_ai).
+func (s *Service) lookupForProvider(provider, model string) (PriceEntry, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if e, ok := s.prices[model]; ok {
+		return e, true
+	}
+	if provider == "" {
+		return PriceEntry{}, false
+	}
+	prefix := provider
+	if mapped, ok := krouterToLiteLLMProvider[provider]; ok {
+		prefix = mapped
+	}
+	e, ok := s.prices[prefix+"/"+model]
+	return e, ok
+}
+
 // CostFor returns the cost of a completed request in micro-USD (1e6 = $1.00).
 //
 // inputTokens: fresh tokens (neither cached nor written to cache)
@@ -157,10 +191,7 @@ func (s *Service) SyncOnceForTest(ctx context.Context) {
 //
 // Returns 0 for unknown models (logged as warning).
 func (s *Service) CostFor(provider, model string, inputTokens, outputTokens, cachedTokens, cacheWriteTokens int) int64 {
-	s.mu.RLock()
-	entry, ok := s.prices[model]
-	s.mu.RUnlock()
-
+	entry, ok := s.lookupForProvider(provider, model)
 	if !ok {
 		s.logger.Warn("unknown model in pricing lookup; returning 0", "provider", provider, "model", model)
 		return 0

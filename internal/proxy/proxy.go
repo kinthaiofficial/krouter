@@ -1491,8 +1491,20 @@ func parseAnthropicJSONUsage(data []byte) (inputTokens, outputTokens, cachedToke
 }
 
 // parseAnthropicSSEUsage extracts token counts from Anthropic SSE stream bytes.
-// Accumulates across message_start events (rare multi-message responses).
 // Returns four mutually-exclusive buckets matching parseAnthropicJSONUsage.
+//
+// Per message, usage from message_start and message_delta is MERGED, with a
+// delta's non-zero fields overriding: official Anthropic streams carry
+// input/cache usage in message_start and only the cumulative output_tokens in
+// message_delta, but MiniMax-style anthropic-compatible endpoints send
+// placeholder zeros in message_start and the full cumulative usage (including
+// input_tokens / cache_read_input_tokens) in the final message_delta — reading
+// input only from message_start recorded every streaming MiniMax request as 0
+// input / $0 (2026-07-05 field report). message_delta usage is cumulative per
+// the Anthropic spec, so overriding (not summing) also keeps implementations
+// that emit periodic deltas from being double-counted. Rare multi-message
+// responses still accumulate: each message_start closes out the previous
+// message's merged usage.
 func parseAnthropicSSEUsage(data []byte) (inputTokens, outputTokens, cachedTokens, cacheWriteTokens int) {
 	type usageFields struct {
 		InputTokens              int `json:"input_tokens"`
@@ -1507,6 +1519,15 @@ func parseAnthropicSSEUsage(data []byte) (inputTokens, outputTokens, cachedToken
 		Type    string      `json:"type"`
 		Message msgStart    `json:"message"` // message_start
 		Usage   usageFields `json:"usage"`   // message_delta
+	}
+
+	var cur usageFields
+	flush := func() {
+		inputTokens += cur.InputTokens
+		outputTokens += cur.OutputTokens
+		cachedTokens += cur.CacheReadInputTokens
+		cacheWriteTokens += cur.CacheCreationInputTokens
+		cur = usageFields{}
 	}
 
 	for _, line := range bytes.Split(data, []byte("\n")) {
@@ -1524,14 +1545,25 @@ func parseAnthropicSSEUsage(data []byte) (inputTokens, outputTokens, cachedToken
 		}
 		switch ev.Type {
 		case "message_start":
-			u := ev.Message.Usage
-			inputTokens += u.InputTokens
-			cachedTokens += u.CacheReadInputTokens
-			cacheWriteTokens += u.CacheCreationInputTokens
+			flush()
+			cur = ev.Message.Usage
 		case "message_delta":
-			outputTokens += ev.Usage.OutputTokens
+			u := ev.Usage
+			if u.InputTokens > 0 {
+				cur.InputTokens = u.InputTokens
+			}
+			if u.OutputTokens > 0 {
+				cur.OutputTokens = u.OutputTokens
+			}
+			if u.CacheReadInputTokens > 0 {
+				cur.CacheReadInputTokens = u.CacheReadInputTokens
+			}
+			if u.CacheCreationInputTokens > 0 {
+				cur.CacheCreationInputTokens = u.CacheCreationInputTokens
+			}
 		}
 	}
+	flush()
 	return
 }
 
