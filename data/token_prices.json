@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-25T07:11:09Z",
+  "generated_at": "2026-10-26T07:19:28Z",
   "source_sha256": "12ea25ddb6f2427bf7be2550b5a160d8659136d8747cfddf62327701591d2226",
   "models": {
     "1024-x-1024/50-steps/bedrock/amazon.nova-canvas-v1:0": {
