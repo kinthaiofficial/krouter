@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-11T08:44:31Z",
-  "source_sha256": "a3e9442a62fd2bfc15b96b666598bd59fae6302857bce6123e854786acbc2e4d",
+  "generated_at": "2026-11-12T09:06:05Z",
+  "source_sha256": "0d46736fa01ea12ccabd887821ef8c11e40afb896261d76d549a422b13a3a7a5",
   "models": {
     "1024-x-1024/50-steps/bedrock/amazon.nova-canvas-v1:0": {
       "deprecation_date": "2026-09-30",
@@ -19198,12 +19198,14 @@
     "bedrock/moonshotai.kimi-k2.5": {
       "input_cost_per_token": 6e-07,
       "input_cost_per_token_flex": 3e-07,
+      "input_cost_per_token_priority": 1.05e-06,
       "litellm_provider": "bedrock",
       "max_input_tokens": 262144,
       "max_output_tokens": 16000,
       "mode": "chat",
       "output_cost_per_token": 3e-06,
       "output_cost_per_token_flex": 1.5e-06,
+      "output_cost_per_token_priority": 5.25e-06,
       "source": "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/bedrock/USD/current/bedrock.json",
       "supports_function_calling": true,
       "supports_reasoning": true,
@@ -27990,19 +27992,22 @@
       "thinking_always_on": true
     },
     "databricks/databricks-claude-fable-5-2": {
-      "cache_creation_input_token_cost": 8e-06,
-      "cache_read_input_token_cost": 8e-06,
-      "input_cost_per_token": 8e-06,
+      "cache_creation_input_token_cost": 9.99999e-06,
+      "cache_creation_input_token_cost_above_1hr": 1.599997e-05,
+      "cache_read_input_token_cost": 1.9999e-07,
+      "input_cost_per_token": 8.00002e-06,
+      "input_dbu_cost_per_token": 0.000114286,
       "litellm_provider": "databricks",
       "max_input_tokens": 1000000,
       "max_output_tokens": 128000,
       "metadata": {
-        "notes": "Claude Fable 5.2 on Databricks is available only through Unity Gateway with the model service name system.ai.claude-fable-5-2, and Databricks hosts it through Amazon Bedrock. The Databricks pricing page lists no row for it yet, so input and output are inherited from the catalog Bedrock row anthropic.claude-fable-5-2, no '*_dbu_cost_per_token' fields are published, and cache tokens bill at the input rate until Databricks publishes cache DBU rates."
+        "notes": "Costs per token are the published Global DBU rates times $0.070 per DBU. The '*_dbu_cost_per_token' fields are provided for reference; cost calculation reads the dollar '*_cost_per_token' fields."
       },
       "mode": "chat",
-      "output_cost_per_token": 4e-05,
+      "output_cost_per_token": 4.000003e-05,
+      "output_dbu_cost_per_token": 0.000571429,
       "prompt_cache_min_tokens": 512.0,
-      "source": "https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis/supported-models",
+      "source": "https://www.databricks.com/product/pricing/proprietary-foundation-model-serving",
       "supports_adaptive_thinking": true,
       "supports_anthropic_thinking_payload": true,
       "supports_assistant_prefill": false,
@@ -29108,6 +29113,36 @@
       "output_cost_per_token_priority": 2.250003e-05,
       "cache_read_input_token_cost_priority": 2.2498e-07,
       "cache_creation_input_token_cost_priority": 4.50002e-06
+    },
+    "databricks/databricks-gemini-4-carbon": {
+      "cache_creation_input_token_cost": 2e-06,
+      "cache_read_input_token_cost": 2e-06,
+      "input_cost_per_token": 2e-06,
+      "litellm_provider": "databricks",
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 1048576,
+      "metadata": {
+        "notes": "Gemini 4 Carbon on Databricks is available only through Unity Gateway with the model service name system.ai.gemini-4-carbon on a global endpoint. The Databricks pricing pages list no row for it yet, so input and output are the Global rates on the Vertex AI pricing page for Gemini 4 Carbon (listed there through November 30, 2026), no '*_dbu_cost_per_token' fields are published, and cache tokens bill at the input rate until Databricks publishes cache DBU rates."
+      },
+      "mode": "chat",
+      "output_cost_per_token": 1e-05,
+      "source": "https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis/supported-models",
+      "supported_modalities": [
+        "text",
+        "image",
+        "audio",
+        "video"
+      ],
+      "supported_output_modalities": [
+        "text"
+      ],
+      "supports_audio_input": true,
+      "supports_function_calling": true,
+      "supports_prompt_caching": true,
+      "supports_reasoning": true,
+      "supports_tool_choice": true,
+      "supports_video_input": true,
+      "supports_vision": true
     },
     "databricks/databricks-gemma-3-12b": {
       "cache_creation_input_token_cost": 1.5001e-07,
@@ -30345,19 +30380,22 @@
       "alias_of": "databricks/databricks-kimi-k3"
     },
     "databricks/system.ai.claude-fable-5-2": {
-      "cache_creation_input_token_cost": 8e-06,
-      "cache_read_input_token_cost": 8e-06,
-      "input_cost_per_token": 8e-06,
+      "cache_creation_input_token_cost": 9.99999e-06,
+      "cache_creation_input_token_cost_above_1hr": 1.599997e-05,
+      "cache_read_input_token_cost": 1.9999e-07,
+      "input_cost_per_token": 8.00002e-06,
+      "input_dbu_cost_per_token": 0.000114286,
       "litellm_provider": "databricks",
       "max_input_tokens": 1000000,
       "max_output_tokens": 128000,
       "metadata": {
-        "notes": "Claude Fable 5.2 on Databricks is available only through Unity Gateway with the model service name system.ai.claude-fable-5-2, and Databricks hosts it through Amazon Bedrock. The Databricks pricing page lists no row for it yet, so input and output are inherited from the catalog Bedrock row anthropic.claude-fable-5-2, no '*_dbu_cost_per_token' fields are published, and cache tokens bill at the input rate until Databricks publishes cache DBU rates."
+        "notes": "Claude Fable 5.2 on Databricks is served through Unity Gateway with the model service name system.ai.claude-fable-5-2, hosted through Amazon Bedrock. Costs per token are the published Global DBU rates times $0.070 per DBU. The '*_dbu_cost_per_token' fields are provided for reference; cost calculation reads the dollar '*_cost_per_token' fields."
       },
       "mode": "chat",
-      "output_cost_per_token": 4e-05,
+      "output_cost_per_token": 4.000003e-05,
+      "output_dbu_cost_per_token": 0.000571429,
       "prompt_cache_min_tokens": 512.0,
-      "source": "https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis/supported-models",
+      "source": "https://www.databricks.com/product/pricing/proprietary-foundation-model-serving",
       "supports_adaptive_thinking": true,
       "supports_anthropic_thinking_payload": true,
       "supports_assistant_prefill": false,
@@ -30379,6 +30417,36 @@
       "source": "https://docs.databricks.com/aws/en/machine-learning/retired-models-policy",
       "successor_model": "databricks/databricks-deepseek-v4-1-flash-1017",
       "token_count_framing": 97
+    },
+    "databricks/system.ai.gemini-4-carbon": {
+      "cache_creation_input_token_cost": 2e-06,
+      "cache_read_input_token_cost": 2e-06,
+      "input_cost_per_token": 2e-06,
+      "litellm_provider": "databricks",
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 1048576,
+      "metadata": {
+        "notes": "Gemini 4 Carbon on Databricks is available only through Unity Gateway with the model service name system.ai.gemini-4-carbon on a global endpoint. The Databricks pricing pages list no row for it yet, so input and output are the Global rates on the Vertex AI pricing page for Gemini 4 Carbon (listed there through November 30, 2026), no '*_dbu_cost_per_token' fields are published, and cache tokens bill at the input rate until Databricks publishes cache DBU rates."
+      },
+      "mode": "chat",
+      "output_cost_per_token": 1e-05,
+      "source": "https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis/supported-models",
+      "supported_modalities": [
+        "text",
+        "image",
+        "audio",
+        "video"
+      ],
+      "supported_output_modalities": [
+        "text"
+      ],
+      "supports_audio_input": true,
+      "supports_function_calling": true,
+      "supports_prompt_caching": true,
+      "supports_reasoning": true,
+      "supports_tool_choice": true,
+      "supports_video_input": true,
+      "supports_vision": true
     },
     "databricks/system.ai.kimi-k3": {
       "litellm_provider": "databricks",
@@ -31852,12 +31920,12 @@
       "source": "https://deepinfra.com/pricing"
     },
     "deepinfra/anthropic/claude-sonnet-5": {
-      "input_cost_per_token": 2e-06,
+      "input_cost_per_token": 3e-06,
       "litellm_provider": "deepinfra",
       "max_input_tokens": 1000000,
       "max_output_tokens": 1000000,
       "mode": "chat",
-      "output_cost_per_token": 1e-05,
+      "output_cost_per_token": 1.5e-05,
       "prompt_cache_min_tokens": 1024,
       "source": "https://deepinfra.com/pricing",
       "supports_adaptive_thinking": true,
@@ -32464,7 +32532,7 @@
     "deepinfra/mistralai/Mistral-Nemo-Instruct-2407": {
       "max_input_tokens": 131072,
       "max_output_tokens": 131072,
-      "input_cost_per_token": 1.9e-08,
+      "input_cost_per_token": 2.9e-08,
       "output_cost_per_token": 3e-08,
       "litellm_provider": "deepinfra",
       "mode": "chat",
@@ -32638,8 +32706,8 @@
     },
     "deepinfra/nvidia/NVIDIA-Nemotron-3.5-Lightning": {
       "max_input_tokens": 262144,
-      "input_cost_per_token": 8e-08,
-      "output_cost_per_token": 2e-07,
+      "input_cost_per_token": 6e-08,
+      "output_cost_per_token": 1.6e-07,
       "litellm_provider": "deepinfra",
       "mode": "chat",
       "source": "https://deepinfra.com/pricing",
@@ -38288,6 +38356,20 @@
         "/v1/images/generations"
       ]
     },
+    "fal_ai/bytedance/seedream/v5/pro/layerize": {
+      "litellm_provider": "fal_ai",
+      "metadata": {
+        "comment": "per generated layer for total pixel area under 1536x1536; layers for a base image over 1536x1536 are $0.0675 each, which has no catalog field"
+      },
+      "mode": "image_generation",
+      "output_cost_per_image": 0.03375,
+      "source": "https://fal.ai/models/bytedance/seedream/v5/pro/layerize",
+      "supported_endpoints": [
+        "/v1/images/edits",
+        "/v1/images/generations"
+      ],
+      "supports_vision": true
+    },
     "fal_ai/clarityai/crystal-upscaler": {
       "litellm_provider": "fal_ai",
       "metadata": {
@@ -39404,6 +39486,72 @@
       ],
       "supports_vision": true
     },
+    "fal_ai/fal-ai/flux-2-max": {
+      "litellm_provider": "fal_ai",
+      "metadata": {
+        "comment": "per image for the default 1 MP output; fal bills $0.07 for the first processed megapixel plus $0.03 per additional megapixel, which is not modeled"
+      },
+      "mode": "image_generation",
+      "output_cost_per_image": 0.07,
+      "source": "https://fal.ai/models/fal-ai/flux-2-max",
+      "supported_endpoints": [
+        "/v1/images/generations"
+      ]
+    },
+    "fal_ai/fal-ai/flux-2-max/edit": {
+      "litellm_provider": "fal_ai",
+      "metadata": {
+        "comment": "per image for the default 1 MP output; fal bills $0.07 for the first processed megapixel plus $0.03 per additional megapixel, which is not modeled"
+      },
+      "mode": "image_generation",
+      "output_cost_per_image": 0.07,
+      "source": "https://fal.ai/models/fal-ai/flux-2-max/edit",
+      "supported_endpoints": [
+        "/v1/images/edits",
+        "/v1/images/generations"
+      ],
+      "supports_vision": true
+    },
+    "fal_ai/fal-ai/flux-2-pro": {
+      "litellm_provider": "fal_ai",
+      "metadata": {
+        "comment": "per image for the default 1 MP output; fal bills $0.03 for the first output megapixel plus $0.015 per additional input or output megapixel, rounded up, which is not modeled"
+      },
+      "mode": "image_generation",
+      "output_cost_per_image": 0.03,
+      "source": "https://fal.ai/models/fal-ai/flux-2-pro",
+      "supported_endpoints": [
+        "/v1/images/generations"
+      ]
+    },
+    "fal_ai/fal-ai/flux-2-pro/edit": {
+      "litellm_provider": "fal_ai",
+      "metadata": {
+        "comment": "per image for the default 1 MP output; fal bills $0.03 for the first output megapixel plus $0.015 per additional input or output megapixel, rounded up, which is not modeled"
+      },
+      "mode": "image_generation",
+      "output_cost_per_image": 0.03,
+      "source": "https://fal.ai/models/fal-ai/flux-2-pro/edit",
+      "supported_endpoints": [
+        "/v1/images/edits",
+        "/v1/images/generations"
+      ],
+      "supports_vision": true
+    },
+    "fal_ai/fal-ai/flux-2-pro/outpaint": {
+      "litellm_provider": "fal_ai",
+      "metadata": {
+        "comment": "per image for the default 1 MP output; fal bills $0.03 for the first output megapixel plus $0.015 per additional input or output megapixel, rounded up, which is not modeled"
+      },
+      "mode": "image_generation",
+      "output_cost_per_image": 0.03,
+      "source": "https://fal.ai/models/fal-ai/flux-2-pro/outpaint",
+      "supported_endpoints": [
+        "/v1/images/edits",
+        "/v1/images/generations"
+      ],
+      "supports_vision": true
+    },
     "fal_ai/fal-ai/flux-2/edit": {
       "litellm_provider": "fal_ai",
       "metadata": {
@@ -40100,6 +40248,20 @@
       "output_cost_per_image": 0.05,
       "output_cost_per_pixel": 4.76837158203125e-08,
       "source": "https://fal.ai/models/fal-ai/flux-pro/v1.1/redux",
+      "supported_endpoints": [
+        "/v1/images/edits",
+        "/v1/images/generations"
+      ],
+      "supports_vision": true
+    },
+    "fal_ai/fal-ai/flux-pro/v1/erase": {
+      "litellm_provider": "fal_ai",
+      "metadata": {
+        "comment": "per image for the first generated megapixel; fal bills $0.004 for each subsequent generated megapixel and $0.004 per reference megapixel with a 3 MP minimum, which is not modeled"
+      },
+      "mode": "image_generation",
+      "output_cost_per_image": 0.03,
+      "source": "https://fal.ai/models/fal-ai/flux-pro/v1/erase",
       "supported_endpoints": [
         "/v1/images/edits",
         "/v1/images/generations"
@@ -42083,6 +42245,25 @@
       "mode": "video_generation",
       "output_cost_per_second": 0.042,
       "source": "https://fal.ai/models/fal-ai/kling-video/v2.5-turbo/standard/image-to-video",
+      "supported_endpoints": [
+        "/v1/videos"
+      ],
+      "supported_modalities": [
+        "text",
+        "image"
+      ],
+      "supported_output_modalities": [
+        "video"
+      ]
+    },
+    "fal_ai/fal-ai/kling-video/v2.6/pro/image-to-video": {
+      "litellm_provider": "fal_ai",
+      "metadata": {
+        "comment": "per second of generated video with the default generate_audio=true ($0.14); videos without audio are $0.07 per second and videos with audio and voice control are $0.168 per second, which have no catalog field"
+      },
+      "mode": "video_generation",
+      "output_cost_per_second": 0.14,
+      "source": "https://fal.ai/models/fal-ai/kling-video/v2.6/pro/image-to-video",
       "supported_endpoints": [
         "/v1/videos"
       ],
@@ -44094,6 +44275,20 @@
       ],
       "supports_vision": true
     },
+    "fal_ai/fal-ai/smart-resize": {
+      "litellm_provider": "fal_ai",
+      "metadata": {
+        "comment": "per single-image request at standard resolution: $0.15 per output image plus the $0.05 minimum vision analysis fee per request; additional output images in one request ($0.15 each) and 4K outputs (charged double) are not modeled"
+      },
+      "mode": "image_generation",
+      "output_cost_per_image": 0.2,
+      "source": "https://fal.ai/models/fal-ai/smart-resize",
+      "supported_endpoints": [
+        "/v1/images/edits",
+        "/v1/images/generations"
+      ],
+      "supports_vision": true
+    },
     "fal_ai/fal-ai/stable-diffusion-v3-medium": {
       "litellm_provider": "fal_ai",
       "mode": "image_generation",
@@ -44206,6 +44401,25 @@
       ],
       "supports_vision": true
     },
+    "fal_ai/fal-ai/vidu/image-to-video": {
+      "litellm_provider": "fal_ai",
+      "metadata": {
+        "comment": "per second derived from the fixed 4s clip price of $0.20 per video"
+      },
+      "mode": "video_generation",
+      "output_cost_per_second": 0.05,
+      "source": "https://fal.ai/models/fal-ai/vidu/image-to-video",
+      "supported_endpoints": [
+        "/v1/videos"
+      ],
+      "supported_modalities": [
+        "text",
+        "image"
+      ],
+      "supported_output_modalities": [
+        "video"
+      ]
+    },
     "fal_ai/fal-ai/vidu/q2/reference-to-image": {
       "litellm_provider": "fal_ai",
       "mode": "image_generation",
@@ -44282,6 +44496,44 @@
         "/v1/images/generations"
       ],
       "supports_vision": true
+    },
+    "fal_ai/fal-ai/vidu/reference-to-video": {
+      "litellm_provider": "fal_ai",
+      "metadata": {
+        "comment": "per second derived from the fixed 4s clip price of $0.40 per video"
+      },
+      "mode": "video_generation",
+      "output_cost_per_second": 0.1,
+      "source": "https://fal.ai/models/fal-ai/vidu/reference-to-video",
+      "supported_endpoints": [
+        "/v1/videos"
+      ],
+      "supported_modalities": [
+        "text",
+        "image"
+      ],
+      "supported_output_modalities": [
+        "video"
+      ]
+    },
+    "fal_ai/fal-ai/vidu/start-end-to-video": {
+      "litellm_provider": "fal_ai",
+      "metadata": {
+        "comment": "per second derived from the fixed 4s clip price of $0.20 per video"
+      },
+      "mode": "video_generation",
+      "output_cost_per_second": 0.05,
+      "source": "https://fal.ai/models/fal-ai/vidu/start-end-to-video",
+      "supported_endpoints": [
+        "/v1/videos"
+      ],
+      "supported_modalities": [
+        "text",
+        "image"
+      ],
+      "supported_output_modalities": [
+        "video"
+      ]
     },
     "fal_ai/fal-ai/wan-22-vace-fun-a14b/depth": {
       "litellm_provider": "fal_ai",
@@ -46572,6 +46824,27 @@
       ],
       "supports_vision": true
     },
+    "fal_ai/luma/agent/ray/v3.2/image-to-video": {
+      "litellm_provider": "fal_ai",
+      "metadata": {
+        "comment": "per second derived from the 5s clip prices by resolution ($0.15 at 540p, $0.30 at 720p, $1.20 at 1080p); output_cost_per_second is the default resolution 540p rate, which has no tier field; HDR ($0.60 at 720p, $2.40 at 1080p per 5s) and HDR+EXR ($0.90, $3.60) are not modeled"
+      },
+      "mode": "video_generation",
+      "output_cost_per_second": 0.03,
+      "output_cost_per_second_1080p": 0.24,
+      "output_cost_per_second_720p": 0.06,
+      "source": "https://fal.ai/models/luma/agent/ray/v3.2/image-to-video",
+      "supported_endpoints": [
+        "/v1/videos"
+      ],
+      "supported_modalities": [
+        "text",
+        "image"
+      ],
+      "supported_output_modalities": [
+        "video"
+      ]
+    },
     "fal_ai/luma/agent/ray/v3.2/reframe": {
       "litellm_provider": "fal_ai",
       "metadata": {
@@ -46593,6 +46866,61 @@
         "video"
       ]
     },
+    "fal_ai/luma/agent/ray/v3.2/text-to-video": {
+      "litellm_provider": "fal_ai",
+      "metadata": {
+        "comment": "per second derived from the 5s and 10s clip prices by resolution ($0.50/$1.00 at 540p, $1.00/$2.00 at 720p, $2.00/$4.00 at 1080p); output_cost_per_second is the default resolution 540p rate, which has no tier field"
+      },
+      "mode": "video_generation",
+      "output_cost_per_second": 0.1,
+      "output_cost_per_second_1080p": 0.4,
+      "output_cost_per_second_720p": 0.2,
+      "source": "https://fal.ai/models/luma/agent/ray/v3.2/text-to-video",
+      "supported_endpoints": [
+        "/v1/videos"
+      ],
+      "supported_modalities": [
+        "text"
+      ],
+      "supported_output_modalities": [
+        "video"
+      ]
+    },
+    "fal_ai/luma/agent/ray/v3.2/video-to-video": {
+      "litellm_provider": "fal_ai",
+      "metadata": {
+        "comment": "per second derived from the 5s and 10s clip prices by resolution ($0.72/$1.44 at 540p, $1.08/$2.16 at 720p, $2.16/$4.32 at 1080p); output_cost_per_second is the default resolution 540p rate, which has no tier field; HDR and HDR+EXR prices are not modeled"
+      },
+      "mode": "video_generation",
+      "output_cost_per_second": 0.144,
+      "output_cost_per_second_1080p": 0.432,
+      "output_cost_per_second_720p": 0.216,
+      "source": "https://fal.ai/models/luma/agent/ray/v3.2/video-to-video",
+      "supported_endpoints": [
+        "/v1/videos"
+      ],
+      "supported_modalities": [
+        "text",
+        "video"
+      ],
+      "supported_output_modalities": [
+        "video"
+      ]
+    },
+    "fal_ai/luma/agent/uni-1/v1/edit": {
+      "litellm_provider": "fal_ai",
+      "metadata": {
+        "comment": "per edit with one source image ($0.042 per edit plus $0.003 per reference or source image); each additional reference image adds $0.003, which is not modeled"
+      },
+      "mode": "image_generation",
+      "output_cost_per_image": 0.045,
+      "source": "https://fal.ai/models/luma/agent/uni-1/v1/edit",
+      "supported_endpoints": [
+        "/v1/images/edits",
+        "/v1/images/generations"
+      ],
+      "supports_vision": true
+    },
     "fal_ai/luma/agent/uni-1/v1/max": {
       "litellm_provider": "fal_ai",
       "mode": "image_generation",
@@ -46601,6 +46929,20 @@
       "supported_endpoints": [
         "/v1/images/generations"
       ]
+    },
+    "fal_ai/luma/agent/uni-1/v1/max/edit": {
+      "litellm_provider": "fal_ai",
+      "metadata": {
+        "comment": "per edit with one source image ($0.102 per edit plus $0.003 per reference or source image); each additional reference image adds $0.003, which is not modeled"
+      },
+      "mode": "image_generation",
+      "output_cost_per_image": 0.105,
+      "source": "https://fal.ai/models/luma/agent/uni-1/v1/max/edit",
+      "supported_endpoints": [
+        "/v1/images/edits",
+        "/v1/images/generations"
+      ],
+      "supports_vision": true
     },
     "fal_ai/luma/agent/uni-1/v1/text-to-image": {
       "litellm_provider": "fal_ai",
@@ -48022,6 +48364,47 @@
       "supported_modalities": [
         "text",
         "audio"
+      ],
+      "supported_output_modalities": [
+        "video"
+      ]
+    },
+    "fal_ai/pixverse/v6/max/image-to-video": {
+      "litellm_provider": "fal_ai",
+      "metadata": {
+        "comment": "per second of generated video by resolution without audio (the default generate_audio_switch=false); output_cost_per_second is the default resolution 720p rate; 360p $0.054 and 540p $0.081 have no catalog field; with audio the rates are $0.081/$0.099/$0.135/$0.252 per second, which is not modeled"
+      },
+      "mode": "video_generation",
+      "output_cost_per_second": 0.099,
+      "output_cost_per_second_1080p": 0.198,
+      "output_cost_per_second_720p": 0.099,
+      "source": "https://fal.ai/models/pixverse/v6/max/image-to-video",
+      "supported_endpoints": [
+        "/v1/videos"
+      ],
+      "supported_modalities": [
+        "text",
+        "image"
+      ],
+      "supported_output_modalities": [
+        "video"
+      ]
+    },
+    "fal_ai/pixverse/v6/max/text-to-video": {
+      "litellm_provider": "fal_ai",
+      "metadata": {
+        "comment": "per second of generated video by resolution without audio (the default generate_audio_switch=false); output_cost_per_second is the default resolution 720p rate; 360p $0.054 and 540p $0.081 have no catalog field; with audio the rates are $0.081/$0.099/$0.135/$0.252 per second, which is not modeled"
+      },
+      "mode": "video_generation",
+      "output_cost_per_second": 0.099,
+      "output_cost_per_second_1080p": 0.198,
+      "output_cost_per_second_720p": 0.099,
+      "source": "https://fal.ai/models/pixverse/v6/max/text-to-video",
+      "supported_endpoints": [
+        "/v1/videos"
+      ],
+      "supported_modalities": [
+        "text"
       ],
       "supported_output_modalities": [
         "video"
@@ -49701,6 +50084,7 @@
     "fireworks_ai/accounts/fireworks/models/deepseek-v4-flash": {
       "cache_read_input_token_cost": 2.8e-08,
       "deprecation_date": "2026-08-14",
+      "deprecation_source": "https://docs.fireworks.ai/api-reference/list-models.md",
       "input_cost_per_token": 1.4e-07,
       "litellm_provider": "fireworks_ai",
       "max_input_tokens": 1048576,
@@ -49708,6 +50092,7 @@
       "mode": "chat",
       "output_cost_per_token": 2.8e-07,
       "source": "https://docs.fireworks.ai/serverless/pricing",
+      "successor_model": "fireworks_ai/accounts/fireworks/models/deepseek-v4-flash-0731",
       "supports_function_calling": true,
       "supports_reasoning": true,
       "supports_response_schema": true,
@@ -52510,6 +52895,7 @@
     "fireworks_ai/accounts/fireworks/routers/spot-deepseek-v4-flash": {
       "cache_read_input_token_cost": 2.1e-08,
       "deprecation_date": "2026-08-14",
+      "deprecation_source": "https://docs.fireworks.ai/api-reference/list-models.md",
       "input_cost_per_token": 1.05e-07,
       "litellm_provider": "fireworks_ai",
       "max_input_tokens": 1048576,
@@ -52517,6 +52903,7 @@
       "mode": "chat",
       "output_cost_per_token": 2.1e-07,
       "source": "https://api.fireworks.ai/v1/serverless/models",
+      "successor_model": "fireworks_ai/accounts/fireworks/models/deepseek-v4-flash-0731",
       "supports_function_calling": true,
       "supports_prompt_caching": true,
       "supports_reasoning": true,
@@ -52527,6 +52914,7 @@
     "fireworks_ai/deepseek-v4-flash": {
       "cache_read_input_token_cost": 2.8e-08,
       "deprecation_date": "2026-08-14",
+      "deprecation_source": "https://docs.fireworks.ai/api-reference/list-models.md",
       "input_cost_per_token": 1.4e-07,
       "litellm_provider": "fireworks_ai",
       "max_input_tokens": 1048576,
@@ -52534,6 +52922,7 @@
       "mode": "chat",
       "output_cost_per_token": 2.8e-07,
       "source": "https://docs.fireworks.ai/serverless/pricing",
+      "successor_model": "fireworks_ai/deepseek-v4-flash-0731",
       "supports_function_calling": true,
       "supports_reasoning": true,
       "supports_response_schema": true,
@@ -53600,12 +53989,12 @@
     },
     "gemini-2.5-flash": {
       "cache_read_input_audio_token_cost": 1e-07,
-      "deprecation_source": "https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions",
       "cache_read_input_audio_token_cost_priority": 1.8e-07,
       "cache_read_input_token_cost": 3e-08,
       "cache_read_input_token_cost_flex": 3e-08,
       "cache_read_input_token_cost_priority": 5.4e-08,
       "deprecation_date": "2026-10-20",
+      "deprecation_source": "https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions",
       "google_maps_grounding_cost_per_query": 0.025,
       "input_cost_per_audio_token": 1e-06,
       "input_cost_per_audio_token_above_200k_tokens": 3e-07,
@@ -53621,7 +54010,7 @@
       "input_cost_per_token_priority": 5.4e-07,
       "litellm_provider": "vertex_ai-language-models",
       "max_input_tokens": 1048576,
-      "max_output_tokens": 65535,
+      "max_output_tokens": 65536,
       "mode": "chat",
       "output_cost_per_reasoning_token": 2.5e-06,
       "output_cost_per_token": 2.5e-06,
@@ -53721,12 +54110,12 @@
     },
     "gemini-2.5-flash-lite": {
       "cache_read_input_audio_token_cost": 3e-08,
-      "deprecation_source": "https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions",
       "cache_read_input_audio_token_cost_priority": 5.4e-08,
       "cache_read_input_token_cost": 1e-08,
       "cache_read_input_token_cost_flex": 1e-08,
       "cache_read_input_token_cost_priority": 1.8e-08,
       "deprecation_date": "2026-10-20",
+      "deprecation_source": "https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions",
       "google_maps_grounding_cost_per_query": 0.025,
       "input_cost_per_audio_token": 3e-07,
       "input_cost_per_audio_token_above_200k_tokens": 3e-07,
@@ -53742,7 +54131,7 @@
       "input_cost_per_token_priority": 1.8e-07,
       "litellm_provider": "vertex_ai-language-models",
       "max_input_tokens": 1048576,
-      "max_output_tokens": 65535,
+      "max_output_tokens": 65536,
       "mode": "chat",
       "output_cost_per_reasoning_token": 4e-07,
       "output_cost_per_token": 4e-07,
@@ -53995,23 +54384,47 @@
       "supports_web_search": false
     },
     "gemini-2.5-pro": {
-      "deprecation_date": "2026-10-20",
-      "deprecation_source": "https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions",
-      "successor_model": "gemini-3.8-flash",
       "cache_read_input_token_cost": 1.25e-07,
       "cache_read_input_token_cost_above_200k_tokens": 2.5e-07,
       "cache_read_input_token_cost_above_200k_tokens_priority": 4.5e-07,
       "cache_read_input_token_cost_flex": 1.25e-07,
       "cache_read_input_token_cost_priority": 2.25e-07,
+      "deprecation_date": "2026-10-20",
+      "deprecation_source": "https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions",
+      "google_maps_grounding_cost_per_query": 0.025,
       "input_cost_per_token": 1.25e-06,
       "input_cost_per_token_above_200k_tokens": 2.5e-06,
+      "input_cost_per_token_above_200k_tokens_batches": 1.25e-06,
+      "input_cost_per_token_above_200k_tokens_flex": 1.25e-06,
+      "input_cost_per_token_above_200k_tokens_priority": 4.5e-06,
+      "input_cost_per_token_batches": 6.25e-07,
+      "input_cost_per_token_flex": 6.25e-07,
+      "input_cost_per_token_priority": 2.25e-06,
       "litellm_provider": "vertex_ai-language-models",
       "max_input_tokens": 1048576,
-      "max_output_tokens": 65535,
+      "max_output_tokens": 65536,
       "mode": "chat",
       "output_cost_per_token": 1e-05,
       "output_cost_per_token_above_200k_tokens": 1.5e-05,
+      "output_cost_per_token_above_200k_tokens_batches": 7.5e-06,
+      "output_cost_per_token_above_200k_tokens_flex": 7.5e-06,
+      "output_cost_per_token_above_200k_tokens_priority": 2.7e-05,
+      "output_cost_per_token_batches": 5e-06,
+      "output_cost_per_token_flex": 5e-06,
+      "output_cost_per_token_priority": 1.8e-05,
+      "prompt_cache_min_tokens": 2048.0,
+      "search_context_cost_per_query": {
+        "search_context_size_low": 0.035,
+        "search_context_size_medium": 0.035,
+        "search_context_size_high": 0.035
+      },
+      "search_free_requests": {
+        "count": 10000,
+        "period": "day",
+        "shared_group": "gemini-2.5-pro"
+      },
       "source": "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
+      "successor_model": "gemini-3.8-flash",
       "supported_endpoints": [
         "/v1/chat/completions",
         "/v1/completions"
@@ -54029,37 +54442,13 @@
       "supports_function_calling": true,
       "supports_pdf_input": true,
       "supports_prompt_caching": true,
-      "prompt_cache_min_tokens": 2048,
       "supports_reasoning": true,
       "supports_response_schema": true,
       "supports_system_messages": true,
       "supports_tool_choice": true,
       "supports_video_input": true,
       "supports_vision": true,
-      "supports_web_search": true,
-      "search_context_cost_per_query": {
-        "search_context_size_low": 0.035,
-        "search_context_size_medium": 0.035,
-        "search_context_size_high": 0.035
-      },
-      "search_free_requests": {
-        "count": 10000,
-        "period": "day",
-        "shared_group": "gemini-2.5-pro"
-      },
-      "google_maps_grounding_cost_per_query": 0.025,
-      "input_cost_per_token_above_200k_tokens_batches": 1.25e-06,
-      "input_cost_per_token_above_200k_tokens_flex": 1.25e-06,
-      "input_cost_per_token_above_200k_tokens_priority": 4.5e-06,
-      "input_cost_per_token_batches": 6.25e-07,
-      "input_cost_per_token_flex": 6.25e-07,
-      "input_cost_per_token_priority": 2.25e-06,
-      "output_cost_per_token_above_200k_tokens_batches": 7.5e-06,
-      "output_cost_per_token_above_200k_tokens_flex": 7.5e-06,
-      "output_cost_per_token_above_200k_tokens_priority": 2.7e-05,
-      "output_cost_per_token_batches": 5e-06,
-      "output_cost_per_token_flex": 5e-06,
-      "output_cost_per_token_priority": 1.8e-05
+      "supports_web_search": true
     },
     "gemini-2.5-pro-preview-tts": {
       "cache_read_input_token_cost": 1.25e-07,
@@ -54114,7 +54503,7 @@
       "input_cost_per_token_priority": 9e-07,
       "litellm_provider": "vertex_ai-language-models",
       "max_input_tokens": 1048576,
-      "max_output_tokens": 65535,
+      "max_output_tokens": 65536,
       "mode": "chat",
       "output_cost_per_reasoning_token": 3e-06,
       "output_cost_per_token": 3e-06,
@@ -54164,13 +54553,11 @@
     },
     "gemini-3-pro-image": {
       "cache_read_input_token_cost": 2e-07,
-      "cache_read_input_token_cost_batches": 1e-07,
       "cache_read_input_token_cost_above_200k_tokens": 4e-07,
       "cache_read_input_token_cost_above_200k_tokens_priority": 7.2e-07,
+      "cache_read_input_token_cost_batches": 1e-07,
       "cache_read_input_token_cost_flex": 1e-07,
       "cache_read_input_token_cost_priority": 3.6e-07,
-      "deprecation_date": "2027-05-28",
-      "deprecation_source": "https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions",
       "input_cost_per_image": 0.0011,
       "input_cost_per_token": 2e-06,
       "input_cost_per_token_above_200k_tokens": 4e-06,
@@ -54192,6 +54579,16 @@
       "output_cost_per_token_batches": 6e-06,
       "output_cost_per_token_flex": 6e-06,
       "output_cost_per_token_priority": 2.16e-05,
+      "search_context_cost_per_query": {
+        "search_context_size_low": 0.014,
+        "search_context_size_medium": 0.014,
+        "search_context_size_high": 0.014
+      },
+      "search_free_requests": {
+        "count": 5000,
+        "period": "month",
+        "shared_group": "gemini-3"
+      },
       "source": "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
       "supported_endpoints": [
         "/v1/chat/completions",
@@ -54213,16 +54610,6 @@
       "supports_system_messages": true,
       "supports_vision": true,
       "supports_web_search": true,
-      "search_context_cost_per_query": {
-        "search_context_size_low": 0.014,
-        "search_context_size_medium": 0.014,
-        "search_context_size_high": 0.014
-      },
-      "search_free_requests": {
-        "count": 5000,
-        "period": "month",
-        "shared_group": "gemini-3"
-      },
       "web_search_billing_unit": "per_query"
     },
     "gemini-3-pro-image-preview": {
@@ -54288,15 +54675,13 @@
       "cache_read_input_token_cost_batches": 2.5e-08,
       "cache_read_input_token_cost_flex": 2.5e-08,
       "cache_read_input_token_cost_priority": 9e-08,
-      "deprecation_date": "2027-05-28",
-      "deprecation_source": "https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions",
       "input_cost_per_image": 0.00056,
       "input_cost_per_token": 5e-07,
       "input_cost_per_token_batches": 2.5e-07,
       "input_cost_per_token_flex": 2.5e-07,
       "input_cost_per_token_priority": 9e-07,
       "litellm_provider": "vertex_ai-language-models",
-      "max_input_tokens": 65536,
+      "max_input_tokens": 131072,
       "max_output_tokens": 32768,
       "mode": "image_generation",
       "output_cost_per_image": 0.0672,
@@ -54307,6 +54692,16 @@
       "output_cost_per_token_batches": 1.5e-06,
       "output_cost_per_token_flex": 1.5e-06,
       "output_cost_per_token_priority": 5.4e-06,
+      "search_context_cost_per_query": {
+        "search_context_size_low": 0.014,
+        "search_context_size_medium": 0.014,
+        "search_context_size_high": 0.014
+      },
+      "search_free_requests": {
+        "count": 5000,
+        "period": "month",
+        "shared_group": "gemini-3"
+      },
       "source": "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
       "supported_endpoints": [
         "/v1/chat/completions",
@@ -54328,16 +54723,6 @@
       "supports_system_messages": true,
       "supports_vision": true,
       "supports_web_search": true,
-      "search_context_cost_per_query": {
-        "search_context_size_low": 0.014,
-        "search_context_size_medium": 0.014,
-        "search_context_size_high": 0.014
-      },
-      "search_free_requests": {
-        "count": 5000,
-        "period": "month",
-        "shared_group": "gemini-3"
-      },
       "web_search_billing_unit": "per_query"
     },
     "gemini-3.1-flash-image-preview": {
@@ -54391,7 +54776,6 @@
     },
     "gemini-3.1-flash-lite": {
       "cache_read_input_audio_token_cost": 5e-08,
-      "deprecation_source": "https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions",
       "cache_read_input_audio_token_cost_batches": 2.5e-08,
       "cache_read_input_audio_token_cost_flex": 2.5e-08,
       "cache_read_input_audio_token_cost_priority": 9e-08,
@@ -54399,7 +54783,6 @@
       "cache_read_input_token_cost_batches": 1.25e-08,
       "cache_read_input_token_cost_flex": 1.25e-08,
       "cache_read_input_token_cost_priority": 4.5e-08,
-      "deprecation_date": "2027-05-07",
       "google_maps_grounding_cost_per_query": 0.014,
       "input_cost_per_audio_token": 5e-07,
       "input_cost_per_audio_token_above_200k_tokens": 5e-07,
@@ -54728,21 +55111,39 @@
       "google_maps_grounding_cost_per_query": 0.014
     },
     "gemini-3.5-flash": {
-      "prompt_cache_min_tokens": 4096,
-      "deprecation_date": "2027-05-19",
-      "deprecation_source": "https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions",
-      "successor_model": "gemini-3.8-flash",
       "cache_read_input_token_cost": 1.5e-07,
       "cache_read_input_token_cost_batches": 7.5e-08,
+      "cache_read_input_token_cost_flex": 7.5e-08,
+      "cache_read_input_token_cost_priority": 2.7e-07,
+      "google_maps_grounding_cost_per_query": 0.014,
       "input_cost_per_audio_token": 1.5e-06,
+      "input_cost_per_audio_token_priority": 2.7e-06,
       "input_cost_per_token": 1.5e-06,
+      "input_cost_per_token_batches": 7.5e-07,
+      "input_cost_per_token_flex": 7.5e-07,
+      "input_cost_per_token_priority": 2.7e-06,
       "litellm_provider": "vertex_ai-language-models",
       "max_input_tokens": 1048576,
-      "max_output_tokens": 65535,
+      "max_output_tokens": 65536,
       "mode": "chat",
       "output_cost_per_reasoning_token": 9e-06,
       "output_cost_per_token": 9e-06,
+      "output_cost_per_token_batches": 4.5e-06,
+      "output_cost_per_token_flex": 4.5e-06,
+      "output_cost_per_token_priority": 1.62e-05,
+      "prompt_cache_min_tokens": 4096.0,
+      "search_context_cost_per_query": {
+        "search_context_size_low": 0.014,
+        "search_context_size_medium": 0.014,
+        "search_context_size_high": 0.014
+      },
+      "search_free_requests": {
+        "count": 5000,
+        "period": "month",
+        "shared_group": "gemini-3"
+      },
       "source": "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
+      "successor_model": "gemini-3.8-flash",
       "supported_endpoints": [
         "/v1/chat/completions",
         "/v1/completions",
@@ -54757,10 +55158,11 @@
       "supported_output_modalities": [
         "text"
       ],
-      "supports_audio_output": false,
       "supports_audio_input": true,
+      "supports_audio_output": false,
       "supports_computer_use": true,
       "supports_function_calling": true,
+      "supports_native_streaming": true,
       "supports_parallel_function_calling": true,
       "supports_pdf_input": true,
       "supports_prompt_caching": true,
@@ -54772,36 +55174,14 @@
       "supports_video_input": true,
       "supports_vision": true,
       "supports_web_search": true,
-      "supports_native_streaming": true,
-      "input_cost_per_token_priority": 2.7e-06,
-      "input_cost_per_audio_token_priority": 2.7e-06,
-      "output_cost_per_token_priority": 1.62e-05,
-      "cache_read_input_token_cost_priority": 2.7e-07,
-      "search_context_cost_per_query": {
-        "search_context_size_low": 0.014,
-        "search_context_size_medium": 0.014,
-        "search_context_size_high": 0.014
-      },
-      "search_free_requests": {
-        "count": 5000,
-        "period": "month",
-        "shared_group": "gemini-3"
-      },
-      "web_search_billing_unit": "per_query",
-      "google_maps_grounding_cost_per_query": 0.014,
-      "input_cost_per_token_batches": 7.5e-07,
-      "output_cost_per_token_batches": 4.5e-06,
-      "input_cost_per_token_flex": 7.5e-07,
-      "output_cost_per_token_flex": 4.5e-06,
-      "cache_read_input_token_cost_flex": 7.5e-08
+      "web_search_billing_unit": "per_query"
     },
     "gemini-3.5-flash-lite": {
-      "deprecation_date": "2027-07-21",
-      "deprecation_source": "https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions",
       "cache_read_input_token_cost": 3e-08,
       "cache_read_input_token_cost_batches": 1.5e-08,
       "cache_read_input_token_cost_flex": 1.5e-08,
       "cache_read_input_token_cost_priority": 5.4e-08,
+      "google_maps_grounding_cost_per_query": 0.014,
       "input_cost_per_token": 3e-07,
       "input_cost_per_token_batches": 1.5e-07,
       "input_cost_per_token_flex": 1.5e-07,
@@ -54815,6 +55195,16 @@
       "output_cost_per_token_batches": 1.25e-06,
       "output_cost_per_token_flex": 1.25e-06,
       "output_cost_per_token_priority": 4.5e-06,
+      "search_context_cost_per_query": {
+        "search_context_size_low": 0.014,
+        "search_context_size_medium": 0.014,
+        "search_context_size_high": 0.014
+      },
+      "search_free_requests": {
+        "count": 5000,
+        "period": "month",
+        "shared_group": "gemini-3"
+      },
       "source": "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
       "supported_endpoints": [
         "/v1/chat/completions",
@@ -54834,6 +55224,7 @@
       "supports_audio_output": false,
       "supports_computer_use": true,
       "supports_function_calling": true,
+      "supports_native_streaming": true,
       "supports_parallel_function_calling": true,
       "supports_pdf_input": true,
       "supports_prompt_caching": true,
@@ -54846,19 +55237,7 @@
       "supports_video_input": true,
       "supports_vision": true,
       "supports_web_search": true,
-      "supports_native_streaming": true,
-      "search_context_cost_per_query": {
-        "search_context_size_low": 0.014,
-        "search_context_size_medium": 0.014,
-        "search_context_size_high": 0.014
-      },
-      "search_free_requests": {
-        "count": 5000,
-        "period": "month",
-        "shared_group": "gemini-3"
-      },
-      "web_search_billing_unit": "per_query",
-      "google_maps_grounding_cost_per_query": 0.014
+      "web_search_billing_unit": "per_query"
     },
     "gemini-3.6-flash": {
       "prompt_cache_min_tokens": 4096,
@@ -55958,6 +56337,8 @@
       "mode": "image_generation",
       "output_cost_per_image": 0.039,
       "output_cost_per_image_token": 3e-05,
+      "output_cost_per_image_token_batches": 1.5e-05,
+      "output_cost_per_image_token_priority": 5.4e-05,
       "output_cost_per_reasoning_token": 2.5e-06,
       "output_cost_per_token": 2.5e-06,
       "output_cost_per_token_batches": 1.25e-06,
@@ -57606,6 +57987,39 @@
       "supports_web_search": true,
       "tpm": 800000.0,
       "web_search_billing_unit": "per_query"
+    },
+    "gemini/gemini-decision-1": {
+      "input_cost_per_token": 1e-07,
+      "litellm_provider": "gemini",
+      "max_input_tokens": 262144,
+      "mode": "decisions",
+      "output_cost_per_token": 0.0,
+      "rpm": 1500,
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "supported_endpoints": [
+        "/v1/decisions"
+      ],
+      "supported_modalities": [
+        "text",
+        "image",
+        "audio",
+        "video"
+      ],
+      "supports_audio_input": true,
+      "supports_audio_output": false,
+      "supports_computer_use": false,
+      "supports_function_calling": false,
+      "supports_parallel_function_calling": false,
+      "supports_pdf_input": true,
+      "supports_prompt_caching": false,
+      "supports_reasoning": false,
+      "supports_response_schema": false,
+      "supports_tool_choice": false,
+      "supports_url_context": false,
+      "supports_video_input": true,
+      "supports_vision": true,
+      "supports_web_search": false,
+      "tpm": 1000000
     },
     "gemini/gemini-embedding-001": {
       "deprecation_date": "2028-05-14",
@@ -85987,14 +86401,80 @@
         "comment": "28 credits per second @ $0.01 per credit = $0.28 per second; 56 credit minimum per task not modeled"
       }
     },
+    "runwayml/bria_fibo_edit_1_5": {
+      "litellm_provider": "runwayml",
+      "metadata": {
+        "comment": "5 credits per image @ $0.01 per credit = $0.05 per image"
+      },
+      "mode": "image_generation",
+      "output_cost_per_image": 0.05,
+      "source": "https://docs.dev.runwayml.com/guides/pricing/",
+      "supported_modalities": [
+        "text",
+        "image"
+      ],
+      "supported_output_modalities": [
+        "image"
+      ]
+    },
     "runwayml/eleven_multilingual_v2": {
       "litellm_provider": "runwayml",
       "mode": "audio_speech",
-      "input_cost_per_character": 3e-07,
+      "input_cost_per_character": 0.0002,
       "source": "https://docs.dev.runwayml.com/guides/pricing/",
       "metadata": {
-        "comment": "Estimated cost based on standard TTS pricing. RunwayML uses ElevenLabs models."
+        "comment": "1 credit per 50 characters @ $0.01 per credit = $0.0002 per character"
       }
+    },
+    "runwayml/eleven_v3": {
+      "input_cost_per_character": 0.0002,
+      "litellm_provider": "runwayml",
+      "metadata": {
+        "comment": "1 credit per 50 characters @ $0.01 per credit = $0.0002 per character; 1 credit minimum not modeled"
+      },
+      "mode": "audio_speech",
+      "source": "https://docs.dev.runwayml.com/guides/pricing/"
+    },
+    "runwayml/eleven_v4": {
+      "input_cost_per_character": 5e-05,
+      "litellm_provider": "runwayml",
+      "metadata": {
+        "comment": "5 credits per 1,000 characters @ $0.01 per credit = $0.00005 per character; 1 credit minimum not modeled"
+      },
+      "mode": "audio_speech",
+      "source": "https://docs.dev.runwayml.com/guides/pricing/"
+    },
+    "runwayml/gemini_2.5_flash": {
+      "litellm_provider": "runwayml",
+      "metadata": {
+        "comment": "5 credits per image (any resolution) @ $0.01 per credit = $0.05 per image"
+      },
+      "mode": "image_generation",
+      "output_cost_per_image": 0.05,
+      "source": "https://docs.dev.runwayml.com/guides/pricing/",
+      "supported_modalities": [
+        "text",
+        "image"
+      ],
+      "supported_output_modalities": [
+        "image"
+      ]
+    },
+    "runwayml/gemini_image3.1_flash_lite": {
+      "litellm_provider": "runwayml",
+      "metadata": {
+        "comment": "4 credits per 1K image @ $0.01 per credit = $0.04 per image"
+      },
+      "mode": "image_generation",
+      "output_cost_per_image": 0.04,
+      "source": "https://docs.dev.runwayml.com/guides/pricing/",
+      "supported_modalities": [
+        "text",
+        "image"
+      ],
+      "supported_output_modalities": [
+        "image"
+      ]
     },
     "runwayml/gemini_omni_flash": {
       "litellm_provider": "runwayml",
@@ -86012,6 +86492,44 @@
       "metadata": {
         "comment": "10 credits per second @ $0.01 per credit = $0.10 per second"
       }
+    },
+    "runwayml/gemini_omni_flash_1.1": {
+      "litellm_provider": "runwayml",
+      "metadata": {
+        "comment": "10/15/30 credits per second at 720p/1080p/4K @ $0.01 per credit; the 360p rate (3.4 credits per second), 1 credit per reference image and 1 credit per second of input video are not modeled"
+      },
+      "mode": "video_generation",
+      "output_cost_per_second": 0.1,
+      "output_cost_per_second_1080p": 0.15,
+      "output_cost_per_second_4k": 0.3,
+      "source": "https://docs.dev.runwayml.com/guides/pricing/",
+      "supported_modalities": [
+        "text",
+        "image",
+        "video"
+      ],
+      "supported_output_modalities": [
+        "video"
+      ]
+    },
+    "runwayml/gemini_omni_flash_1.2": {
+      "litellm_provider": "runwayml",
+      "metadata": {
+        "comment": "7/10/21 credits per second at 720p/1080p/4K @ $0.01 per credit; the 360p rate (2 credits per second), 1 credit per reference image or keyframe, 1 credit per second of input video and the 6 credit minimum per request are not modeled"
+      },
+      "mode": "video_generation",
+      "output_cost_per_second": 0.07,
+      "output_cost_per_second_1080p": 0.1,
+      "output_cost_per_second_4k": 0.21,
+      "source": "https://docs.dev.runwayml.com/guides/pricing/",
+      "supported_modalities": [
+        "text",
+        "image",
+        "video"
+      ],
+      "supported_output_modalities": [
+        "video"
+      ]
     },
     "runwayml/gen4.5": {
       "litellm_provider": "runwayml",
@@ -86079,6 +86597,59 @@
         "comment": "5 credits per second @ $0.01 per credit = $0.05 per second"
       }
     },
+    "runwayml/grok_imagine_1_5": {
+      "litellm_provider": "runwayml",
+      "metadata": {
+        "comment": "10/16/29 credits per second at 480p/720p/1080p @ $0.01 per credit; 1 credit per image or audio reference not modeled"
+      },
+      "mode": "video_generation",
+      "output_cost_per_second": 0.16,
+      "output_cost_per_second_1080p": 0.29,
+      "output_cost_per_second_480p": 0.1,
+      "source": "https://docs.dev.runwayml.com/guides/pricing/",
+      "supported_modalities": [
+        "text",
+        "image"
+      ],
+      "supported_output_modalities": [
+        "video"
+      ]
+    },
+    "runwayml/grok_imagine_1_5_lite": {
+      "litellm_provider": "runwayml",
+      "metadata": {
+        "comment": "2/3/14 credits per second at 480p/720p/1080p @ $0.01 per credit; 1 credit for an image-to-video start frame not modeled"
+      },
+      "mode": "video_generation",
+      "output_cost_per_second": 0.03,
+      "output_cost_per_second_1080p": 0.14,
+      "output_cost_per_second_480p": 0.02,
+      "source": "https://docs.dev.runwayml.com/guides/pricing/",
+      "supported_modalities": [
+        "text",
+        "image"
+      ],
+      "supported_output_modalities": [
+        "video"
+      ]
+    },
+    "runwayml/h3_max": {
+      "litellm_provider": "runwayml",
+      "metadata": {
+        "comment": "8 credits per second at 768p, 5 at 480p @ $0.01 per credit"
+      },
+      "mode": "video_generation",
+      "output_cost_per_second": 0.08,
+      "output_cost_per_second_480p": 0.05,
+      "source": "https://docs.dev.runwayml.com/guides/pricing/",
+      "supported_modalities": [
+        "text",
+        "image"
+      ],
+      "supported_output_modalities": [
+        "video"
+      ]
+    },
     "runwayml/hailuo3": {
       "litellm_provider": "runwayml",
       "mode": "video_generation",
@@ -86097,10 +86668,175 @@
         "comment": "10 credits per second at 768P, 15 at 2K (mapped to the 1080p tier) @ $0.01 per credit; 2 credits per reference image not modeled"
       }
     },
+    "runwayml/happyhorse_1_0": {
+      "litellm_provider": "runwayml",
+      "metadata": {
+        "comment": "15 credits per second at 720p, 30 at 1080p @ $0.01 per credit"
+      },
+      "mode": "video_generation",
+      "output_cost_per_second": 0.15,
+      "output_cost_per_second_1080p": 0.3,
+      "source": "https://docs.dev.runwayml.com/guides/pricing/",
+      "supported_modalities": [
+        "text",
+        "image"
+      ],
+      "supported_output_modalities": [
+        "video"
+      ]
+    },
+    "runwayml/kling2.5_turbo_pro": {
+      "litellm_provider": "runwayml",
+      "metadata": {
+        "comment": "12 credits per second @ $0.01 per credit = $0.12 per second"
+      },
+      "mode": "video_generation",
+      "output_cost_per_second": 0.12,
+      "source": "https://docs.dev.runwayml.com/guides/pricing/",
+      "supported_modalities": [
+        "text",
+        "image"
+      ],
+      "supported_output_modalities": [
+        "video"
+      ]
+    },
+    "runwayml/kling3.0_4k": {
+      "litellm_provider": "runwayml",
+      "metadata": {
+        "comment": "43 credits per second @ $0.01 per credit = $0.43 per second, with or without audio"
+      },
+      "mode": "video_generation",
+      "output_cost_per_second": 0.43,
+      "source": "https://docs.dev.runwayml.com/guides/pricing/",
+      "supported_modalities": [
+        "text",
+        "image"
+      ],
+      "supported_output_modalities": [
+        "video"
+      ]
+    },
+    "runwayml/kling3.0_pro": {
+      "litellm_provider": "runwayml",
+      "metadata": {
+        "comment": "17 credits per second with audio, 12 without @ $0.01 per credit; priced at the with-audio rate (audio defaults to true)"
+      },
+      "mode": "video_generation",
+      "output_cost_per_second": 0.17,
+      "source": "https://docs.dev.runwayml.com/guides/pricing/",
+      "supported_modalities": [
+        "text",
+        "image"
+      ],
+      "supported_output_modalities": [
+        "video"
+      ]
+    },
+    "runwayml/kling3.0_standard": {
+      "litellm_provider": "runwayml",
+      "metadata": {
+        "comment": "13 credits per second with audio, 9 without @ $0.01 per credit; priced at the with-audio rate (audio defaults to true)"
+      },
+      "mode": "video_generation",
+      "output_cost_per_second": 0.13,
+      "source": "https://docs.dev.runwayml.com/guides/pricing/",
+      "supported_modalities": [
+        "text",
+        "image"
+      ],
+      "supported_output_modalities": [
+        "video"
+      ]
+    },
+    "runwayml/klingO3_4k": {
+      "litellm_provider": "runwayml",
+      "metadata": {
+        "comment": "43 credits per second @ $0.01 per credit = $0.43 per second; video-to-video is billed per second of the input video, not modeled"
+      },
+      "mode": "video_generation",
+      "output_cost_per_second": 0.43,
+      "source": "https://docs.dev.runwayml.com/guides/pricing/",
+      "supported_modalities": [
+        "text",
+        "image",
+        "video"
+      ],
+      "supported_output_modalities": [
+        "video"
+      ]
+    },
+    "runwayml/klingO3_pro": {
+      "litellm_provider": "runwayml",
+      "metadata": {
+        "comment": "17 credits per second @ $0.01 per credit = $0.17 per second; video-to-video is billed per second of the input video, not modeled"
+      },
+      "mode": "video_generation",
+      "output_cost_per_second": 0.17,
+      "source": "https://docs.dev.runwayml.com/guides/pricing/",
+      "supported_modalities": [
+        "text",
+        "image",
+        "video"
+      ],
+      "supported_output_modalities": [
+        "video"
+      ]
+    },
+    "runwayml/klingO3_standard": {
+      "litellm_provider": "runwayml",
+      "metadata": {
+        "comment": "13 credits per second @ $0.01 per credit = $0.13 per second; video-to-video is billed per second of the input video, not modeled"
+      },
+      "mode": "video_generation",
+      "output_cost_per_second": 0.13,
+      "source": "https://docs.dev.runwayml.com/guides/pricing/",
+      "supported_modalities": [
+        "text",
+        "image",
+        "video"
+      ],
+      "supported_output_modalities": [
+        "video"
+      ]
+    },
+    "runwayml/kling_4_flash": {
+      "litellm_provider": "runwayml",
+      "metadata": {
+        "comment": "9.4 credits per second (720p) without input video @ $0.01 per credit = $0.094 per second; the with-input-video rate (6.3 credits per output second plus 6.3 per second of the greater of input and output duration), rounding up to the next credit and the 29 credit minimum are not modeled"
+      },
+      "mode": "video_generation",
+      "output_cost_per_second": 0.094,
+      "source": "https://docs.dev.runwayml.com/guides/pricing/",
+      "supported_modalities": [
+        "text",
+        "image",
+        "video"
+      ],
+      "supported_output_modalities": [
+        "video"
+      ]
+    },
+    "runwayml/muse_image": {
+      "litellm_provider": "runwayml",
+      "metadata": {
+        "comment": "1 credit per image (any resolution) @ $0.01 per credit = $0.01 per image"
+      },
+      "mode": "image_generation",
+      "output_cost_per_image": 0.01,
+      "source": "https://docs.dev.runwayml.com/guides/pricing/",
+      "supported_modalities": [
+        "text",
+        "image"
+      ],
+      "supported_output_modalities": [
+        "image"
+      ]
+    },
     "runwayml/seedance2": {
       "litellm_provider": "runwayml",
       "mode": "video_generation",
-      "output_cost_per_second": 0.36,
+      "output_cost_per_second": 0.3,
       "output_cost_per_second_1080p": 0.4,
       "output_cost_per_second_4k": 1.5,
       "source": "https://docs.dev.runwayml.com/guides/pricing/",
@@ -86113,8 +86849,9 @@
         "video"
       ],
       "metadata": {
-        "comment": "36 credits per second at 480p/720p, 40 at 1080p, 150 at 4K @ $0.01 per credit"
-      }
+        "comment": "14/30/40/150 credits per second at 480p/720p/1080p/4K @ $0.01 per credit; 56 credit minimum per generation not modeled"
+      },
+      "output_cost_per_second_480p": 0.14
     },
     "runwayml/seedance2_5": {
       "litellm_provider": "runwayml",
@@ -86138,7 +86875,7 @@
     "runwayml/seedance2_fast": {
       "litellm_provider": "runwayml",
       "mode": "video_generation",
-      "output_cost_per_second": 0.29,
+      "output_cost_per_second": 0.24,
       "source": "https://docs.dev.runwayml.com/guides/pricing/",
       "supported_modalities": [
         "text",
@@ -86149,13 +86886,14 @@
         "video"
       ],
       "metadata": {
-        "comment": "29 credits per second at 480p/720p @ $0.01 per credit = $0.29 per second"
-      }
+        "comment": "11 credits per second at 480p, 24 at 720p @ $0.01 per credit; 44 credit minimum per generation not modeled"
+      },
+      "output_cost_per_second_480p": 0.11
     },
     "runwayml/seedance2_mini": {
       "litellm_provider": "runwayml",
       "mode": "video_generation",
-      "output_cost_per_second": 0.16,
+      "output_cost_per_second": 0.15,
       "source": "https://docs.dev.runwayml.com/guides/pricing/",
       "supported_modalities": [
         "text",
@@ -86166,8 +86904,41 @@
         "video"
       ],
       "metadata": {
-        "comment": "16 credits per second @ $0.01 per credit = $0.16 per second; 64 credit minimum per task not modeled"
-      }
+        "comment": "7 credits per second at 480p, 15 at 720p @ $0.01 per credit; 28 credit minimum per generation not modeled"
+      },
+      "output_cost_per_second_480p": 0.07
+    },
+    "runwayml/seedream5_flash": {
+      "litellm_provider": "runwayml",
+      "metadata": {
+        "comment": "2 credits per image (any resolution) @ $0.01 per credit = $0.02 per image"
+      },
+      "mode": "image_generation",
+      "output_cost_per_image": 0.02,
+      "source": "https://docs.dev.runwayml.com/guides/pricing/",
+      "supported_modalities": [
+        "text",
+        "image"
+      ],
+      "supported_output_modalities": [
+        "image"
+      ]
+    },
+    "runwayml/seedream5_lite": {
+      "litellm_provider": "runwayml",
+      "metadata": {
+        "comment": "4 credits per image (any resolution) @ $0.01 per credit = $0.04 per image"
+      },
+      "mode": "image_generation",
+      "output_cost_per_image": 0.04,
+      "source": "https://docs.dev.runwayml.com/guides/pricing/",
+      "supported_modalities": [
+        "text",
+        "image"
+      ],
+      "supported_output_modalities": [
+        "image"
+      ]
     },
     "runwayml/veo3.1": {
       "litellm_provider": "runwayml",
@@ -86200,6 +86971,42 @@
       "metadata": {
         "comment": "15 credits per second with audio, 10 without @ $0.01 per credit; priced at the with-audio rate"
       }
+    },
+    "runwayml/wan3": {
+      "litellm_provider": "runwayml",
+      "metadata": {
+        "comment": "5/10/20 credits per second at 480p/720p/1080p @ $0.01 per credit"
+      },
+      "mode": "video_generation",
+      "output_cost_per_second": 0.1,
+      "output_cost_per_second_1080p": 0.2,
+      "output_cost_per_second_480p": 0.05,
+      "source": "https://docs.dev.runwayml.com/guides/pricing/",
+      "supported_modalities": [
+        "text",
+        "image"
+      ],
+      "supported_output_modalities": [
+        "video"
+      ]
+    },
+    "runwayml/wan3_prime": {
+      "litellm_provider": "runwayml",
+      "metadata": {
+        "comment": "6.8/14/28 credits per second at 480p/720p/1080p @ $0.01 per credit"
+      },
+      "mode": "video_generation",
+      "output_cost_per_second": 0.14,
+      "output_cost_per_second_1080p": 0.28,
+      "output_cost_per_second_480p": 0.068,
+      "source": "https://docs.dev.runwayml.com/guides/pricing/",
+      "supported_modalities": [
+        "text",
+        "image"
+      ],
+      "supported_output_modalities": [
+        "video"
+      ]
     },
     "sagemaker/meta-textgeneration-llama-2-13b": {
       "input_cost_per_token": 0.0,
@@ -95401,7 +96208,7 @@
       "input_cost_per_token_priority": 9e-07,
       "litellm_provider": "vertex_ai",
       "max_input_tokens": 1048576,
-      "max_output_tokens": 65535,
+      "max_output_tokens": 65536,
       "mode": "chat",
       "output_cost_per_token": 3e-06,
       "output_cost_per_token_batches": 1.5e-06,
@@ -95449,13 +96256,11 @@
     },
     "vertex_ai/gemini-3-pro-image": {
       "cache_read_input_token_cost": 2e-07,
-      "cache_read_input_token_cost_batches": 1e-07,
       "cache_read_input_token_cost_above_200k_tokens": 4e-07,
       "cache_read_input_token_cost_above_200k_tokens_priority": 7.2e-07,
+      "cache_read_input_token_cost_batches": 1e-07,
       "cache_read_input_token_cost_flex": 1e-07,
       "cache_read_input_token_cost_priority": 3.6e-07,
-      "deprecation_date": "2027-05-28",
-      "deprecation_source": "https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions",
       "input_cost_per_image": 0.0011,
       "input_cost_per_token": 2e-06,
       "input_cost_per_token_above_200k_tokens": 4e-06,
@@ -95477,14 +96282,14 @@
       "output_cost_per_token_batches": 6e-06,
       "output_cost_per_token_flex": 6e-06,
       "output_cost_per_token_priority": 2.16e-05,
-      "supports_reasoning": false,
       "source": "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
       "supported_endpoints": [
         "/v1/chat/completions",
         "/v1/images/generations",
         "/v1/images/edits",
         "/v1/batch"
-      ]
+      ],
+      "supports_reasoning": false
     },
     "vertex_ai/gemini-3-pro-image-preview": {
       "input_cost_per_image": 0.0011,
@@ -95583,15 +96388,13 @@
       "cache_read_input_token_cost_batches": 2.5e-08,
       "cache_read_input_token_cost_flex": 2.5e-08,
       "cache_read_input_token_cost_priority": 9e-08,
-      "deprecation_date": "2027-05-28",
-      "deprecation_source": "https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions",
       "input_cost_per_image": 0.00056,
       "input_cost_per_token": 5e-07,
       "input_cost_per_token_batches": 2.5e-07,
       "input_cost_per_token_flex": 2.5e-07,
       "input_cost_per_token_priority": 9e-07,
       "litellm_provider": "vertex_ai-language-models",
-      "max_input_tokens": 65536,
+      "max_input_tokens": 131072,
       "max_output_tokens": 32768,
       "mode": "image_generation",
       "output_cost_per_image": 0.0672,
@@ -95603,14 +96406,14 @@
       "output_cost_per_token_flex": 1.5e-06,
       "output_cost_per_token_priority": 5.4e-06,
       "regional_endpoint_uplift_multiplier": 1.1,
-      "supports_reasoning": false,
       "source": "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
       "supported_endpoints": [
         "/v1/chat/completions",
         "/v1/images/generations",
         "/v1/images/edits",
         "/v1/batch"
-      ]
+      ],
+      "supports_reasoning": false
     },
     "vertex_ai/gemini-3.1-flash-image-preview": {
       "input_cost_per_image": 0.00056,
@@ -95639,7 +96442,6 @@
     },
     "vertex_ai/gemini-3.1-flash-lite": {
       "cache_read_input_audio_token_cost": 5e-08,
-      "deprecation_source": "https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions",
       "cache_read_input_audio_token_cost_batches": 2.5e-08,
       "cache_read_input_audio_token_cost_flex": 2.5e-08,
       "cache_read_input_audio_token_cost_priority": 9e-08,
@@ -95647,7 +96449,6 @@
       "cache_read_input_token_cost_batches": 1.25e-08,
       "cache_read_input_token_cost_flex": 1.25e-08,
       "cache_read_input_token_cost_priority": 4.5e-08,
-      "deprecation_date": "2027-05-07",
       "google_maps_grounding_cost_per_query": 0.014,
       "input_cost_per_audio_token": 5e-07,
       "input_cost_per_audio_token_above_200k_tokens": 5e-07,
@@ -95954,22 +96755,40 @@
       "google_maps_grounding_cost_per_query": 0.014
     },
     "vertex_ai/gemini-3.5-flash": {
-      "prompt_cache_min_tokens": 4096,
-      "deprecation_date": "2027-05-19",
-      "deprecation_source": "https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions",
-      "successor_model": "vertex_ai/gemini-3.8-flash",
       "cache_read_input_token_cost": 1.5e-07,
       "cache_read_input_token_cost_batches": 7.5e-08,
-      "input_cost_per_token": 1.5e-06,
+      "cache_read_input_token_cost_flex": 7.5e-08,
+      "cache_read_input_token_cost_priority": 2.7e-07,
+      "google_maps_grounding_cost_per_query": 0.014,
       "input_cost_per_audio_token": 1.5e-06,
+      "input_cost_per_audio_token_priority": 2.7e-06,
+      "input_cost_per_token": 1.5e-06,
+      "input_cost_per_token_batches": 7.5e-07,
+      "input_cost_per_token_flex": 7.5e-07,
+      "input_cost_per_token_priority": 2.7e-06,
       "litellm_provider": "vertex_ai",
       "max_input_tokens": 1048576,
-      "max_output_tokens": 65535,
+      "max_output_tokens": 65536,
       "mode": "chat",
       "output_cost_per_reasoning_token": 9e-06,
       "output_cost_per_token": 9e-06,
+      "output_cost_per_token_batches": 4.5e-06,
+      "output_cost_per_token_flex": 4.5e-06,
+      "output_cost_per_token_priority": 1.62e-05,
+      "prompt_cache_min_tokens": 4096.0,
       "regional_endpoint_uplift_multiplier": 1.1,
+      "search_context_cost_per_query": {
+        "search_context_size_low": 0.014,
+        "search_context_size_medium": 0.014,
+        "search_context_size_high": 0.014
+      },
+      "search_free_requests": {
+        "count": 5000,
+        "period": "month",
+        "shared_group": "gemini-3"
+      },
       "source": "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
+      "successor_model": "vertex_ai/gemini-3.8-flash",
       "supported_endpoints": [
         "/v1/chat/completions",
         "/v1/completions",
@@ -95987,6 +96806,7 @@
       "supports_audio_input": true,
       "supports_computer_use": true,
       "supports_function_calling": true,
+      "supports_native_streaming": true,
       "supports_parallel_function_calling": true,
       "supports_pdf_input": true,
       "supports_prompt_caching": true,
@@ -95998,36 +96818,14 @@
       "supports_video_input": true,
       "supports_vision": true,
       "supports_web_search": true,
-      "supports_native_streaming": true,
-      "input_cost_per_token_priority": 2.7e-06,
-      "input_cost_per_audio_token_priority": 2.7e-06,
-      "output_cost_per_token_priority": 1.62e-05,
-      "cache_read_input_token_cost_priority": 2.7e-07,
-      "search_context_cost_per_query": {
-        "search_context_size_low": 0.014,
-        "search_context_size_medium": 0.014,
-        "search_context_size_high": 0.014
-      },
-      "search_free_requests": {
-        "count": 5000,
-        "period": "month",
-        "shared_group": "gemini-3"
-      },
-      "web_search_billing_unit": "per_query",
-      "google_maps_grounding_cost_per_query": 0.014,
-      "input_cost_per_token_batches": 7.5e-07,
-      "output_cost_per_token_batches": 4.5e-06,
-      "input_cost_per_token_flex": 7.5e-07,
-      "output_cost_per_token_flex": 4.5e-06,
-      "cache_read_input_token_cost_flex": 7.5e-08
+      "web_search_billing_unit": "per_query"
     },
     "vertex_ai/gemini-3.5-flash-lite": {
-      "deprecation_date": "2027-07-21",
-      "deprecation_source": "https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions",
       "cache_read_input_token_cost": 3e-08,
       "cache_read_input_token_cost_batches": 1.5e-08,
       "cache_read_input_token_cost_flex": 1.5e-08,
       "cache_read_input_token_cost_priority": 5.4e-08,
+      "google_maps_grounding_cost_per_query": 0.014,
       "input_cost_per_token": 3e-07,
       "input_cost_per_token_batches": 1.5e-07,
       "input_cost_per_token_flex": 1.5e-07,
@@ -96042,6 +96840,16 @@
       "output_cost_per_token_flex": 1.25e-06,
       "output_cost_per_token_priority": 4.5e-06,
       "regional_endpoint_uplift_multiplier": 1.1,
+      "search_context_cost_per_query": {
+        "search_context_size_low": 0.014,
+        "search_context_size_medium": 0.014,
+        "search_context_size_high": 0.014
+      },
+      "search_free_requests": {
+        "count": 5000,
+        "period": "month",
+        "shared_group": "gemini-3"
+      },
       "source": "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
       "supported_endpoints": [
         "/v1/chat/completions",
@@ -96061,6 +96869,7 @@
       "supports_audio_output": false,
       "supports_computer_use": true,
       "supports_function_calling": true,
+      "supports_native_streaming": true,
       "supports_parallel_function_calling": true,
       "supports_pdf_input": true,
       "supports_prompt_caching": true,
@@ -96073,19 +96882,7 @@
       "supports_video_input": true,
       "supports_vision": true,
       "supports_web_search": true,
-      "supports_native_streaming": true,
-      "search_context_cost_per_query": {
-        "search_context_size_low": 0.014,
-        "search_context_size_medium": 0.014,
-        "search_context_size_high": 0.014
-      },
-      "search_free_requests": {
-        "count": 5000,
-        "period": "month",
-        "shared_group": "gemini-3"
-      },
-      "web_search_billing_unit": "per_query",
-      "google_maps_grounding_cost_per_query": 0.014
+      "web_search_billing_unit": "per_query"
     },
     "vertex_ai/gemini-3.5-live-translate-preview": {
       "input_cost_per_audio_token": 3.5e-06,
@@ -96834,18 +97631,20 @@
       "output_cost_per_reasoning_token": 9e-06,
       "output_cost_per_token": 9e-06,
       "output_cost_per_video_token": 1.75e-05,
-      "source": "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing"
+      "source": "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
+      "successor_model": "vertex_ai/gemini-omni-1.2-flash"
     },
     "vertex_ai/gemini-omni-1.1-flash-preview": {
       "input_cost_per_token": 1.5e-06,
       "litellm_provider": "vertex_ai",
-      "max_output_tokens": 57920,
       "max_input_tokens": 131072,
+      "max_output_tokens": 57920,
       "mode": "chat",
       "output_cost_per_reasoning_token": 9e-06,
       "output_cost_per_token": 9e-06,
       "output_cost_per_video_token": 1.75e-05,
       "source": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/omni-1-1-flash",
+      "successor_model": "vertex_ai/gemini-omni-1.2-flash",
       "supported_endpoints": [
         "/v1beta/interactions"
       ],
@@ -97707,8 +98506,6 @@
       ]
     },
     "vertex_ai/veo-3.1-fast-generate-001": {
-      "deprecation_date": "2026-11-17",
-      "deprecation_source": "https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions",
       "litellm_provider": "vertex_ai-video-models",
       "max_input_tokens": 1024,
       "mode": "video_generation",
@@ -97716,6 +98513,7 @@
       "output_cost_per_second_1080p": 0.12,
       "output_cost_per_second_4k": 0.3,
       "source": "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+      "successor_model": "vertex_ai/gemini-omni-1.2-flash",
       "supported_modalities": [
         "text"
       ],
@@ -97739,14 +98537,13 @@
       ]
     },
     "vertex_ai/veo-3.1-generate-001": {
-      "deprecation_date": "2026-11-17",
-      "deprecation_source": "https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions",
       "litellm_provider": "vertex_ai-video-models",
       "max_input_tokens": 1024,
       "mode": "video_generation",
       "output_cost_per_second": 0.4,
       "output_cost_per_second_4k": 0.6,
       "source": "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+      "successor_model": "vertex_ai/gemini-omni-1.2-flash",
       "supported_modalities": [
         "text"
       ],
@@ -101181,6 +101978,7 @@
     "zai.glm-5": {
       "input_cost_per_token": 1e-06,
       "input_cost_per_token_batches": 5e-07,
+      "input_cost_per_token_flex": 5e-07,
       "input_cost_per_token_priority": 1.75e-06,
       "output_cost_per_token": 3.2e-06,
       "litellm_provider": "bedrock_converse",
@@ -101188,6 +101986,7 @@
       "max_output_tokens": 128000,
       "mode": "chat",
       "output_cost_per_token_batches": 1.6e-06,
+      "output_cost_per_token_flex": 1.6e-06,
       "output_cost_per_token_priority": 5.6e-06,
       "supports_function_calling": true,
       "supports_reasoning": true,
